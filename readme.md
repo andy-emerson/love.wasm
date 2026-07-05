@@ -96,6 +96,20 @@ Exclusion happens in the build, not with `rm`: deleting upstream files would blo
 7. `love.thread` via Workers.
 8. LoveIDE integration: replace the love.js preview path; verify the exported `.love` still runs unmodified on desktop LÖVE.
 
+## Upstream relationship — branches, patches, and the 12.0 swap
+
+LÖVE 12 is unreleased but functionally complete (its open milestone items are polish, several in backends this build excludes). This fork does not wait for it, does not finish it, and must be able to adopt the released 12.0 cheaply. The machinery:
+
+**Branch model.** `main` is a pristine mirror of upstream `love2d/love` — never committed to, only fast-forwarded when adopting a new upstream commit. **`wasi` is the working branch and the repo default**; everything this fork adds lives there. At any moment, `git diff main...wasi` is the complete, current answer to "what did this fork touch" — the evidence for the honest claim above.
+
+**Three lanes for changes:**
+
+1. **Wasi-only code** — new backends, build files, the pump. Additive by design (new files, minimal edits to shared code), lives on `wasi` forever, rebases near-conflict-free.
+2. **Generic fixes LÖVE needs** — cut a topic branch from the *upstream base commit* (not from `wasi`), PR it to love2d, cherry-pick it into `wasi` meanwhile. When upstream merges, the carried copy is shed automatically at the next rebase (git recognizes already-applied patches). Carried, never kept.
+3. **Fork-private edits to shared engine code — not allowed.** If upstream declines a fix this port needs, that becomes a recorded design decision here, never a silent divergence.
+
+**The swap.** Adopting a new upstream — a fresh nightly or the 12.0 release itself — is: fast-forward `main` to the new commit, rebase `wasi` onto it, watch lane-2 patches fall out, update the base pin at the top of this README. Because lane 1 is additive and lane 2 self-sheds, the expected cost is an afternoon, not a migration.
+
 ## Constitution
 
 - **One artifact, no parts.** The shipped form is a single `.js` file with the wasm embedded; Workers spawn from Blob URLs. A repo may have a build; its output may not have pieces.

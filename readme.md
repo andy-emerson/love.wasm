@@ -39,6 +39,33 @@ LÖVE has always delegated exactly these to the host OS; a browser tab is just a
 
 Everything else the host supplies as imports, which is the same role an OS plays for desktop LÖVE: `love.filesystem` backed by the IDE's project storage (replacing PhysFS), input events forwarded from the DOM into LÖVE's real event queue, and the frame pump driven by `requestAnimationFrame` (the engine runs as a resident coroutine; the host resumes it once per frame — this repo owns its own pump against lua-wasm's embedding surface; lua-wasm's `onelua.c` reactor glue is not used or extended).
 
+## Substitution map — LÖVE 12 desktop vs. this build
+
+| Concern | LÖVE 12 (desktop) | love-wasi (browser) |
+|---|---|---|
+| Toolchain | system clang/gcc/MSVC per platform | `clang-19` + `wasi-libc`, target `wasm32-wasi` |
+| C runtime | system libc | wasi-libc (+ a few-dozen-line WASI preview1 shim in the host) |
+| C++ runtime & exceptions | system libc++/libstdc++, native unwinding | vendored LLVM libc++ + libc++abi built with `-fwasm-exceptions` (wasm-EH) |
+| Lua VM | LuaJIT (or vendored `lua53`) | [lua-wasm](https://github.com/Lua2D/lua-wasm) — Lua 5.4 + selective AOT, source-drop at a pinned commit, `LUAW_EXTERNAL_EH` |
+| Window & GL context | SDL3 | `<canvas>` + context via host imports; `t.window.*` drives the canvas |
+| GL function loading | glad (runtime loader) | none — static WebGL2 import shim *is* the GL surface |
+| Graphics API | OpenGL / Vulkan / Metal backends | WebGL2, as a new backend against 12's own graphics-backend abstraction |
+| Audio device | OpenAL (+ mixing/streaming thread) | WebAudio via host imports; pump work folded into the frame loop |
+| Audio decoding | in-tree `lullaby` (vorbis/flac/mp3/wav) | **unchanged** — same real C code |
+| Physics | in-tree Box2D | **unchanged** |
+| Font raster & shaping | FreeType + HarfBuzz (external) | same libraries, vendored and compiled to wasm |
+| Image codecs | in-tree stb_image, lodepng, ddsparse, tinyexr | **unchanged** |
+| Filesystem / `.love` mounting | PhysFS | host-import VFS backed by the IDE's project storage; `t.identity` namespacing preserved |
+| Input | SDL3 events | DOM keyboard/mouse/pointer/gamepad events forwarded into LÖVE's real event queue |
+| Main loop | SDL-driven `love.run` | resident coroutine resumed once per `requestAnimationFrame` tick (this repo's own pump) |
+| Timing | SDL timer | `performance.now()` / rAF timestamps via imports |
+| `love.thread` | SDL threads (pthreads) | Web Workers + `postMessage` (message-passing Channels — documented divergence) |
+| Networking (`enet`, `luasocket`, `luahttps`) | real sockets | **absent** — no faithful browser primitive; declared divergence |
+| Video (`love.video`, Theora) | libtheora | **deferred** (`t.modules.video = false`) |
+| Tracker music | ModPlug | **deferred** |
+| Microphone | OpenAL capture (`RecordingDevice`) | **deferred** — browser `getUserMedia` is a separate future design |
+| Shipped form | per-platform executables + shared libs | one `.js` file, wasm embedded, Workers from Blob URLs |
+
 ## conf.lua
 
 `love.conf(t)` is parsed and honored identically to desktop: `t.window.*` drives the canvas and page title; `t.modules.*` gates which subsystems must exist for a given game (so a game with `t.modules.physics = false` previews before the Box2D link lands); `t.identity` namespaces save data. Settings with no browser equivalent (`t.window.display`/`x`/`y`, exclusive fullscreen, multi-window) are explicitly mapped or no-op'd, and documented — never silently faked.

@@ -6,7 +6,7 @@ This is a fork of [love2d/love](https://github.com/love2d/love) (the `main` / 12
 
 **Base pin:** upstream `main` @ `540e681454e1a791294488e66173b48faa40fcc6` (2026-07-05). Rebases onto newer upstream are deliberate, recorded events — next planned at the 12.0 release.
 
-**Status: design stage.** This README is the contract; nothing wasi-specific has been built yet.
+**Status: toolchain proven.** Build-order steps 0 and 1 are done and browser-verified (see the build order below); the engine itself is untouched so far — everything wasi-specific lives under `wasi/`.
 
 ---
 
@@ -86,9 +86,9 @@ Exclusion happens in the build, not with `rm`: deleting upstream files would blo
 
 ## Build order
 
-0. Toolchain bring-up: wasm-EH libc++/libc++abi built and witnessed by a trivial typed-catch program.
-1. lua-wasi running standalone in a browser via the minimal WASI shim (proves toolchain + host pump, zero LÖVE).
-2. This repo's own frame pump against the lua-wasi source drop — one in-slot, one out-slot, LÖVE-specific semantics live here.
+0. Toolchain bring-up: wasm-EH libc++/libc++abi built and witnessed by a trivial typed-catch program. — **Done, browser-verified (2026-07-06):** `wasi/toolchain/build-libcxx-eh.sh` builds both from LLVM 20.1.2 source (plus the `Unwind-wasm.c` personality shim); `wasi/witness/eh-typed-catch.cpp` — typed catch via a base class, `what()` intact, destructor ran during unwind — **PASSes in Chromium 141** through `wasi/witness/run-browser.mjs` (our own ~50-line WASI shim, the seed of the runtime host) and under `node:wasi`.
+1. lua-wasi running standalone in a browser via the minimal WASI shim (proves toolchain + host pump, zero LÖVE). — **Done, browser-verified (2026-07-06), reproduced locally rather than trusted from its CI:** lua-wasi built from source with the same apt clang-20; its official-suite prefix bundle **PASSes in Chromium 141** via its own `browser-witness.mjs`. Same toolchain, same machine, both halves of the future marriage proven separately.
+2. This repo's own frame pump against the lua-wasi source drop — one in-slot, one out-slot, LÖVE-specific semantics live here. *(Blocked on lua-wasi #11 — the C/C++ consumer shape.)*
 3. LÖVE core boot (`love.boot`, module registration) compiling and linking with `graphics`/`audio`/`window`/`thread` stubbed (`audio/null` pattern) — proves the build/link story.
 4. Graphics backend: render path → WebGL2 imports, against 12's backend interface.
 5. Audio backend: PCM → WebAudio.

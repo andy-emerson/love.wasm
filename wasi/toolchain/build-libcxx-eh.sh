@@ -42,10 +42,18 @@ JOBS=${JOBS:-$(nproc)}
 mkdir -p "$WORK" && cd "$WORK"
 
 # ── source: the exact LLVM release Ubuntu's clang-20 packages are built from ──
+# Acquisition order: existing tarball → GitHub release (plain CI networks) →
+# apt-get source (mirrors-only networks; needs deb-src enabled).
+LLVM_VER=${LLVM_VER:-20.1.2}
 if [ ! -d llvm-src/runtimes ]; then
-  [ -f llvm-toolchain-20_20.1.2.orig.tar.gz ] || apt-get source --download-only libc++-20-dev-wasm32
+  if ls llvm-*"$LLVM_VER"*.tar.* >/dev/null 2>&1; then :
+  elif curl -fsSL -o "llvm-project-$LLVM_VER.src.tar.xz" \
+      "https://github.com/llvm/llvm-project/releases/download/llvmorg-$LLVM_VER/llvm-project-$LLVM_VER.src.tar.xz"; then :
+  else
+    apt-get source --download-only libc++-20-dev-wasm32
+  fi
   mkdir -p llvm-src
-  tar xzf llvm-toolchain-20_*.orig.tar.gz -C llvm-src --strip-components=1 --wildcards \
+  tar xf llvm-*"$LLVM_VER"*.tar.* -C llvm-src --strip-components=1 --wildcards \
     '*/libcxx/*' '*/libcxxabi/*' '*/libunwind/*' '*/runtimes/*' '*/cmake/*' \
     '*/llvm/utils/llvm-lit/*' '*/libc/*'
 fi

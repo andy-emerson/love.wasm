@@ -1,0 +1,41 @@
+name: witness
+# Re-run the wasi witnesses on every change to the trunk: the wasm-EH C++
+# toolchain claim (build-order step 0) must never silently rot. Durability
+# target per AGENTS.md: CI-enforced.
+on:
+  push:
+    branches: [wasi]
+  pull_request:
+    branches: [wasi]
+
+jobs:
+  eh-witness:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: toolchain (clang-20 + wasm32-wasi sysroot)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang-20 lld-20 libclang-rt-20-dev-wasm32 wasi-libc cmake ninja-build
+
+      - name: cache wasm-EH libc++ sysroot
+        id: sysroot
+        uses: actions/cache@v4
+        with:
+          path: wasi-eh
+          key: wasi-eh-llvm20.1.2-${{ hashFiles('wasi/toolchain/**') }}
+
+      - name: build libc++ / libc++abi with wasm-EH
+        if: steps.sysroot.outputs.cache-hit != 'true'
+        run: WORK="$RUNNER_TEMP/llvm-eh" PREFIX="$PWD/wasi-eh" wasi/toolchain/build-libcxx-eh.sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: chromium
+        run: npm i --no-save playwright@1.61.1 && npx playwright install --with-deps chromium
+
+      - name: EH witness (node:wasi + real Chromium)
+        run: PREFIX="$PWD/wasi-eh" wasi/witness/run.sh

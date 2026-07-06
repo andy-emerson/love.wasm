@@ -20,6 +20,7 @@ jobs:
           # anonymous GitHub release downloads are rate-limited on runners.
           sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
           sudo sed -i 's/^# deb-src/deb-src/' /etc/apt/sources.list 2>/dev/null || true
+          echo "deb-src state:"; grep -rs '^deb-src\|^Types:.*deb-src' /etc/apt/sources.list /etc/apt/sources.list.d/ | head -4 || echo "  (none enabled)"
           sudo apt-get update -qq
           sudo apt-get install -y -qq clang-20 lld-20 libclang-rt-20-dev-wasm32 wasi-libc cmake ninja-build
 

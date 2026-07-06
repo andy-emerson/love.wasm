@@ -46,20 +46,29 @@ mkdir -p "$WORK" && cd "$WORK"
 # apt-get source (mirrors-only networks; needs deb-src enabled).
 LLVM_VER=${LLVM_VER:-20.1.2}
 if [ ! -d llvm-src/runtimes ]; then
-  if ls llvm-*"$LLVM_VER"*.tar.* >/dev/null 2>&1; then :
-  elif curl -fsSL --retry 3 --retry-delay 5 -o "llvm-project-$LLVM_VER.src.tar.xz" \
-      "https://github.com/llvm/llvm-project/releases/download/llvmorg-$LLVM_VER/llvm-project-$LLVM_VER.src.tar.xz"; then :
+  if ls llvm-*"$LLVM_VER"*.tar.* >/dev/null 2>&1; then
+    echo "source: using existing tarball"
   else
-    # Fallback for networks where anonymous GitHub release downloads are
-    # rate-limited (shared CI runner IPs) or blocked (proxied sandboxes).
-    # Needs deb-src enabled; callers on CI runners should enable it first.
-    rm -f "llvm-project-$LLVM_VER.src.tar.xz"   # drop curl's partial/empty file
-    apt-get source --download-only libc++-20-dev-wasm32
+    echo "source: fetching llvm-project-$LLVM_VER.src.tar.xz from GitHub releases"
+    # -f: fail on HTTP errors; no -s so failures are visible in CI logs.
+    # Note --retry does NOT retry 403s (the anonymous rate-limit answer).
+    if curl -fL --retry 3 --retry-delay 5 -o "llvm-project-$LLVM_VER.src.tar.xz" \
+        "https://github.com/llvm/llvm-project/releases/download/llvmorg-$LLVM_VER/llvm-project-$LLVM_VER.src.tar.xz"; then
+      echo "source: GitHub download ok"
+    else
+      rc=$?
+      echo "source: curl failed (rc=$rc); falling back to apt-get source (needs deb-src)" >&2
+      rm -f "llvm-project-$LLVM_VER.src.tar.xz"   # drop curl's partial/empty file
+      apt-get source --download-only libc++-20-dev-wasm32
+    fi
   fi
   # apt-get source drops several component tarballs — pick the main one only
   # (a multi-file glob would make tar read the 2nd file as a member name).
-  TARBALL=$(ls "llvm-project-$LLVM_VER.src.tar.xz" llvm-*"$LLVM_VER"*.orig.tar.* 2>/dev/null | head -1)
+  # `|| true`: under set -euo pipefail a no-match ls would otherwise kill the
+  # script silently with exit 2 at this assignment (witnessed in CI run 3).
+  TARBALL=$(ls "llvm-project-$LLVM_VER.src.tar.xz" llvm-*"$LLVM_VER"*.orig.tar.* 2>/dev/null | head -1 || true)
   [ -n "$TARBALL" ] && [ -s "$TARBALL" ] || { echo "error: no LLVM source tarball acquired" >&2; exit 1; }
+  echo "source: extracting $TARBALL"
   mkdir -p llvm-src
   tar xf "$TARBALL" -C llvm-src --strip-components=1 --wildcards \
     '*/libcxx/*' '*/libcxxabi/*' '*/libunwind/*' '*/runtimes/*' '*/cmake/*' \

@@ -42,10 +42,35 @@ JOBS=${JOBS:-$(nproc)}
 mkdir -p "$WORK" && cd "$WORK"
 
 # ── source: the exact LLVM release Ubuntu's clang-20 packages are built from ──
+# Acquisition order: existing tarball → GitHub release (plain CI networks) →
+# apt-get source (mirrors-only networks; needs deb-src enabled).
+LLVM_VER=${LLVM_VER:-20.1.2}
 if [ ! -d llvm-src/runtimes ]; then
-  [ -f llvm-toolchain-20_20.1.2.orig.tar.gz ] || apt-get source --download-only libc++-20-dev-wasm32
+  if ls llvm-*"$LLVM_VER"*.tar.* >/dev/null 2>&1; then
+    echo "source: using existing tarball"
+  else
+    echo "source: fetching llvm-project-$LLVM_VER.src.tar.xz from GitHub releases"
+    # -f: fail on HTTP errors; no -s so failures are visible in CI logs.
+    # Note --retry does NOT retry 403s (the anonymous rate-limit answer).
+    if curl -fL --retry 3 --retry-delay 5 -o "llvm-project-$LLVM_VER.src.tar.xz" \
+        "https://github.com/llvm/llvm-project/releases/download/llvmorg-$LLVM_VER/llvm-project-$LLVM_VER.src.tar.xz"; then
+      echo "source: GitHub download ok"
+    else
+      rc=$?
+      echo "source: curl failed (rc=$rc); falling back to apt-get source (needs deb-src)" >&2
+      rm -f "llvm-project-$LLVM_VER.src.tar.xz"   # drop curl's partial/empty file
+      apt-get source --download-only libc++-20-dev-wasm32
+    fi
+  fi
+  # apt-get source drops several component tarballs — pick the main one only
+  # (a multi-file glob would make tar read the 2nd file as a member name).
+  # `|| true`: under set -euo pipefail a no-match ls would otherwise kill the
+  # script silently with exit 2 at this assignment (witnessed in CI run 3).
+  TARBALL=$(ls "llvm-project-$LLVM_VER.src.tar.xz" llvm-*"$LLVM_VER"*.orig.tar.* 2>/dev/null | head -1 || true)
+  [ -n "$TARBALL" ] && [ -s "$TARBALL" ] || { echo "error: no LLVM source tarball acquired" >&2; exit 1; }
+  echo "source: extracting $TARBALL"
   mkdir -p llvm-src
-  tar xzf llvm-toolchain-20_*.orig.tar.gz -C llvm-src --strip-components=1 --wildcards \
+  tar xf "$TARBALL" -C llvm-src --strip-components=1 --wildcards \
     '*/libcxx/*' '*/libcxxabi/*' '*/libunwind/*' '*/runtimes/*' '*/cmake/*' \
     '*/llvm/utils/llvm-lit/*' '*/libc/*'
 fi
@@ -57,6 +82,7 @@ cmake -G Ninja -S llvm-src/runtimes -B build \
   -DCMAKE_C_COMPILER_TARGET=wasm32-wasi -DCMAKE_CXX_COMPILER_TARGET=wasm32-wasi \
   -DCMAKE_SYSTEM_NAME=WASI -DCMAKE_SYSTEM_PROCESSOR=wasm32 \
   -DCMAKE_MODULE_PATH="$HERE" \
+  -DUNIX=1 \
   -DCMAKE_C_FLAGS="-fwasm-exceptions" -DCMAKE_CXX_FLAGS="-fwasm-exceptions" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
   -DLLVM_ENABLE_RUNTIMES="libcxxabi;libcxx" \

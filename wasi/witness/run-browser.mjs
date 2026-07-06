@@ -2,12 +2,21 @@
 // Chromium with a hand-rolled WASI preview1 shim (no Emscripten, no node:wasi),
 // capture stdout, and report the exit code. The shim here is the seed of
 // love-wasi's browser host: fd_write, proc_exit, clocks, random, arg/env stubs.
-import { readFileSync } from 'node:fs';
-import { chromium } from 'playwright-core';
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { createRequire } from 'node:module';
+
+// playwright-core is a dev-only dependency resolved from the invoking cwd
+// (same pattern as lua-wasi's browser witness), so it never lives in-repo.
+const require = createRequire(resolve(process.cwd(), 'noop.js'));
+const { chromium } = require('playwright-core');
+const executablePath = process.env.CHROMIUM && existsSync(process.env.CHROMIUM)
+  ? process.env.CHROMIUM
+  : undefined;  // otherwise let playwright resolve its installed chromium
 
 const wasmB64 = readFileSync(process.argv[2] ?? 'eh-witness.wasm').toString('base64');
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await chromium.launch(executablePath ? { executablePath } : {});
 const page = await browser.newPage();
 
 const result = await page.evaluate(async (b64) => {

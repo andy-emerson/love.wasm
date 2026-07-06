@@ -117,6 +117,10 @@ LÖVE 12 is unreleased but functionally complete (its open milestone items are p
 - **Claims match evidence.** A subsystem "works" when the `testing/` corpus exercises it in a real browser and matches desktop behavior. Anything less is labeled as less.
 - **Upstreamable by construction.** The web backend is written against upstream's own abstractions; small generic seams are offered upstream as they arise; the goal-state conversation — a web platform for LÖVE proper — stays open.
 
+## Working agreement
+
+How work is planned, executed, reviewed, and integrated here is governed by [`AGENTS.md`](AGENTS.md) — shared verbatim with [lua-wasi](https://github.com/Lua2D/lua-wasi) (architect/engineer roles, code/doc passes, truth-seeking doc review, claims graded by strength and durability). The one repo-specific mapping (this repo's trunk is `wasi`, because `main` mirrors upstream) lives in [`CLAUDE.md`](CLAUDE.md).
+
 ## Credits & license
 
 zlib license, same as upstream (`license.txt`). LÖVE is the work of the LÖVE Development Team — this fork exists to carry it somewhere new, not to claim it. The Lua layer builds on PUC-Rio Lua and Hugo Musso Gualandi's lua-aot research via [Lua2D/lua-wasi](https://github.com/Lua2D/lua-wasi).

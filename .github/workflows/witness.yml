@@ -16,6 +16,10 @@ jobs:
 
       - name: toolchain (clang-20 + wasm32-wasi sysroot)
         run: |
+          # deb-src enables the build script's apt-get source fallback when
+          # anonymous GitHub release downloads are rate-limited on runners.
+          sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+          sudo sed -i 's/^# deb-src/deb-src/' /etc/apt/sources.list 2>/dev/null || true
           sudo apt-get update -qq
           sudo apt-get install -y -qq clang-20 lld-20 libclang-rt-20-dev-wasm32 wasi-libc cmake ninja-build
 

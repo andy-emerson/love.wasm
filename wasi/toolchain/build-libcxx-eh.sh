@@ -52,8 +52,11 @@ if [ ! -d llvm-src/runtimes ]; then
   else
     apt-get source --download-only libc++-20-dev-wasm32
   fi
+  # apt-get source drops several component tarballs — pick the main one only
+  # (a multi-file glob would make tar read the 2nd file as a member name).
+  TARBALL=$(ls "llvm-project-$LLVM_VER.src.tar.xz" llvm-*"$LLVM_VER"*.orig.tar.* 2>/dev/null | head -1)
   mkdir -p llvm-src
-  tar xf llvm-*"$LLVM_VER"*.tar.* -C llvm-src --strip-components=1 --wildcards \
+  tar xf "$TARBALL" -C llvm-src --strip-components=1 --wildcards \
     '*/libcxx/*' '*/libcxxabi/*' '*/libunwind/*' '*/runtimes/*' '*/cmake/*' \
     '*/llvm/utils/llvm-lit/*' '*/libc/*'
 fi
@@ -65,6 +68,7 @@ cmake -G Ninja -S llvm-src/runtimes -B build \
   -DCMAKE_C_COMPILER_TARGET=wasm32-wasi -DCMAKE_CXX_COMPILER_TARGET=wasm32-wasi \
   -DCMAKE_SYSTEM_NAME=WASI -DCMAKE_SYSTEM_PROCESSOR=wasm32 \
   -DCMAKE_MODULE_PATH="$HERE" \
+  -DUNIX=1 \
   -DCMAKE_C_FLAGS="-fwasm-exceptions" -DCMAKE_CXX_FLAGS="-fwasm-exceptions" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
   -DLLVM_ENABLE_RUNTIMES="libcxxabi;libcxx" \

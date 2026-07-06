@@ -3,6 +3,7 @@
 # builds) instead of degrading to duplicate static archives under Generic.
 set(WASI 1)
 set(UNIX 1)
+message(STATUS "Platform/WASI.cmake loaded (UNIX=1 for LLVM's platform check)")
 set(CMAKE_STATIC_LIBRARY_PREFIX "lib")
 set(CMAKE_STATIC_LIBRARY_SUFFIX ".a")
 set(CMAKE_SHARED_LIBRARY_PREFIX "lib")

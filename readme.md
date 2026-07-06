@@ -25,8 +25,8 @@ The semantically hard code stays verbatim: physics, decoders, render math, modul
 
 ## Toolchain
 
-- `clang-19` + `wasi-libc`, C++ with **`-fwasm-exceptions`** (the wasm exception-handling proposal). LÖVE's own error path requires full C++ EH — typed catches and exception-object destructors — so the build vendors **LLVM libc++ + libc++abi compiled with wasm-EH** (wasi-sdk's stock libc++ is built without exception support).
-- **Lua VM:** [Lua2D/lua-wasm](https://github.com/Lua2D/lua-wasm) (Lua 5.4 + selective AOT), consumed as a **source drop at a pinned commit**, compiled in-tree with this build's own flags, with `LUAW_EXTERNAL_EH` so the real libc++abi owns exception dispatch. LÖVE 12 supports Lua 5.4 natively (`LUA_VERSION_NUM >= 504` paths in `love.cpp`, `common/runtime.cpp`); LuaJIT is not an option under wasm (no runtime codegen; no wasm interpreter backend).
+- `clang-20+` + `wasi-libc`, C++ with **`-fwasm-exceptions`** (LLVM 20 emits the *standardized* wasm exception-handling encoding — matching lua-wasi's toolchain, which is mandatory: the VM and this engine share one EH machinery, so the LLVM major and EH encoding must agree). LÖVE's own error path requires full C++ EH — typed catches and exception-object destructors — so the build vendors **LLVM libc++ + libc++abi compiled with wasm-EH** (wasi-sdk's stock libc++ is built without exception support).
+- **Lua VM:** [Lua2D/lua-wasi](https://github.com/Lua2D/lua-wasi) (Lua 5.4 + selective AOT), consumed as a **source drop at a pinned commit**, compiled in-tree with this build's own flags, with `LUAW_EXTERNAL_EH` so the real libc++abi owns exception dispatch. LÖVE 12 supports Lua 5.4 natively (`LUA_VERSION_NUM >= 504` paths in `love.cpp`, `common/runtime.cpp`); LuaJIT is not an option under wasm (no runtime codegen; no wasm interpreter backend).
 - **No Emscripten anywhere.** The browser side is a small hand-written WASI preview1 shim (`fd_write`, clocks, `proc_exit` — a few dozen lines) plus the import surface defined by the seams below.
 
 ## The three seams (new code)
@@ -37,16 +37,16 @@ LÖVE has always delegated exactly these to the host OS; a browser tab is just a
 2. **Audio.** Upstream: OpenAL device output (plus a mixing/streaming thread). Here: decoded PCM pushed to **WebAudio** via imports; decoding (vorbis, flac, mp3, wav) stays real, in-tree C. The existing `audio/null` backend is the bring-up placeholder.
 3. **`love.thread`.** wasm32-wasi is single-threaded; real threading means real **Web Workers** with message-passing. LÖVE's Channel API is share-nothing by design, so semantics mostly survive — but this is an honest, documented behavioral divergence, not a bug to hide.
 
-Everything else the host supplies as imports, which is the same role an OS plays for desktop LÖVE: `love.filesystem` backed by the IDE's project storage (replacing PhysFS), input events forwarded from the DOM into LÖVE's real event queue, and the frame pump driven by `requestAnimationFrame` (the engine runs as a resident coroutine; the host resumes it once per frame — this repo owns its own pump against lua-wasm's embedding surface; lua-wasm's `onelua.c` reactor glue is not used or extended).
+Everything else the host supplies as imports, which is the same role an OS plays for desktop LÖVE: `love.filesystem` backed by the IDE's project storage (replacing PhysFS), input events forwarded from the DOM into LÖVE's real event queue, and the frame pump driven by `requestAnimationFrame` (the engine runs as a resident coroutine; the host resumes it once per frame — this repo owns its own pump against lua-wasi's embedding surface; lua-wasi's `onelua.c` reactor glue is not used or extended).
 
 ## Substitution map — LÖVE 12 desktop vs. this build
 
 | Concern | LÖVE 12 (desktop) | love-wasi (browser) |
 |---|---|---|
-| Toolchain | system clang/gcc/MSVC per platform | `clang-19` + `wasi-libc`, target `wasm32-wasi` |
+| Toolchain | system clang/gcc/MSVC per platform | `clang-20+` + `wasi-libc`, target `wasm32-wasi` (standardized wasm-EH encoding, matched with lua-wasi) |
 | C runtime | system libc | wasi-libc (+ a few-dozen-line WASI preview1 shim in the host) |
 | C++ runtime & exceptions | system libc++/libstdc++, native unwinding | vendored LLVM libc++ + libc++abi built with `-fwasm-exceptions` (wasm-EH) |
-| Lua VM | LuaJIT (or vendored `lua53`) | [lua-wasm](https://github.com/Lua2D/lua-wasm) — Lua 5.4 + selective AOT, source-drop at a pinned commit, `LUAW_EXTERNAL_EH` |
+| Lua VM | LuaJIT (or vendored `lua53`) | [lua-wasi](https://github.com/Lua2D/lua-wasi) — Lua 5.4 + selective AOT, source-drop at a pinned commit, `LUAW_EXTERNAL_EH` |
 | Window & GL context | SDL3 | `<canvas>` + context via host imports; `t.window.*` drives the canvas |
 | GL function loading | glad (runtime loader) | none — static WebGL2 import shim *is* the GL surface |
 | Graphics API | OpenGL / Vulkan / Metal backends | WebGL2, as a new backend against 12's own graphics-backend abstraction |
@@ -72,7 +72,7 @@ Everything else the host supplies as imports, which is the same role an OS plays
 
 ## Dependency disposition (the build map)
 
-**Replaced at the seams (not compiled):** SDL3 · OpenAL · PhysFS (`src/libraries/physfs`) · glad (GL loader — the WebGL import shim takes its place) · LuaJIT / vendored `lua53` (→ lua-wasm 5.4).
+**Replaced at the seams (not compiled):** SDL3 · OpenAL · PhysFS (`src/libraries/physfs`) · glad (GL loader — the WebGL import shim takes its place) · LuaJIT / vendored `lua53` (→ lua-wasi 5.4).
 
 **Kept, real, already in-tree:** `box2d` · `dr` (flac/mp3) · `stb` (stb_image) · `lodepng` · `ddsparse` · `tinyexr` · `Wuff` (wav) · `lz4` · `xxHash` · `noise1234` · `utf8` · the `sound/lullaby` decoder layer · `src/scripts` (boot Lua — prime `WASM_AOT` candidates).
 
@@ -87,8 +87,8 @@ Exclusion happens in the build, not with `rm`: deleting upstream files would blo
 ## Build order
 
 0. Toolchain bring-up: wasm-EH libc++/libc++abi built and witnessed by a trivial typed-catch program.
-1. lua-wasm running standalone in a browser via the minimal WASI shim (proves toolchain + host pump, zero LÖVE).
-2. This repo's own frame pump against the lua-wasm source drop — one in-slot, one out-slot, LÖVE-specific semantics live here.
+1. lua-wasi running standalone in a browser via the minimal WASI shim (proves toolchain + host pump, zero LÖVE).
+2. This repo's own frame pump against the lua-wasi source drop — one in-slot, one out-slot, LÖVE-specific semantics live here.
 3. LÖVE core boot (`love.boot`, module registration) compiling and linking with `graphics`/`audio`/`window`/`thread` stubbed (`audio/null` pattern) — proves the build/link story.
 4. Graphics backend: render path → WebGL2 imports, against 12's backend interface.
 5. Audio backend: PCM → WebAudio.
@@ -113,10 +113,10 @@ LÖVE 12 is unreleased but functionally complete (its open milestone items are p
 ## Constitution
 
 - **One artifact, no parts.** The shipped form is a single `.js` file with the wasm embedded; Workers spawn from Blob URLs. A repo may have a build; its output may not have pieces.
-- **Pin-by-commit in both directions.** Upstream base pinned above; lua-wasm pinned in-tree; LoveIDE pins this repo's artifact by commit. Nothing floats.
+- **Pin-by-commit in both directions.** Upstream base pinned above; lua-wasi pinned in-tree; LoveIDE pins this repo's artifact by commit. Nothing floats.
 - **Claims match evidence.** A subsystem "works" when the `testing/` corpus exercises it in a real browser and matches desktop behavior. Anything less is labeled as less.
 - **Upstreamable by construction.** The web backend is written against upstream's own abstractions; small generic seams are offered upstream as they arise; the goal-state conversation — a web platform for LÖVE proper — stays open.
 
 ## Credits & license
 
-zlib license, same as upstream (`license.txt`). LÖVE is the work of the LÖVE Development Team — this fork exists to carry it somewhere new, not to claim it. The Lua layer builds on PUC-Rio Lua and Hugo Musso Gualandi's lua-aot research via [Lua2D/lua-wasm](https://github.com/Lua2D/lua-wasm).
+zlib license, same as upstream (`license.txt`). LÖVE is the work of the LÖVE Development Team — this fork exists to carry it somewhere new, not to claim it. The Lua layer builds on PUC-Rio Lua and Hugo Musso Gualandi's lua-aot research via [Lua2D/lua-wasi](https://github.com/Lua2D/lua-wasi).

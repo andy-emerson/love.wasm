@@ -1,6 +1,6 @@
 # love-wasi
 
-**Real LÖVE, compiled to wasm32-wasi, as the in-browser preview engine for [LoveIDE](https://github.com/andy-emerson/LoveIDE).**
+**Real LÖVE, compiled to wasm32-wasi, as the in-browser preview engine**
 
 This is a fork of [love2d/love](https://github.com/love2d/love) (the `main` / 12.0-development branch), altered for a WebAssembly/WASI target. Per the zlib license: this is an altered version, plainly marked, and not the original software — LÖVE itself lives upstream (docs at the [LÖVE wiki](https://love2d.org/wiki)), and this fork defers to upstream for everything except its platform target.
 

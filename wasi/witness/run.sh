@@ -15,7 +15,9 @@ PREFIX=${PREFIX:-$PWD/wasi-eh}
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-clang++-20 --target=wasm32-wasi -fwasm-exceptions -O2 \
+# Standardized exnref encoding, matching the sysroot build (one artifact,
+# one encoding — clang-20's bare -fwasm-exceptions default is legacy).
+clang++-20 --target=wasm32-wasi -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -O2 \
   -nostdinc++ -I"$PREFIX/include/c++/v1" \
   "$HERE/eh-typed-catch.cpp" "$PREFIX/lib/unwind-wasm.o" \
   -L"$PREFIX/lib" -lc++ -lc++abi \

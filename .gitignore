@@ -75,3 +75,9 @@ stamp-h1
 /testing/output/*.md
 /testing/output/actual/*.png
 /testing/output/difference/*.png
+
+# wasi toolchain/witness local products (CI caches wasi-eh at this path)
+/wasi-eh/
+/node_modules/
+/package.json
+/package-lock.json

@@ -32,7 +32,17 @@
 #    -D_LIBUNWIND_HIDE_SYMBOLS (else it wants __declspec/-fdeclspec). It is
 #    compiled standalone: the full libunwind runtime build has the same
 #    duplicate-output problem and none of it is needed for wasm EH.
+#  - clang-20's -fwasm-exceptions default is the LEGACY encoding
+#    (try/catch); the standardized exnref encoding (try_table/throw_ref)
+#    that the lua-wasi flag contract requires needs an explicit
+#    `-mllvm -wasm-use-legacy-eh=false` (probed 2026-07-07: default emits
+#    `try`/`rethrow`, flag emits `try_table`/`throw_ref`). One artifact
+#    must not mix encodings, so the flag is baked in here.
 set -euo pipefail
+
+# The one EH configuration this whole repo links under: wasm-EH with the
+# standardized exnref encoding, matching lua-wasi's WASM_EH_ENCODING=standard.
+EH_FLAGS="-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false"
 
 WORK=${WORK:-$PWD/build-libcxx-eh}
 PREFIX=${PREFIX:-$PWD/wasi-eh}
@@ -83,7 +93,7 @@ cmake -G Ninja -S llvm-src/runtimes -B build \
   -DCMAKE_SYSTEM_NAME=WASI -DCMAKE_SYSTEM_PROCESSOR=wasm32 \
   -DCMAKE_MODULE_PATH="$HERE" \
   -DUNIX=1 \
-  -DCMAKE_C_FLAGS="-fwasm-exceptions" -DCMAKE_CXX_FLAGS="-fwasm-exceptions" \
+  -DCMAKE_C_FLAGS="$EH_FLAGS" -DCMAKE_CXX_FLAGS="$EH_FLAGS" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
   -DLLVM_ENABLE_RUNTIMES="libcxxabi;libcxx" \
   -DLIBCXXABI_ENABLE_SHARED=OFF -DLIBCXXABI_ENABLE_THREADS=OFF \
@@ -97,7 +107,7 @@ cmake -G Ninja -S llvm-src/runtimes -B build \
 ninja -C build -j"$JOBS" install
 
 # ── the wasm-EH personality shim (provides _Unwind_CallPersonality etc.) ─────
-clang-20 --target=wasm32-wasi -fwasm-exceptions -O2 -DNDEBUG \
+clang-20 --target=wasm32-wasi $EH_FLAGS -O2 -DNDEBUG \
   -D_LIBUNWIND_HIDE_SYMBOLS \
   -Illvm-src/libunwind/include -Illvm-src/libunwind/src \
   -c llvm-src/libunwind/src/Unwind-wasm.c -o "$PREFIX/lib/unwind-wasm.o"

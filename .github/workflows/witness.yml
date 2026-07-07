@@ -92,3 +92,6 @@ jobs:
 
       - name: pump witness (node + real Chromium, rAF-driven)
         run: PREFIX="$PWD/wasi-eh" wasi/pump/run.sh
+
+      - name: boot witness (LÖVE core under the pump, node + real Chromium)
+        run: PREFIX="$PWD/wasi-eh" wasi/boot/run.sh

@@ -47,6 +47,11 @@ enum : int32_t {
 
 static const char PUMP_CO_KEY[] = "love.pump.co";
 
+// Link-time extension point: an artifact that links more than the bare VM
+// (step 3+: the LÖVE core) provides this to preload its modules into the
+// fresh state. Weak so the step-2 artifact needs no stub TU.
+extern "C" __attribute__((weak)) void pump_open_extensions(lua_State *L);
+
 static lua_State *g_L = nullptr;   // the resident VM
 static lua_State *g_co = nullptr;  // the resident coroutine (anchored in registry)
 static std::string g_in;
@@ -103,6 +108,8 @@ PUMP_EXPORT("pump_boot") int32_t pump_boot(uint32_t len) {
     g_L = luaL_newstate();
     if (!g_L) return PUMP_ERROR;
     luaL_openlibs(g_L);
+    if (pump_open_extensions)
+      pump_open_extensions(g_L);
   }
   // Fresh resident coroutine; anchoring it in the registry replaces (and
   // frees for GC) any prior one — the pump can be re-booted after DONE or

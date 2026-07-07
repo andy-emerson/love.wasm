@@ -1,7 +1,10 @@
 name: witness
 # Re-run the wasi witnesses on every change to the trunk: the wasm-EH C++
-# toolchain claim (build-order step 0) must never silently rot. Durability
-# target per AGENTS.md: CI-enforced.
+# toolchain claim (build-order step 0), the frame pump over the lua-wasi
+# source drop (step 2, incl. drop provenance at its PIN), and the LÖVE core
+# boot (step 3) must never silently rot. Every artifact also passes the
+# standardized-EH encoding gate. Durability target per AGENTS.md:
+# CI-enforced.
 on:
   push:
     branches: [wasi]

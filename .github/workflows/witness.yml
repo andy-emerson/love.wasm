@@ -37,10 +37,58 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          # 24.15 is the first 24.x to take the standardized exnref encoding
+          # by default; the floor is non-monotone per line (lua-wasi #27).
+          node-version: '>=24.15 <25'
 
       - name: chromium
         run: npm i --no-save playwright@1.61.1 && npx playwright install --with-deps chromium
 
       - name: EH witness (node:wasi + real Chromium)
         run: PREFIX="$PWD/wasi-eh" wasi/witness/run.sh
+
+  pump-witness:
+    # Build-order step 2: the frame pump over the lua-wasi source drop,
+    # external EH, driven by requestAnimationFrame in real Chromium.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: source-drop provenance (verbatim at the PIN commit)
+        run: |
+          commit=$(awk '/^commit:/{print $2}' wasi/lua/upstream/PIN)
+          echo "PIN: $commit"
+          git init "$RUNNER_TEMP/lua-wasi" -q
+          git -C "$RUNNER_TEMP/lua-wasi" remote add origin https://github.com/Lua2D/lua-wasi
+          git -C "$RUNNER_TEMP/lua-wasi" fetch -q --depth 1 origin "$commit"
+          git -C "$RUNNER_TEMP/lua-wasi" checkout -q FETCH_HEAD
+          diff -r "$RUNNER_TEMP/lua-wasi/src" wasi/lua/upstream/src
+          echo "source drop is verbatim lua-wasi src/ at the pinned commit"
+
+      - name: toolchain (clang-20 + wasm32-wasi sysroot)
+        run: |
+          sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+          sudo sed -i 's/^# deb-src/deb-src/' /etc/apt/sources.list 2>/dev/null || true
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang-20 lld-20 libclang-rt-20-dev-wasm32 wasi-libc cmake ninja-build
+
+      - name: cache wasm-EH libc++ sysroot
+        id: sysroot
+        uses: actions/cache@v4
+        with:
+          path: wasi-eh
+          key: wasi-eh-llvm20.1.2-${{ hashFiles('wasi/toolchain/**') }}
+
+      - name: build libc++ / libc++abi with wasm-EH
+        if: steps.sysroot.outputs.cache-hit != 'true'
+        run: WORK="$RUNNER_TEMP/llvm-eh" PREFIX="$PWD/wasi-eh" wasi/toolchain/build-libcxx-eh.sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '>=24.15 <25'
+
+      - name: chromium
+        run: npm i --no-save playwright@1.61.1 && npx playwright install --with-deps chromium
+
+      - name: pump witness (node + real Chromium, rAF-driven)
+        run: PREFIX="$PWD/wasi-eh" wasi/pump/run.sh

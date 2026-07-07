@@ -22,14 +22,14 @@ jobs:
           sudo sed -i 's/^# deb-src/deb-src/' /etc/apt/sources.list 2>/dev/null || true
           echo "deb-src state:"; grep -rs '^deb-src\|^Types:.*deb-src' /etc/apt/sources.list /etc/apt/sources.list.d/ | head -4 || echo "  (none enabled)"
           sudo apt-get update -qq
-          sudo apt-get install -y -qq clang-20 lld-20 libclang-rt-20-dev-wasm32 wasi-libc cmake ninja-build
+          sudo apt-get install -y -qq clang-20 lld-20 llvm-20 libclang-rt-20-dev-wasm32 wasi-libc cmake ninja-build
 
       - name: cache wasm-EH libc++ sysroot
         id: sysroot
         uses: actions/cache@v4
         with:
           path: wasi-eh
-          key: wasi-eh-llvm20.1.2-${{ hashFiles('wasi/toolchain/**') }}
+          key: wasi-eh-llvm20.1.2-${{ hashFiles('wasi/toolchain/build-libcxx-eh.sh', 'wasi/toolchain/Platform/**') }}
 
       - name: build libc++ / libc++abi with wasm-EH
         if: steps.sysroot.outputs.cache-hit != 'true'
@@ -70,14 +70,14 @@ jobs:
           sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
           sudo sed -i 's/^# deb-src/deb-src/' /etc/apt/sources.list 2>/dev/null || true
           sudo apt-get update -qq
-          sudo apt-get install -y -qq clang-20 lld-20 libclang-rt-20-dev-wasm32 wasi-libc cmake ninja-build
+          sudo apt-get install -y -qq clang-20 lld-20 llvm-20 libclang-rt-20-dev-wasm32 wasi-libc cmake ninja-build
 
       - name: cache wasm-EH libc++ sysroot
         id: sysroot
         uses: actions/cache@v4
         with:
           path: wasi-eh
-          key: wasi-eh-llvm20.1.2-${{ hashFiles('wasi/toolchain/**') }}
+          key: wasi-eh-llvm20.1.2-${{ hashFiles('wasi/toolchain/build-libcxx-eh.sh', 'wasi/toolchain/Platform/**') }}
 
       - name: build libc++ / libc++abi with wasm-EH
         if: steps.sysroot.outputs.cache-hit != 'true'

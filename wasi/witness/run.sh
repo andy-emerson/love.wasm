@@ -23,6 +23,8 @@ clang++-20 --target=wasm32-wasi -fwasm-exceptions -mllvm -wasm-use-legacy-eh=fal
   -L"$PREFIX/lib" -lc++ -lc++abi \
   -o "$TMP/eh-witness.wasm"
 
+"$HERE/../toolchain/check-eh-encoding.sh" "$TMP/eh-witness.wasm"
+
 echo "== node:wasi =="
 node --no-warnings "$HERE/run-node.mjs" "$TMP/eh-witness.wasm"
 

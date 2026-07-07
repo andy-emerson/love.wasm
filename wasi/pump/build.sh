@@ -43,4 +43,5 @@ grep -aq "libc++abi" "$OUT" || {
   echo "FAIL: libc++abi fingerprint missing in $OUT -- external EH runtime not linked" >&2
   exit 1
 }
+"$HERE/../toolchain/check-eh-encoding.sh" "$OUT"
 echo "built $OUT (external EH confirmed: libc++abi fingerprint present)"

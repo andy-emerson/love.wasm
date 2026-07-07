@@ -104,4 +104,5 @@ grep -aq "libc++abi" "$OUT" || {
   echo "FAIL: libc++abi fingerprint missing in $OUT -- external EH runtime not linked" >&2
   exit 1
 }
+"$ROOT/wasi/toolchain/check-eh-encoding.sh" "$OUT"
 echo "built $OUT (LÖVE core + lua-wasi + pump; external EH confirmed)"

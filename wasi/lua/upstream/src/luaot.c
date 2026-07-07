@@ -17,10 +17,12 @@
 #include "lauxlib.h"
 
 #include "ldebug.h"
+#include "lgc.h"
 #include "lobject.h"
 #include "lopcodes.h"
 #include "lopnames.h"
 #include "lstate.h"
+#include "lstring.h"
 #include "lundump.h"
 
 //
@@ -34,6 +36,7 @@ static const char *program_name    = "luaot";
 static char *input_filename  = NULL;
 static char *output_filename = NULL;
 static char *module_name     = NULL;
+static char *chunkname_override = NULL;
 
 static FILE * output_file = NULL;
 static int nfunctions = 0;
@@ -48,7 +51,12 @@ void usage()
           "Available options are:\n"
           "  -o name            output to file 'name'\n"
           "  -m name            generate code with `name` function as main function\n"
-          "  -e                 add a main symbol for executables\n",
+          "  -e                 add a main symbol for executables\n"
+          "  -c chunkname       bake 'chunkname' as the module's debug identity\n"
+          "                     (default: '@' + the input path as given, which\n"
+          "                     differs from what a runtime loadfile of the same\n"
+          "                     file would report unless the build runs from the\n"
+          "                     same directory -- see issue #31)\n",
           program_name);
 }
 
@@ -113,6 +121,10 @@ static void doargs(int argc, char **argv)
                 i++;
                 if (i >= argc) { fatal_error("missing argument for -o"); }
                 output_filename = argv[i];
+            } else if (0 == strcmp(arg, "-c")) {
+                i++;
+                if (i >= argc) { fatal_error("missing argument for -c"); }
+                chunkname_override = argv[i];
             } else {
                 fprintf(stderr, "unknown option %s\n", arg);
                 exit(1);
@@ -142,6 +154,23 @@ static void replace_dots(char *);
 static void print_functions();
 static void print_source_code(lua_State *L);
 
+// Rewrite the debug identity of the whole Proto tree (issue #31).
+// The generated module embeds a BYTECODE DUMP of the input, and the
+// dump serializes each Proto's source string -- so the chunkname the
+// runtime sees comes from here, not from the loadbuffer chunkname
+// argument (which only applies where the dump carries none). Setting
+// the top-level source is enough for the dump's compactness trick
+// (children sharing the parent's source dump NULL and inherit at
+// load), but children hold their own pointers, so walk them all.
+static void rebake_source(lua_State *L, Proto *p, TString *src)
+{
+    p->source = src;
+    luaC_objbarrier(L, p, src);
+    for (int i = 0; i < p->sizep; i++) {
+        rebake_source(L, p->p[i], src);
+    }
+}
+
 int main(int argc, char **argv)
 {
     // Process input arguments
@@ -163,16 +192,16 @@ int main(int argc, char **argv)
     Proto *proto = getproto(s2v(L->top.p-1));
     tmname = G(L)->tmname;
 
+    if (chunkname_override != NULL) {
+        rebake_source(L, proto, luaS_new(L, chunkname_override));
+    }
+
     // Generate the file
 
     output_file = fopen(output_filename, "w");
     if (output_file == NULL) { fatal_error(strerror(errno)); }
 
-    #if defined(LUAOT_USE_GOTOS)
     println("#include \"luaot_header.c\"");
-    #elif defined(LUAOT_USE_SWITCHES)
-    println("#include \"trampoline_header.c\"");
-    #endif
     printnl();
     print_functions(proto);
     printnl();
@@ -181,9 +210,17 @@ int main(int argc, char **argv)
     println("#define LUAOT_MODULE_NAME \"%s\"", module_name);
     println("#define LUAOT_LUAOPEN_NAME luaopen_%s", module_name);
     {
-        // The chunkname the module was compiled from (usually
-        // "@filename"), so the loaded chunk carries the same debug
-        // identity (source, short_src) as the original file.
+        // The chunkname baked into the module, so the loaded chunk
+        // carries a chosen debug identity (source, short_src). By
+        // default this is "@" + the input path AS PASSED ON THE
+        // COMMAND LINE -- a build-machine detail: an AOT'd chunk then
+        // reports a different short_src than a runtime loadfile of
+        // the same file (issue #31). -c rewrites the Proto tree's
+        // source above (rebake_source), which is what actually
+        // reaches the runtime -- the bytecode dump below serializes
+        // it; this #define only covers protos the dump leaves bare.
+        // (The Makefile pins -c "@" + basename so the AOT and
+        // loadfile identities agree in the suite's layout.)
         const char *chunkname = getstr(proto->source);
         print("#define LUAOT_MODULE_CHUNKNAME \"");
         for (const char *p = chunkname; *p != '\0'; p++) {
@@ -193,11 +230,7 @@ int main(int argc, char **argv)
         println("\"");
     }
     printnl();
-    #if defined(LUAOT_USE_GOTOS)
     println("#include \"luaot_footer.c\"");
-    #elif defined(LUAOT_USE_SWITCHES)
-    println("#include \"trampoline_footer.c\"");
-    #endif
     if (executable) {
       printnl();
       printnl();
@@ -341,37 +374,6 @@ void PrintString(const TString* ts)
     }
     print("\"");
 }
-
-#if 0
-static
-void PrintType(const Proto* f, int i)
-{
-    const TValue* o=&f->k[i];
-    switch (ttypetag(o)) {
-        case LUA_VNIL:
-            printf("N");
-            break;
-        case LUA_VFALSE:
-        case LUA_VTRUE:
-            printf("B");
-            break;
-        case LUA_VNUMFLT:
-            printf("F");
-            break;
-        case LUA_VNUMINT:
-            printf("I");
-            break;
-        case LUA_VSHRSTR:
-        case LUA_VLNGSTR:
-            printf("S");
-            break;
-        default: /* cannot happen */
-            printf("?%d",ttypetag(o));
-            break;
-    }
-    printf("\t");
-}
-#endif
 
 static
 void PrintConstant(const Proto* f, int i)
@@ -722,7 +724,12 @@ void luaot_PrintOpcodeComment(Proto *f, int pc)
             break;
         case OP_CLOSURE:
             print("%d %d",a,bx);
-            print(COMMENT "%p",VOID(f->p[bx]));
+            // luac.c prints the child Proto's ADDRESS here; that made
+            // the generated file differ between runs of the same input
+            // (ASLR), defeating content-keyed object caching (issue
+            // #33). The child's index carries the same information,
+            // deterministically.
+            print(COMMENT "proto %d",bx);
             break;
         case OP_VARARG:
             print("%d %d",a,c);
@@ -735,23 +742,11 @@ void luaot_PrintOpcodeComment(Proto *f, int pc)
         case OP_EXTRAARG:
             print("%d",ax);
             break;
-#if 0
-        default:
-            print("%d %d %d",a,b,c);
-            print(COMMENT "not handled");
-            break;
-#endif
     }
     print("\n");
 }
 
-#if defined(LUAOT_USE_GOTOS)
 #include "luaot_gotos.c"
-#elif defined(LUAOT_USE_SWITCHES)
-#include "luaot_switches.c"
-#else
-#error "Must define LUAOT_USE_GOTOS or LUAOT_USE_SWITCHES"
-#endif
 
 static
 void create_functions(Proto *p)

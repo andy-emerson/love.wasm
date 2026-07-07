@@ -1,6 +1,7 @@
 repo:    https://github.com/Lua2D/lua-wasi
-commit:  d9302bef2341e4167fea5fc286b22d7c4610cb83
-date:    2026-07-07 (merge #34)
+tag:     v0.1.0
+commit:  9d143605058f312cb1ad55c24ae367648b95eb31
+date:    2026-07-07 (v0.1.0; tag == this commit)
 scope:   src/ vendored verbatim as src/ beside this file
 contract: doc/embedding.md at the pinned commit (source-drop path)
 

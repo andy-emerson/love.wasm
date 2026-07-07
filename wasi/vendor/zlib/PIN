@@ -1,0 +1,14 @@
+source:  zlib 1.3 (Ubuntu zlib_1.3.dfsg.orig.tar.xz — pristine upstream,
+         dfsg-repack; the repack strips only contrib/ material, none of
+         which is vendored here)
+url:     https://zlib.net / https://github.com/madler/zlib
+license: zlib (LICENSE beside this file), same family as LÖVE's
+scope:   the raw deflate/inflate subset only — no gz* file-I/O .c files
+         are vendored or compiled (love.data uses in-memory streams; a
+         browser build has no gzFile anyway). gzguts.h is present solely
+         because zutil.c includes it; no code from it is built.
+
+Consumed by src/modules/data (Compressor: <zlib.h>) per readme.md's build
+map ("Kept, real, vendored from outside (new): ... zlib"). Update by
+replacing the files wholesale from a newer release and refreshing this PIN.
+Never edit in place.

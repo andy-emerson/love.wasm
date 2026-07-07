@@ -1,0 +1,13 @@
+repo:    https://github.com/Lua2D/lua-wasi
+commit:  d9302bef2341e4167fea5fc286b22d7c4610cb83
+date:    2026-07-07 (merge #34)
+scope:   src/ vendored verbatim as src/ beside this file
+contract: doc/embedding.md at the pinned commit (source-drop path)
+
+Update procedure: pick the new commit, replace src/ wholesale with the
+pinned commit's src/, update this file. Never edit files under src/ —
+fixes go to lua-wasi and arrive by re-pinning (same rule as this repo's
+own upstream relationship; see readme.md).
+
+Provenance is CI-checked: the pump job diffs src/ against a fresh clone
+of the repo at this commit, so a drifted or hand-edited drop fails loudly.

@@ -50,6 +50,9 @@
 // I know it's not linux, but it seems most "linux-only" code is bsd-compatible
 #	define LOVE_LINUX 1
 #endif
+#if defined(__wasi__)
+#	define LOVE_WASI 1
+#endif
 
 // Endianness.
 #if defined(__ppc__) || defined(__ppc) || defined(__powerpc__) || defined(__powerpc)
@@ -172,7 +175,7 @@
 #endif
 
 // Check we have a sane configuration
-#if !defined(LOVE_WINDOWS) && !defined(LOVE_LINUX) && !defined(LOVE_IOS) && !defined(LOVE_MACOS) && !defined(LOVE_ANDROID)
+#if !defined(LOVE_WINDOWS) && !defined(LOVE_LINUX) && !defined(LOVE_IOS) && !defined(LOVE_MACOS) && !defined(LOVE_ANDROID) && !defined(LOVE_WASI)
 #	error Could not detect target platform
 #endif
 #if !defined(LOVE_LITTLE_ENDIAN) && !defined(LOVE_BIG_ENDIAN)

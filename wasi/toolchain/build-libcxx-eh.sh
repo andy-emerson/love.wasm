@@ -12,8 +12,9 @@
 #                   cmake ninja-build
 #   (deb-src enabled for the llvm-toolchain-20 source download)
 #
-# Witnessed 2026-07-06: wasi/witness/eh-typed-catch.cpp PASSes (typed catch,
-# what() intact, destructor ran) under node:wasi (node 22.22) and in real
+# Witnessed 2026-07-06, CI-enforced since: wasi/witness/eh-typed-catch.cpp
+# PASSes (typed catch, what() intact, carried payload intact, non-matching
+# catch skipped, destructor ran) under node:wasi (Node >= 24.15) and in real
 # Chromium 141 via wasi/witness/run-browser.mjs.
 #
 # Gotchas this script encodes, discovered the hard way:

@@ -40,14 +40,15 @@
 #    must not mix encodings, so the flag is baked in here.
 set -euo pipefail
 
-# The one EH configuration this whole repo links under: wasm-EH with the
-# standardized exnref encoding, matching lua-wasi's WASM_EH_ENCODING=standard.
-EH_FLAGS="-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false"
-
 WORK=${WORK:-$PWD/build-libcxx-eh}
 PREFIX=${PREFIX:-$PWD/wasi-eh}
 HERE=$(cd "$(dirname "$0")" && pwd)
 JOBS=${JOBS:-$(nproc)}
+
+# The one EH configuration this whole repo links under: wasm-EH with the
+# standardized exnref encoding, matching lua-wasi's WASM_EH_ENCODING=standard.
+# Single-sourced so the four compile sites can't drift (see eh-flags.sh).
+source "$HERE/eh-flags.sh"
 
 mkdir -p "$WORK" && cd "$WORK"
 

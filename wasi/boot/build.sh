@@ -24,7 +24,8 @@ SRC="$ROOT/src"
 PREFIX=${PREFIX:-$PWD/wasi-eh}
 OUT=${OUT:-love-boot.wasm}
 
-EH_FLAGS="-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false"
+# Single-sourced EH contract flags (wasi/toolchain/eh-flags.sh); sets $EH_FLAGS.
+source "$ROOT/wasi/toolchain/eh-flags.sh"
 
 # LÖVE common/, minus the platform files that belong to other targets
 # (apple .mm, android jni) and delay.cpp (SDL_Delay — nothing in this set

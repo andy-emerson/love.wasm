@@ -17,7 +17,7 @@ export async function drivePump(x, bootSrc, schedule, now, log) {
     mem().set(b, x.pump_in(b.length));
     return b.length;
   };
-  const out = () => td.decode(mem().slice(x.pump_out(), x.pump_out() + x.pump_out_len()));
+  const out = () => { const p = x.pump_out(); return td.decode(mem().slice(p, p + x.pump_out_len())); };
   const tick = () => new Promise((r) => schedule(r));
 
   let failures = 0;

@@ -51,7 +51,14 @@ export function makeWasiShim() {
     args_get() { return 0; },
     fd_close() { return 0; },
     fd_seek() { return 70; },       // ESPIPE — stdout isn't seekable
-    fd_fdstat_get() { return 0; },
+    fd_fdstat_get(fd, ptr) {
+      // Zero the 24-byte fdstat, then mark stdio (0/1/2) as character devices,
+      // so a guest that branches on fs_filetype doesn't read uninitialised
+      // linear memory (returning 0 alone left the struct unwritten).
+      new Uint8Array(memory.buffer, ptr, 24).fill(0);
+      dv().setUint8(ptr, fd >= 0 && fd <= 2 ? 2 : 0);  // fs_filetype: 2 = character_device
+      return 0;
+    },
     fd_prestat_get() { return 8; }, // EBADF — no preopened dirs
     fd_prestat_dir_name() { return 8; },
   };

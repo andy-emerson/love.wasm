@@ -106,7 +106,7 @@ static int32_t settle(int status, int nres) {
 PUMP_EXPORT("pump_boot") int32_t pump_boot(uint32_t len) {
   if (!g_L) {
     g_L = luaL_newstate();
-    if (!g_L) return PUMP_ERROR;
+    if (!g_L) { g_out.assign("pump: luaL_newstate failed"); return PUMP_ERROR; }
     luaL_openlibs(g_L);
     if (pump_open_extensions)
       pump_open_extensions(g_L);

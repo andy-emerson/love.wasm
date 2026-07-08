@@ -32,7 +32,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: wasi-eh
-          key: wasi-eh-llvm20.1.2-${{ hashFiles('wasi/toolchain/build-libcxx-eh.sh', 'wasi/toolchain/Platform/**') }}
+          key: wasi-eh-llvm20.1.2-${{ hashFiles('wasi/toolchain/build-libcxx-eh.sh', 'wasi/toolchain/Platform/**', 'wasi/toolchain/eh-flags.sh') }}
 
       - name: build libc++ / libc++abi with wasm-EH
         if: steps.sysroot.outputs.cache-hit != 'true'
@@ -80,7 +80,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: wasi-eh
-          key: wasi-eh-llvm20.1.2-${{ hashFiles('wasi/toolchain/build-libcxx-eh.sh', 'wasi/toolchain/Platform/**') }}
+          key: wasi-eh-llvm20.1.2-${{ hashFiles('wasi/toolchain/build-libcxx-eh.sh', 'wasi/toolchain/Platform/**', 'wasi/toolchain/eh-flags.sh') }}
 
       - name: build libc++ / libc++abi with wasm-EH
         if: steps.sysroot.outputs.cache-hit != 'true'

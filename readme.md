@@ -6,7 +6,7 @@ This is a fork of [love2d/love](https://github.com/love2d/love) (the `main` / 12
 
 **Base pin:** upstream `main` @ `540e681454e1a791294488e66173b48faa40fcc6` (2026-07-05). Rebases onto newer upstream are deliberate, recorded events — next planned at the 12.0 release.
 
-**Status: the LÖVE core boots in a real browser.** Build-order steps 0–3 are done and browser-verified (see the build order below): real `love.math` and `love.data` run under this repo's frame pump over the pinned lua-wasi source drop, and LÖVE 12's own main-loop function executes to its documented stop-line at the `love.filesystem` seam. The tree stays upstream-shaped — the shared-code diff so far is a two-line platform seam in `common/config.h` (`__wasi__` → `LOVE_WASI`); everything else wasi-specific lives under `wasi/`.
+**Status: the LÖVE core boots in a real browser.** Build-order steps 0–3 are done and browser-verified (see the build order below): real `love.math` and `love.data` run under this repo's frame pump over the pinned lua-wasi source drop, and LÖVE 12's own main-loop function executes to its documented stop-line at the `love.filesystem` seam. The tree stays upstream-shaped — the only edit to shared engine source is a small platform seam in `common/config.h` (a three-line `__wasi__` → `LOVE_WASI` guard plus one clause added to the platform sanity-check). Outside `wasi/`, the fork adds only the CI workflow `.github/workflows/witness.yml`, a few `.gitignore` lines, and the governance docs (`AGENTS.md`, `CLAUDE.md`).
 
 ---
 

@@ -15,10 +15,10 @@ LUA="$HERE/../lua/upstream/src"
 PREFIX=${PREFIX:-$PWD/wasi-eh}
 OUT=${OUT:-love-pump.wasm}
 
-# One EH configuration, everywhere: matches wasi/toolchain/build-libcxx-eh.sh
-# (clang-20's bare -fwasm-exceptions default is the LEGACY encoding; one
-# artifact must not mix encodings).
-EH_FLAGS="-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false"
+# One EH configuration, everywhere — single-sourced so the compile sites can't
+# drift (clang-20's bare -fwasm-exceptions default is the LEGACY encoding; one
+# artifact must not mix encodings). Sets $EH_FLAGS.
+source "$HERE/../toolchain/eh-flags.sh"
 
 # -D_WASI_EMULATED_*/-lwasi-emulated-*: os/time bits of the stdlib.
 # -DLUA_USE_JUMPTABLE=0: part of lua-wasi's witnessed wasm recipe.

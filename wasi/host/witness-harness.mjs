@@ -38,13 +38,19 @@ export async function runInChromium(pageFn, arg) {
 
 // In-page: instantiate a wasm32-wasi COMMAND module, run _start, report the
 // exit code. arg = { b64, shimSrc }. Self-contained (serialized into the page).
+// A command that links more of libc than the trivial witnesses (e.g. vendored
+// FreeType pulls in stdio → fd_fdstat_set_flags) imports preview1 calls the
+// shim doesn't implement, so autostub ENOSYS-stubs the rest before instantiate —
+// loudly absent, never silently wrong, same as the reactor path.
 export async function commandPageFn({ b64, shimSrc }) {
   const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   const makeWasiShim = new Function('return ' + shimSrc)();
   const shim = makeWasiShim();
   let exit = -1;
   try {
-    const { instance } = await WebAssembly.instantiate(bytes, { wasi_snapshot_preview1: shim.imports });
+    const module = await WebAssembly.compile(bytes);
+    shim.autostub(module);
+    const instance = await WebAssembly.instantiate(module, { wasi_snapshot_preview1: shim.imports });
     shim.bind(instance.exports.memory);
     instance.exports._start();
     exit = 0;                        // _start returned without proc_exit

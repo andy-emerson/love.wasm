@@ -55,6 +55,11 @@ jobs:
       - name: EH + SjLj witnesses (node:wasi + real Chromium + wasmtime)
         run: PREFIX="$PWD/wasi-eh" wasi/witness/run.sh
 
+      - name: FreeType vendor witness (rasterize a glyph in wasm)
+        # Builds vendored FreeType and renders glyph 'A' from Vera.ttf under all
+        # three engines — exercises the SjLj rasterizer path end to end.
+        run: PREFIX="$PWD/wasi-eh" wasi/vendor/freetype/run.sh
+
   pump-witness:
     # Build-order step 2: the frame pump over the lua-wasi source drop,
     # external EH, driven by requestAnimationFrame in real Chromium.

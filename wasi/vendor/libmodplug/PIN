@@ -1,0 +1,31 @@
+source:  libmodplug (Konstanty maintained fork), vendored whole.
+commit:  d1b97ed0020bc620a059d3675d1854b40bd2608d
+url:     https://github.com/Konstanty/libmodplug
+license: Public Domain (LICENSE beside this file = upstream COPYING).
+
+Consumed by LÖVE's love.sound (src/modules/sound/lullaby/ModPlugDecoder,
+which includes <libmodplug/modplug.h> and drives ModPlug_Load / ModPlug_Read).
+Last of the audio trio (libogg -> libvorbis -> libmodplug). Tracker/module
+music (.it/.xm/.mod/.s3m/...). C++ (links libc++abi), no setjmp.
+
+Layout:
+  src/*.cpp (34) + src/{load_pat,tables}.h + src/libmodplug/{it_defs,sndfile,
+  stdafx}.h   verbatim upstream (the whole library).
+  include/libmodplug/modplug.h   the public C API — this is upstream's
+  src/modplug.h relocated to the <libmodplug/modplug.h> path LÖVE (and any
+  consumer) includes it by. Single copy: the internal modplug.cpp finds it via
+  build.sh's -I include/libmodplug.
+
+BUILD CONFIG (build.sh; no generated config.h — the sources include it only
+under HAVE_CONFIG_H, which we never define, so upstream defaults apply):
+  -DHAVE_SINF   wasi-libc HAS sinf; without this, load_pat.cpp redeclares its
+                own static sinf and collides with the libc declaration. It is
+                the only HAVE_* the sources actually guard on.
+  -std=c++11 + the repo's $EH_FLAGS; compiled -nostdinc++ against the sysroot
+                libc++. Links into the EH artifact normally.
+
+Built to a static archive by build.sh; witnessed by run.sh, which synthesizes
+a minimal audible ProTracker MOD (make-witness-mod.py — one square-wave sample,
+one note) and requires ModPlug to load + decode it to non-silent PCM, under
+node + Chromium + wasmtime. Update by re-dropping from a newer commit and
+refreshing this PIN. Never edit upstream files in place.

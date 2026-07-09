@@ -75,6 +75,11 @@ jobs:
         # engines. Second of the audio trio.
         run: wasi/vendor/libvorbis/run.sh
 
+      - name: libmodplug vendor witness (decode tracker music in wasm)
+        # Synthesizes a minimal MOD and decodes it via the libmodplug C API
+        # under all three engines. Last of the audio trio; completes vendoring.
+        run: PREFIX="$PWD/wasi-eh" wasi/vendor/libmodplug/run.sh
+
   pump-witness:
     # Build-order step 2: the frame pump over the lua-wasi source drop,
     # external EH, driven by requestAnimationFrame in real Chromium.

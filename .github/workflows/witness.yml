@@ -65,6 +65,11 @@ jobs:
         # all three engines.
         run: PREFIX="$PWD/wasi-eh" wasi/vendor/harfbuzz/run.sh
 
+      - name: libogg vendor witness (framing round-trip in wasm)
+        # Plain C, no sysroot needed; round-trips an Ogg packet under all three
+        # engines. First of the audio trio (ogg -> vorbis -> modplug).
+        run: wasi/vendor/libogg/run.sh
+
   pump-witness:
     # Build-order step 2: the frame pump over the lua-wasi source drop,
     # external EH, driven by requestAnimationFrame in real Chromium.

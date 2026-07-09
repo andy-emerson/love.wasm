@@ -1,0 +1,29 @@
+source:  libvorbis 1.3.7, vendored as the DECODE subset (LÖVE decodes Ogg
+         Vorbis; it never encodes).
+tag:     v1.3.7
+url:     https://github.com/xiph/vorbis
+license: BSD-3-Clause (LICENSE beside this file = upstream COPYING).
+
+Consumed by LÖVE's love.sound (src/modules/sound/lullaby/VorbisDecoder,
+via the vorbisfile ov_* API). Second of the audio trio (libogg -> libvorbis
+-> libmodplug). Plain C, no exceptions/setjmp — links into the EH artifact as
+neutral objects. Depends on wasi/vendor/libogg for <ogg/ogg.h> (a
+vendor-to-vendor include dependency, resolved by build.sh).
+
+SUBSET — what is vendored and why:
+  include/vorbis/codec.h, vorbisfile.h   verbatim (the decode + file APIs).
+  lib/*.h                                verbatim (all internal headers).
+  lib/*.c                                the 21 decode TUs, verbatim.
+  Dropped:
+   - vorbisenc.c + include/vorbis/vorbisenc.h + lib/books/ + lib/modes/ —
+     the ENCODER (LÖVE never encodes); it is the only thing that pulls in the
+     static books/modes setup tables.
+   - misc.c — debug/analysis helpers only (it alone drags in <pthread.h>,
+     which wasi-libc lacks); the decode set links without it. misc.h stays
+     (the decode TUs include it for macros, not for misc.c's functions).
+   - barkmel.c, psytune.c, tone.c — standalone test PROGRAMS (each has main()).
+
+Built to a static archive by build.sh; witnessed by run.sh (decodes LÖVE's
+bundled testing/resources/tone.ogg to PCM and checks rate/channels/samples)
+under node + Chromium + wasmtime. Update by re-dropping the decode subset from
+a newer release and refreshing this PIN. Never edit upstream files in place.

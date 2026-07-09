@@ -70,6 +70,11 @@ jobs:
         # engines. First of the audio trio (ogg -> vorbis -> modplug).
         run: wasi/vendor/libogg/run.sh
 
+      - name: libvorbis vendor witness (decode Ogg Vorbis in wasm)
+        # Decodes LÖVE's bundled tone.ogg to PCM via vorbisfile under all three
+        # engines. Second of the audio trio.
+        run: wasi/vendor/libvorbis/run.sh
+
   pump-witness:
     # Build-order step 2: the frame pump over the lua-wasi source drop,
     # external EH, driven by requestAnimationFrame in real Chromium.

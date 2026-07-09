@@ -1,0 +1,34 @@
+source:  HarfBuzz 14.2.1, vendored as a shaping subset (the amalgamation and
+         its headers; no tests, no optional integrations).
+tag:     14.2.1
+url:     https://github.com/harfbuzz/harfbuzz
+license: "Old MIT" (LICENSE beside this file = upstream COPYING).
+
+Consumed by LÖVE's love.font (src/modules/font/freetype/HarfbuzzShaper.cpp)
+per readme.md's build map ("vendored from outside: HarfBuzz — LÖVE 12 requires
+it for text shaping").
+
+SUBSET — what is vendored and why:
+  src/**/*.{cc,hh,h}   the whole shaping source, INCLUDING the OT/ (OpenType),
+                       ms-use/ (Universal Shaping Engine), and graph/ trees the
+                       amalgamation pulls in. Built as ONE translation unit via
+                       the upstream unified source src/harfbuzz.cc (which
+                       #includes hb-ft.cc and hb-static.cc).
+  Dropped: test-*/main*/*-test/fuzzer sources, the rust/ and wasm/ optional
+  integrations, and non-source artifacts (.py, .rl, .in, shaders) — none
+  reached by the amalgamation in this configuration.
+
+BUILD CONFIG (in build.sh, no generated config.h needed — HarfBuzz uses its
+hb-config.hh defaults plus these -D flags):
+  -DHAVE_FREETYPE=1   enable the hb-ft FreeType integration LÖVE uses; needs
+                      wasi/vendor/freetype/include on the include path (a
+                      vendor-to-vendor dependency, resolved by build.sh).
+  -DHB_NO_MT          single-threaded (wasm has no threads here); drops atomics.
+  -std=c++17          HarfBuzz's minimum.
+  Other backends (coretext, directwrite, glib, icu, cairo, graphite2, gobject)
+  stay off — their HAVE_* macros are undefined, so those .cc bodies compile empty.
+
+Built to a static archive by build.sh; witnessed by run.sh (shapes "Hello"
+with hb-ft over Vera.ttf and checks the glyph run) under node + Chromium +
+wasmtime. Update by re-dropping the subset from a newer release and refreshing
+this PIN. Never edit upstream files in place.

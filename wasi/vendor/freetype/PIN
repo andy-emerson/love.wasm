@@ -1,0 +1,36 @@
+source:  FreeType 2.13.3, vendored as a TTF/OTF subset (not the full tree).
+tag:     VER-2-13-3
+commit:  (release tag VER-2-13-3)
+url:     https://github.com/freetype/freetype  (mirror of savannah)
+license: FreeType License (FTL) — LICENSE beside this file; dual FTL/GPLv2
+         (LICENSE.TXT explains the choice), used here under the FTL.
+
+Consumed by LÖVE's love.font (src/modules/font/freetype: TrueTypeRasterizer,
+HarfbuzzShaper) per readme.md's build map ("vendored from outside: FreeType").
+
+SUBSET — what is vendored and why:
+  include/         verbatim, whole (headers cross-reference).
+  src/base         core objects + the base tools LÖVE calls (ftbbox, ftbitmap,
+                   ftglyph, ftstroke, ftgasp, ftmm, ftsynth, ftsystem, ftinit,
+                   ftdebug, ftbase).
+  src/{sfnt,truetype,cff}      TrueType + OpenType/CFF font drivers.
+  src/{psnames,pshinter,psaux} PostScript name/hinting/aux for CFF.
+  src/autofit      the auto-hinter.
+  src/{smooth,raster}          the anti-aliased + monochrome rasterizers.
+  Dropped: bdf, pcf, pfr, type1, cid, type42, winfonts, gxvalid, otvalid,
+  svg, sdf, cache, bzip2, lzw, gzip, dlg, tools — none needed for TTF/OTF.
+
+BUILD CONFIG (ours, in wasi-config/, applied via -DFT_CONFIG_OPTIONS_H /
+-DFT_CONFIG_MODULES_H so upstream source is never edited in place):
+  ftmodule.h  the module list matching the compiled subset.
+  ftoption.h  stock upstream, with FT_CONFIG_OPTION_USE_ZLIB disabled (no
+              gzip/WOFF → no second bundled zlib; wasi/vendor/zlib is the one
+              zlib). To add WOFF later: re-enable USE_ZLIB + define
+              FT_CONFIG_OPTION_SYSTEM_ZLIB and link wasi/vendor/zlib.
+
+FreeType uses setjmp/longjmp (smooth/ftgrays.c, sfnt/ttcmap.c), which the apt
+wasi-libc omits; it links the sysroot's wasm setjmp support (wasi/toolchain/
+setjmp), so its TUs compile with $EH_FLAGS $SJLJ_FLAGS. Built to a static
+archive by build.sh; witnessed by run.sh (renders glyph 'A' from Vera.ttf in
+node + Chromium + wasmtime). Update by re-dropping the subset from a newer
+release and refreshing this PIN. Never edit upstream files in place.

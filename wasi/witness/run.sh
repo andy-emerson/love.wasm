@@ -23,23 +23,7 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
 source "$HERE/../toolchain/eh-flags.sh"
-
-# Run one wasm command module through every available engine; each must exit 0
-# and (browser/wasmtime) print the pass sentinel. $1 wasm, $2 sentinel.
-legs() {
-  local wasm=$1 sentinel=$2
-  "$HERE/../toolchain/check-eh-encoding.sh" "$wasm"
-  echo "== node:wasi =="
-  node --no-warnings "$HERE/run-node.mjs" "$wasm"
-  echo "== chromium =="
-  node "$HERE/run-browser.mjs" "$wasm" "$sentinel"
-  if python3 -c 'import wasmtime' 2>/dev/null; then
-    echo "== wasmtime (Cranelift, non-V8) =="
-    python3 "$HERE/run-wasmtime.py" "$wasm" "$sentinel"
-  else
-    echo "== wasmtime: skipped (wasmtime python package not installed) =="
-  fi
-}
+source "$HERE/legs.sh"
 
 # ── EH witness ────────────────────────────────────────────────────────────────
 # Standardized exnref encoding, matching the sysroot build (one artifact, one
@@ -51,7 +35,7 @@ clang++-20 --target=wasm32-wasi $EH_FLAGS -O2 \
   -L"$PREFIX/lib" -lc++ -lc++abi \
   -o "$TMP/eh-witness.wasm"
 echo "### EH witness ###"
-legs "$TMP/eh-witness.wasm" "EH-WITNESS: PASS"
+witness_legs "$TMP/eh-witness.wasm" "EH-WITNESS: PASS" check-eh
 
 # ── SjLj+EH witness ───────────────────────────────────────────────────────────
 # sjlj-part.c is the FreeType-shaped C TU (calls setjmp/longjmp, compiled with
@@ -72,6 +56,6 @@ clang++-20 --target=wasm32-wasi $EH_FLAGS -Wno-unused-command-line-argument \
   -L"$PREFIX/lib" -lc++ -lc++abi \
   -o "$TMP/sjlj-eh.wasm"
 echo "### SjLj+EH witness ###"
-legs "$TMP/sjlj-eh.wasm" "SJLJ-EH-WITNESS: PASS"
+witness_legs "$TMP/sjlj-eh.wasm" "SJLJ-EH-WITNESS: PASS" check-eh
 
-echo "witness: EH + SjLj PASS on node + browser$(python3 -c 'import wasmtime' 2>/dev/null && echo ' + wasmtime')"
+echo "witness: EH + SjLj PASS on node + browser$(witness_wasmtime_suffix)"

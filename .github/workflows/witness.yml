@@ -60,6 +60,11 @@ jobs:
         # three engines — exercises the SjLj rasterizer path end to end.
         run: PREFIX="$PWD/wasi-eh" wasi/vendor/freetype/run.sh
 
+      - name: HarfBuzz vendor witness (shape text in wasm)
+        # Builds vendored HarfBuzz (+FreeType) and shapes "Hello" via hb-ft under
+        # all three engines.
+        run: PREFIX="$PWD/wasi-eh" wasi/vendor/harfbuzz/run.sh
+
   pump-witness:
     # Build-order step 2: the frame pump over the lua-wasi source drop,
     # external EH, driven by requestAnimationFrame in real Chromium.

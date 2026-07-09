@@ -95,7 +95,7 @@ else
 fi
 
 # 4. wasm-EH sysroot — fetch the prebuilt tarball; do NOT rebuild per session ──
-if [ -f "$PREFIX/lib/libc++.a" ] && [ -f "$PREFIX/lib/unwind-wasm.o" ]; then
+if [ -f "$PREFIX/lib/libc++.a" ] && [ -f "$PREFIX/lib/unwind-wasm.o" ] && [ -f "$PREFIX/lib/wasi-setjmp.o" ]; then
   log "sysroot present at $PREFIX, skipping fetch"
 else
   log "fetching prebuilt wasm-EH sysroot: $SYSROOT_URL"
@@ -120,11 +120,17 @@ for c in "$PW_BROWSERS"/chromium-*/chrome-linux/chrome; do
   [ -x "$c" ] && CHROMIUM="$c" && break
 done
 ENV_OUT="${CLAUDE_ENV_FILE:-$DEPS/env.sh}"
-{
-  [ "$use_node_dir" = 1 ] && echo "export PATH=\"$NODE_DIR/bin:\$PATH\""
-  echo "export PREFIX=\"$PREFIX\""
-  echo "export NODE_PATH=\"$NPM_DIR/node_modules\${NODE_PATH:+:\$NODE_PATH}\""
-  [ -n "$CHROMIUM" ] && echo "export CHROMIUM=\"$CHROMIUM\""
-} >> "$ENV_OUT"
+# Idempotent: SessionStart also fires on resume/clear/compact within the same
+# container, so guard on a marker to avoid appending duplicate exports.
+MARK="# love-wasi hook env"
+if ! grep -qF "$MARK" "$ENV_OUT" 2>/dev/null; then
+  {
+    echo "$MARK"
+    [ "$use_node_dir" = 1 ] && echo "export PATH=\"$NODE_DIR/bin:\$PATH\""
+    echo "export PREFIX=\"$PREFIX\""
+    echo "export NODE_PATH=\"$NPM_DIR/node_modules\${NODE_PATH:+:\$NODE_PATH}\""
+    [ -n "$CHROMIUM" ] && echo "export CHROMIUM=\"$CHROMIUM\""
+  } >> "$ENV_OUT"
+fi
 
 log "ready — witnesses: wasi/witness/run.sh · wasi/pump/run.sh · wasi/boot/run.sh"

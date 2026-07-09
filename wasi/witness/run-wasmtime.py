@@ -32,21 +32,23 @@ def main(path: str, sentinel: str) -> int:
     import tempfile, os
     with tempfile.NamedTemporaryFile("r+", delete=False) as tf:
         outp = tf.name
-    wasi = wasmtime.WasiConfig()
-    wasi.stdout_file = outp
-    store.set_wasi(wasi)
-
-    instance = linker.instantiate(store, module)
-    start = instance.exports(store)["_start"]
-    code = 0
     try:
-        start(store)
-    except wasmtime.ExitTrap as e:
-        code = e.code
+        wasi = wasmtime.WasiConfig()
+        wasi.stdout_file = outp
+        store.set_wasi(wasi)
 
-    with open(outp) as fh:
-        transcript = fh.read()
-    os.unlink(outp)
+        instance = linker.instantiate(store, module)
+        start = instance.exports(store)["_start"]
+        code = 0
+        try:
+            start(store)
+        except wasmtime.ExitTrap as e:
+            code = e.code
+
+        with open(outp) as fh:
+            transcript = fh.read()
+    finally:
+        os.unlink(outp)   # clean up even if instantiate/run raised
     sys.stdout.write(transcript)
 
     ok = code == 0 and sentinel in transcript

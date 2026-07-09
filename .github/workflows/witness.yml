@@ -47,7 +47,12 @@ jobs:
       - name: chromium
         run: npm i --no-save playwright@1.61.1 && npx playwright install --with-deps chromium
 
-      - name: EH witness (node:wasi + real Chromium)
+      - name: wasmtime (independent non-V8 engine, issue #5)
+        # run.sh auto-detects this and adds a wasmtime leg to the EH witness;
+        # Cranelift agreeing with V8 lifts the EH claim to cross-checked.
+        run: python3 -m pip install --user wasmtime || python3 -m pip install --break-system-packages wasmtime
+
+      - name: EH witness (node:wasi + real Chromium + wasmtime)
         run: PREFIX="$PWD/wasi-eh" wasi/witness/run.sh
 
   pump-witness:

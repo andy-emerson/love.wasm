@@ -34,4 +34,14 @@ node --no-warnings "$HERE/run-node.mjs" "$TMP/eh-witness.wasm"
 echo "== chromium =="
 node "$HERE/run-browser.mjs" "$TMP/eh-witness.wasm"
 
-echo "EH witness: node + browser PASS"
+# Third leg, independent engine (issue #5): wasmtime is Cranelift, not V8.
+# Skipped when the wasmtime python package is absent, so the node+browser
+# contract is unchanged where it isn't installed.
+if python3 -c 'import wasmtime' 2>/dev/null; then
+  echo "== wasmtime (Cranelift, non-V8) =="
+  python3 "$HERE/run-wasmtime.py" "$TMP/eh-witness.wasm"
+  echo "EH witness: node + browser + wasmtime PASS"
+else
+  echo "== wasmtime: skipped (wasmtime python package not installed) =="
+  echo "EH witness: node + browser PASS"
+fi

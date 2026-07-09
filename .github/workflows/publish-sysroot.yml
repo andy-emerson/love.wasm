@@ -1,0 +1,76 @@
+name: publish-sysroot
+# Build the wasm-EH libc++/libc++abi sysroot ONCE and publish it as a release
+# asset, so interactive Claude Code (web) sessions can fetch a prebuilt tarball
+# instead of rebuilding it from source in every (ephemeral) container. This is
+# the CI half of issue #20; the SessionStart hook (.claude/hooks/session-start.sh)
+# is the consumer.
+#
+# The build is byte-for-byte the same one wasi/toolchain/build-libcxx-eh.sh runs
+# under the witness workflow — same LLVM 20.1.2, same eh-flags.sh. It reruns
+# whenever those inputs change (so the published tarball never lags the source),
+# and on demand via workflow_dispatch.
+on:
+  workflow_dispatch:
+  push:
+    branches: [wasi]
+    paths:
+      - 'wasi/toolchain/build-libcxx-eh.sh'
+      - 'wasi/toolchain/Platform/**'
+      - 'wasi/toolchain/eh-flags.sh'
+      - '.github/workflows/publish-sysroot.yml'
+
+# The rolling 'sysroot' release is overwritten in place; serialize so two runs
+# never race on the asset upload.
+concurrency:
+  group: publish-sysroot
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # create/update the release and upload the asset
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: toolchain (clang-20 + wasm32-wasi sysroot)
+        run: |
+          # deb-src enables build-libcxx-eh.sh's apt-get source fallback when
+          # anonymous GitHub release downloads of the LLVM source are rate-limited.
+          sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+          sudo sed -i 's/^# deb-src/deb-src/' /etc/apt/sources.list 2>/dev/null || true
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang-20 lld-20 llvm-20 libclang-rt-20-dev-wasm32 wasi-libc cmake ninja-build
+
+      - name: build wasm-EH libc++ / libc++abi sysroot
+        run: WORK="$RUNNER_TEMP/llvm-eh" PREFIX="$PWD/wasi-eh" wasi/toolchain/build-libcxx-eh.sh
+
+      - name: provenance + tarball
+        run: |
+          # Record exactly what this sysroot was built from, so a fetching
+          # session can tell whether it matches its checked-out toolchain.
+          {
+            echo "llvm: 20.1.2"
+            echo "commit: $GITHUB_SHA"
+            echo "ref: $GITHUB_REF"
+            echo "built: run $GITHUB_RUN_ID"
+            echo "toolchain-sha256:"
+            sha256sum wasi/toolchain/build-libcxx-eh.sh wasi/toolchain/eh-flags.sh wasi/toolchain/Platform/* | sed 's/^/  /'
+          } > wasi-eh/PROVENANCE
+          cat wasi-eh/PROVENANCE
+          tar czf wasi-eh.tar.gz wasi-eh
+          ls -lh wasi-eh.tar.gz
+
+      - name: publish rolling 'sysroot' release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A single, stable pre-release the SessionStart hook fetches by name.
+          # Marked prerelease so it never reads as a love-wasi software release.
+          gh release view sysroot >/dev/null 2>&1 || gh release create sysroot \
+            --prerelease \
+            --title "wasm-EH sysroot (rolling)" \
+            --notes "Prebuilt wasm32-wasi libc++/libc++abi sysroot (wasm exceptions, standardized exnref) for love-wasi interactive sessions — see issue #20 and .claude/hooks/session-start.sh. Rebuilt whenever wasi/toolchain/* changes. Not a software release."
+          gh release upload sysroot wasi-eh.tar.gz --clobber
+          echo "published: $(gh release view sysroot --json url -q .url)/download/wasi-eh.tar.gz"

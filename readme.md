@@ -6,7 +6,7 @@ This is a fork of [love2d/love](https://github.com/love2d/love) (the `main` / 12
 
 **Base pin:** upstream `main` @ `540e681454e1a791294488e66173b48faa40fcc6` (2026-07-05). Rebases onto newer upstream are deliberate, recorded events — next planned at the 12.0 release.
 
-**Status: the LÖVE core boots in a real browser.** Build-order steps 0–3 are done and browser-verified (see the build order below): real `love.math` and `love.data` run under this repo's frame pump over the pinned lua-wasi source drop, and LÖVE 12's own main-loop function executes to its documented stop-line at the `love.filesystem` seam. The tree stays upstream-shaped — the only edit to shared engine source is a small platform seam in `common/config.h` (a three-line `__wasi__` → `LOVE_WASI` guard plus one clause added to the platform sanity-check). Outside `wasi/`, the fork adds only the CI workflow `.github/workflows/witness.yml`, a few `.gitignore` lines, and the governance docs (`AGENTS.md`, `CLAUDE.md`).
+**Status: the LÖVE core boots in a real browser.** Build-order steps 0–3 are done and browser-verified (see the build order below): real `love.math` and `love.data` run under this repo's frame pump over the pinned lua-wasi source drop, and LÖVE 12's own main-loop function executes to its documented stop-line at the `love.filesystem` seam. The tree stays upstream-shaped — the only edit to shared engine source is a small platform seam in `common/config.h` (a three-line `__wasi__` → `LOVE_WASI` guard plus one clause added to the platform sanity-check). Outside `wasi/`, the fork adds only two CI workflows (`.github/workflows/witness.yml` and `.github/workflows/publish-sysroot.yml`), the interactive-session bring-up hook under `.claude/`, a few `.gitignore` lines, and the governance docs (`AGENTS.md`, `CLAUDE.md`).
 
 ---
 
@@ -95,6 +95,10 @@ Exclusion happens in the build, not with `rm`: deleting upstream files would blo
 6. Input/window/filesystem imports + `conf.lua`-driven canvas setup.
 7. `love.thread` via Workers.
 8. LoveIDE integration: replace the love.js preview path; verify the exported `.love` still runs unmodified on desktop LÖVE.
+
+## Reproducing the witnesses
+
+The three witnesses (`wasi/{witness,pump,boot}/run.sh`) are one-command each and run in CI on every push to `wasi` (`.github/workflows/witness.yml`, both legs — `node:wasi` and real Chromium — must pass). They are also reproducible in an interactive session: `.claude/hooks/session-start.sh` brings the toolchain up on session start — `clang-20` from Ubuntu's own repos, Node ≥ 24.15 from the `nodejs.org` tarball (the web sandbox denies `apt.llvm.org` and `deb.nodesource.com`), `playwright-core` over the pre-provisioned Chromium — and fetches the prebuilt wasm-EH sysroot published by `.github/workflows/publish-sysroot.yml`, so the witnesses pass green in-session without a minutes-long from-source sysroot rebuild in every ephemeral container. This is what lets the remaining seams (steps 4–8) be driven and witnessed by hand, not just in CI.
 
 ## Upstream relationship — branches, patches, and the 12.0 swap
 

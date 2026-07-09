@@ -17,6 +17,7 @@ on:
       - 'wasi/toolchain/build-libcxx-eh.sh'
       - 'wasi/toolchain/Platform/**'
       - 'wasi/toolchain/eh-flags.sh'
+      - 'wasi/toolchain/setjmp/**'
       - '.github/workflows/publish-sysroot.yml'
 
 # The rolling 'sysroot' release is overwritten in place; serialize so two runs

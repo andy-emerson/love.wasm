@@ -1,7 +1,8 @@
 # Single source of the standardized wasm-EH contract flags. Sourced by every
-# compile site in this repo — wasi/toolchain/build-libcxx-eh.sh, wasi/pump/build.sh,
-# wasi/boot/build.sh, wasi/witness/run.sh — so the load-bearing flag can't drift
-# between them. Do NOT inline these anywhere else.
+# compile site under wasi/ — the sysroot build, the pump/boot builds, the
+# witnesses, the vendor builds (wasi/vendor/*), and the compile sweep (run
+# `grep -rl eh-flags.sh wasi` for the current set) — so the load-bearing flag
+# can't drift between them. Do NOT inline these anywhere else.
 #
 # clang-20's bare -fwasm-exceptions defaults to the LEGACY encoding (try/catch);
 # the standardized exnref encoding (try_table/throw_ref) that lua-wasi's flag

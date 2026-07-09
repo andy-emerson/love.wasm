@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
-# One-command step-0 witness: compile eh-typed-catch.cpp against the wasm-EH
-# sysroot and require EH-WITNESS: PASS under BOTH node:wasi and real Chromium.
+# One-command step-0 witness. Two artifacts, each required to pass under every
+# available engine (node:wasi, real Chromium, and — when installed — wasmtime):
+#
+#   1. EH witness      — eh-typed-catch.cpp: the standardized wasm-EH claim
+#                        (typed catch, carried payload, destructors on unwind).
+#   2. SjLj+EH witness — sjlj-eh.cpp + sjlj-part.c: setjmp/longjmp (which
+#                        wasi-libc omits, but FreeType needs) working alongside
+#                        wasm-EH in one module, on the sysroot's wasi-setjmp
+#                        runtime. Same standardized encoding as everything else.
 #
 #   PREFIX=/path/to/wasi-eh wasi/witness/run.sh
 #
 # PREFIX is the install prefix produced by wasi/toolchain/build-libcxx-eh.sh
 # (default ./wasi-eh). Browser leg needs playwright-core resolvable from the
-# invoking cwd and either an installed playwright chromium or CHROMIUM set to
-# a chromium executable.
+# invoking cwd and either an installed playwright chromium or CHROMIUM set to a
+# chromium executable. wasmtime leg needs the `wasmtime` python package.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -17,31 +24,54 @@ trap 'rm -rf "$TMP"' EXIT
 
 source "$HERE/../toolchain/eh-flags.sh"
 
-# Standardized exnref encoding, matching the sysroot build (one artifact,
-# one encoding — clang-20's bare -fwasm-exceptions default is legacy).
+# Run one wasm command module through every available engine; each must exit 0
+# and (browser/wasmtime) print the pass sentinel. $1 wasm, $2 sentinel.
+legs() {
+  local wasm=$1 sentinel=$2
+  "$HERE/../toolchain/check-eh-encoding.sh" "$wasm"
+  echo "== node:wasi =="
+  node --no-warnings "$HERE/run-node.mjs" "$wasm"
+  echo "== chromium =="
+  node "$HERE/run-browser.mjs" "$wasm" "$sentinel"
+  if python3 -c 'import wasmtime' 2>/dev/null; then
+    echo "== wasmtime (Cranelift, non-V8) =="
+    python3 "$HERE/run-wasmtime.py" "$wasm" "$sentinel"
+  else
+    echo "== wasmtime: skipped (wasmtime python package not installed) =="
+  fi
+}
+
+# ── EH witness ────────────────────────────────────────────────────────────────
+# Standardized exnref encoding, matching the sysroot build (one artifact, one
+# encoding — clang-20's bare -fwasm-exceptions default is legacy).
 # shellcheck disable=SC2086
 clang++-20 --target=wasm32-wasi $EH_FLAGS -O2 \
   -nostdinc++ -I"$PREFIX/include/c++/v1" \
   "$HERE/eh-typed-catch.cpp" "$PREFIX/lib/unwind-wasm.o" \
   -L"$PREFIX/lib" -lc++ -lc++abi \
   -o "$TMP/eh-witness.wasm"
+echo "### EH witness ###"
+legs "$TMP/eh-witness.wasm" "EH-WITNESS: PASS"
 
-"$HERE/../toolchain/check-eh-encoding.sh" "$TMP/eh-witness.wasm"
+# ── SjLj+EH witness ───────────────────────────────────────────────────────────
+# sjlj-part.c is the FreeType-shaped C TU (calls setjmp/longjmp, compiled with
+# $SJLJ_FLAGS and the sysroot's setjmp.h); sjlj-eh.cpp is the engine-shaped C++
+# wasm-EH TU (no SjLj flag). They link with the sysroot's wasi-setjmp runtime.
+# shellcheck disable=SC2086
+clang-20 --target=wasm32-wasi $EH_FLAGS $SJLJ_FLAGS -O2 \
+  -I"$PREFIX/include" -c "$HERE/sjlj-part.c" -o "$TMP/sjlj-part.o"
+# shellcheck disable=SC2086
+clang++-20 --target=wasm32-wasi $EH_FLAGS -O2 \
+  -nostdinc++ -I"$PREFIX/include/c++/v1" -c "$HERE/sjlj-eh.cpp" -o "$TMP/sjlj-eh.o"
+# shellcheck disable=SC2086
+# Link-only: -Wno-unused-command-line-argument silences the codegen-only -mllvm
+# encoding flag carried in $EH_FLAGS (harmless, nothing to compile here).
+clang++-20 --target=wasm32-wasi $EH_FLAGS -Wno-unused-command-line-argument \
+  "$TMP/sjlj-eh.o" "$TMP/sjlj-part.o" \
+  "$PREFIX/lib/wasi-setjmp.o" "$PREFIX/lib/unwind-wasm.o" \
+  -L"$PREFIX/lib" -lc++ -lc++abi \
+  -o "$TMP/sjlj-eh.wasm"
+echo "### SjLj+EH witness ###"
+legs "$TMP/sjlj-eh.wasm" "SJLJ-EH-WITNESS: PASS"
 
-echo "== node:wasi =="
-node --no-warnings "$HERE/run-node.mjs" "$TMP/eh-witness.wasm"
-
-echo "== chromium =="
-node "$HERE/run-browser.mjs" "$TMP/eh-witness.wasm"
-
-# Third leg, independent engine (issue #5): wasmtime is Cranelift, not V8.
-# Skipped when the wasmtime python package is absent, so the node+browser
-# contract is unchanged where it isn't installed.
-if python3 -c 'import wasmtime' 2>/dev/null; then
-  echo "== wasmtime (Cranelift, non-V8) =="
-  python3 "$HERE/run-wasmtime.py" "$TMP/eh-witness.wasm"
-  echo "EH witness: node + browser + wasmtime PASS"
-else
-  echo "== wasmtime: skipped (wasmtime python package not installed) =="
-  echo "EH witness: node + browser PASS"
-fi
+echo "witness: EH + SjLj PASS on node + browser$(python3 -c 'import wasmtime' 2>/dev/null && echo ' + wasmtime')"

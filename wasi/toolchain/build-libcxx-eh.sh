@@ -114,8 +114,21 @@ clang-20 --target=wasm32-wasi $EH_FLAGS -O2 -DNDEBUG \
   -Illvm-src/libunwind/include -Illvm-src/libunwind/src \
   -c llvm-src/libunwind/src/Unwind-wasm.c -o "$PREFIX/lib/unwind-wasm.o"
 
+# ── wasm setjmp/longjmp support (wasi-libc omits it; FreeType needs it) ───────
+# setjmp on wasm is implemented on top of wasm-EH (rt.c throws a __c_longjmp
+# tag), so it uses the SAME standardized encoding this sysroot is built for.
+# Install the vendored wasi-libc headers and build its runtime; a TU that calls
+# setjmp/longjmp compiles with $EH_FLAGS $SJLJ_FLAGS and links wasi-setjmp.o.
+# See wasi/toolchain/setjmp/PIN.
+mkdir -p "$PREFIX/include/bits"
+cp "$HERE/setjmp/setjmp.h"      "$PREFIX/include/setjmp.h"
+cp "$HERE/setjmp/bits/setjmp.h" "$PREFIX/include/bits/setjmp.h"
+clang-20 --target=wasm32-wasi $EH_FLAGS -O2 \
+  -c "$HERE/setjmp/rt.c" -o "$PREFIX/lib/wasi-setjmp.o"
+
 echo "installed to $PREFIX"
 echo "link C++-with-EH wasm like:"
 echo "  clang++-20 --target=wasm32-wasi -fwasm-exceptions -nostdinc++ \\"
 echo "    -I$PREFIX/include/c++/v1 x.cpp $PREFIX/lib/unwind-wasm.o \\"
 echo "    -L$PREFIX/lib -lc++ -lc++abi -o x.wasm"
+echo "setjmp/longjmp: add \$SJLJ_FLAGS and -I$PREFIX/include, link $PREFIX/lib/wasi-setjmp.o"

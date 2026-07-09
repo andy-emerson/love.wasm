@@ -13,3 +13,14 @@
 # invocation.
 # shellcheck disable=SC2034  # EH_FLAGS is consumed by the sourcing script.
 EH_FLAGS="-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false"
+
+# wasm setjmp/longjmp support. It is implemented ON TOP OF wasm exception
+# handling (wasi-libc's rt.c throws a __c_longjmp tag), so it must be combined
+# with $EH_FLAGS — never used alone — and it emits the SAME standardized
+# encoding, so check-eh-encoding.sh still passes. Append $SJLJ_FLAGS to
+# $EH_FLAGS ONLY on translation units that actually call setjmp/longjmp (e.g.
+# vendored FreeType); the runtime lives at $PREFIX/lib/wasi-setjmp.o and the
+# header at $PREFIX/include/setjmp.h (installed by build-libcxx-eh.sh from the
+# vendored wasi/toolchain/setjmp/ drop). This file is in the sysroot cache key.
+# shellcheck disable=SC2034  # SJLJ_FLAGS is consumed by the sourcing script.
+SJLJ_FLAGS="-mllvm -wasm-enable-sjlj"

@@ -1,0 +1,24 @@
+source:  wasi-libc setjmp/longjmp support (wasm32), vendored verbatim.
+         - setjmp.h      ← libc-top-half/musl/include/setjmp.h
+         - bits/setjmp.h ← libc-top-half/musl/arch/wasm32/bits/setjmp.h
+         - rt.c          ← libc-top-half/musl/src/setjmp/wasm32/rt.c
+commit:  7c1c53d8837d492f767f3fa11684594d86021cbd
+url:     https://github.com/WebAssembly/wasi-libc
+license: wasi-libc (LICENSE beside this file — Apache-2.0-WITH-LLVM-exception /
+         Apache-2.0 / MIT triple; the musl-derived pieces are MIT).
+
+Why this is vendored: Ubuntu's `wasi-libc` apt package ships NO setjmp
+(no header, no runtime), but LÖVE's FreeType dependency needs it
+(smooth/ftgrays.c rasterizer, sfnt/ttcmap.c). wasm setjmp/longjmp is
+implemented ON TOP OF wasm exception-handling (rt.c uses
+__builtin_wasm_throw), so it rides on the exact standardized-EH machinery
+this repo already builds — same encoding, same libc++abi.
+
+Consumed by wasi/toolchain/build-libcxx-eh.sh, which installs the two
+headers into $PREFIX/include and compiles rt.c (with the repo's EH flags)
+to $PREFIX/lib/wasi-setjmp.o. Any TU that calls setjmp/longjmp is compiled
+with $EH_FLAGS + $SJLJ_FLAGS (wasi/toolchain/eh-flags.sh) and links
+wasi-setjmp.o. Witnessed by wasi/witness/sjlj-eh.cpp (setjmp + a C++ throw
+in one module, node + Chromium + wasmtime). Update by replacing the three
+files wholesale from a newer wasi-libc and refreshing this PIN. Never edit
+in place.

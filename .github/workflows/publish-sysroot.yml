@@ -56,7 +56,7 @@ jobs:
             echo "ref: $GITHUB_REF"
             echo "built: run $GITHUB_RUN_ID"
             echo "toolchain-sha256:"
-            sha256sum wasi/toolchain/build-libcxx-eh.sh wasi/toolchain/eh-flags.sh wasi/toolchain/Platform/* | sed 's/^/  /'
+            sha256sum wasi/toolchain/build-libcxx-eh.sh wasi/toolchain/eh-flags.sh wasi/toolchain/Platform/* wasi/toolchain/setjmp/setjmp.h wasi/toolchain/setjmp/bits/setjmp.h wasi/toolchain/setjmp/rt.c | sed 's/^/  /'
           } > wasi-eh/PROVENANCE
           cat wasi-eh/PROVENANCE
           tar czf wasi-eh.tar.gz wasi-eh

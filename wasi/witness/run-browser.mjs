@@ -8,9 +8,10 @@ import { makeWasiShim } from '../host/wasi-shim.mjs';
 import { runInChromium, commandPageFn } from '../host/witness-harness.mjs';
 
 const wasmB64 = readFileSync(process.argv[2] ?? 'eh-witness.wasm').toString('base64');
+const sentinel = process.argv[3] ?? 'EH-WITNESS: PASS';
 const result = await runInChromium(commandPageFn, { b64: wasmB64, shimSrc: makeWasiShim.toString() });
 
 console.log('--- browser stdout ---');
 console.log(result.out.trimEnd());
 console.log('--- exit: ' + result.exit + (result.error ? '  error: ' + result.error : '') + ' ---');
-process.exit(result.exit === 0 && result.out.includes('EH-WITNESS: PASS') ? 0 : 1);
+process.exit(result.exit === 0 && result.out.includes(sentinel) ? 0 : 1);

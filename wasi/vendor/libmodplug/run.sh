@@ -16,17 +16,13 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
 source "$ROOT/wasi/toolchain/eh-flags.sh"
+source "$ROOT/wasi/witness/legs.sh"
 
 PREFIX="$PREFIX" OUT="$TMP/libmodplug.a" "$HERE/build.sh"
 
-# Synthesize the test module and embed it.
+# Synthesize the test module and embed it (witness reads mod_bytes[] / mod_len).
 python3 "$HERE/make-witness-mod.py" > "$TMP/witness.mod"
-python3 - "$TMP/witness.mod" > "$TMP/mod_data.h" <<'PY'
-import sys
-d = open(sys.argv[1], "rb").read()
-print("unsigned char mod_bytes[] = {" + ",".join(str(b) for b in d) + "};")
-print("unsigned int mod_len = %d;" % len(d))
-PY
+python3 "$ROOT/wasi/witness/embed.py" "$TMP/witness.mod" mod_bytes mod_len > "$TMP/mod_data.h"
 
 clang-20 --target=wasm32-wasi -O2 -I"$HERE/include" -I"$TMP" \
   -c "$HERE/witness.c" -o "$TMP/witness.o"
@@ -36,18 +32,5 @@ clang++-20 --target=wasm32-wasi $EH_FLAGS -Wno-unused-command-line-argument \
   "$PREFIX/lib/unwind-wasm.o" -L"$PREFIX/lib" -lc++ -lc++abi \
   -o "$TMP/mp-witness.wasm"
 
-"$ROOT/wasi/toolchain/check-eh-encoding.sh" "$TMP/mp-witness.wasm"
-
-W="$ROOT/wasi/witness"
-echo "== node:wasi =="
-node --no-warnings "$W/run-node.mjs" "$TMP/mp-witness.wasm"
-echo "== chromium =="
-node "$W/run-browser.mjs" "$TMP/mp-witness.wasm" "MODPLUG-WITNESS: PASS"
-if python3 -c 'import wasmtime' 2>/dev/null; then
-  echo "== wasmtime (Cranelift, non-V8) =="
-  python3 "$W/run-wasmtime.py" "$TMP/mp-witness.wasm" "MODPLUG-WITNESS: PASS"
-else
-  echo "== wasmtime: skipped (wasmtime python package not installed) =="
-fi
-
-echo "libmodplug witness: decoded tracker music in wasm on node + browser$(python3 -c 'import wasmtime' 2>/dev/null && echo ' + wasmtime')"
+witness_legs "$TMP/mp-witness.wasm" "MODPLUG-WITNESS: PASS" check-eh
+echo "libmodplug witness: decoded tracker music in wasm on node + browser$(witness_wasmtime_suffix)"

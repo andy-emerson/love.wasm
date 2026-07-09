@@ -14,6 +14,8 @@ ROOT=$(cd "$HERE/../../.." && pwd)
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
+source "$ROOT/wasi/witness/legs.sh"
+
 OUT="$TMP/libogg.a" "$HERE/build.sh"
 
 clang-20 --target=wasm32-wasi -O2 -I"$HERE/include" \
@@ -21,16 +23,6 @@ clang-20 --target=wasm32-wasi -O2 -I"$HERE/include" \
 clang-20 --target=wasm32-wasi -O2 \
   "$TMP/witness.o" "$TMP/libogg.a" -o "$TMP/ogg-witness.wasm"
 
-W="$ROOT/wasi/witness"
-echo "== node:wasi =="
-node --no-warnings "$W/run-node.mjs" "$TMP/ogg-witness.wasm"
-echo "== chromium =="
-node "$W/run-browser.mjs" "$TMP/ogg-witness.wasm" "OGG-WITNESS: PASS"
-if python3 -c 'import wasmtime' 2>/dev/null; then
-  echo "== wasmtime (Cranelift, non-V8) =="
-  python3 "$W/run-wasmtime.py" "$TMP/ogg-witness.wasm" "OGG-WITNESS: PASS"
-else
-  echo "== wasmtime: skipped (wasmtime python package not installed) =="
-fi
-
-echo "libogg witness: framing round-trip in wasm on node + browser$(python3 -c 'import wasmtime' 2>/dev/null && echo ' + wasmtime')"
+# Pure C, no wasm-EH → no encoding check (3rd arg omitted).
+witness_legs "$TMP/ogg-witness.wasm" "OGG-WITNESS: PASS"
+echo "libogg witness: framing round-trip in wasm on node + browser$(witness_wasmtime_suffix)"

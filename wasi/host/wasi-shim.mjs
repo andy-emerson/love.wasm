@@ -17,8 +17,8 @@
 //   const shim = makeWasiShim();
 //   const module = await WebAssembly.compile(bytes);
 //   shim.autostub(module);                        // reactor: ENOSYS the rest
-//   const { instance } = await WebAssembly.instantiate(
-//     module, { wasi_snapshot_preview1: shim.imports });
+//   const instance = await WebAssembly.instantiate(   // a Module resolves to
+//     module, { wasi_snapshot_preview1: shim.imports }); // an Instance directly
 //   shim.bind(instance.exports.memory);           // before any import fires
 //   instance.exports._initialize();               // reactor  (or _start() for a command)
 //   shim.stdout                                    // accumulated fd_write text

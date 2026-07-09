@@ -48,7 +48,7 @@ JOBS=${JOBS:-$(nproc)}
 
 # The one EH configuration this whole repo links under: wasm-EH with the
 # standardized exnref encoding, matching lua-wasi's WASM_EH_ENCODING=standard.
-# Single-sourced so the four compile sites can't drift (see eh-flags.sh).
+# Single-sourced so the compile sites can't drift (see eh-flags.sh).
 source "$HERE/eh-flags.sh"
 
 mkdir -p "$WORK" && cd "$WORK"

@@ -36,14 +36,19 @@ ZLIB="$ROOT/wasi/vendor/zlib"
 
 # The audio backend source set. Both backends are pure C++ over the platform
 # audio abstraction (null: no-ops; webaudio: host imports) — no OpenAL, no SDL.
+# $AUDIO_DEFS drives wrap_Audio.cpp's guarded backend selection (the generic
+# upstream seam): this port never has OpenAL, so both backends define
+# LOVE_AUDIO_NO_OPENAL; webaudio additionally selects itself.
 case "$BACKEND" in
   null)
+    AUDIO_DEFS="-DLOVE_AUDIO_NO_OPENAL"
     AUDIO_BACKEND="
       $SRC/modules/audio/null/Audio.cpp
       $SRC/modules/audio/null/Source.cpp
       $SRC/modules/audio/null/RecordingDevice.cpp
     " ;;
   webaudio)
+    AUDIO_DEFS="-DLOVE_AUDIO_NO_OPENAL -DLOVE_AUDIO_WEBAUDIO"
     AUDIO_BACKEND="
       $SRC/modules/audio/webaudio/Audio.cpp
       $SRC/modules/audio/webaudio/Source.cpp
@@ -118,6 +123,7 @@ clang++-20 --target=wasm32-wasi -O2 $EH_FLAGS \
   -nostdinc++ -I"$PREFIX/include/c++/v1" \
   -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS \
   -DLUA_USE_JUMPTABLE=0 -DMAKE_LIB -DLUAW_EXTERNAL_EH \
+  $AUDIO_DEFS \
   -DHAVE_CONFIG_H -I"$HERE/config/include" \
   -I"$LUA/wasi" -I"$LUA" \
   -I"$SRC" -I"$SRC/modules" -I"$SRC/libraries" -I"$ZLIB" \

@@ -61,7 +61,6 @@ export function makeAudioHost() {
     source_play(handle) { const s = srcs.get(handle); if (s) s.played = true; return 1; },
     source_stop(handle) { const s = srcs.get(handle); if (s) s.played = false; },
     source_gain(_handle, _gain) { /* recorded by a real host; unused by the tap */ },
-    context_rate() { return CONTEXT_RATE; },
 
     mic_device_count() { return 1; },
     mic_device_name(index, dst, maxLen) {

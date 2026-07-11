@@ -47,20 +47,24 @@ love::audio::Source *Audio::newSource(love::sound::Decoder *decoder)
 	// A streaming Source's format is the decoder's; incremental streaming into
 	// the host voice is a later refinement (the raw-PCM / SoundData paths land
 	// first). The voice is created; nothing is queued until streaming exists.
-	return new Source(decoder->getSampleRate(), decoder->getBitDepth(), decoder->getChannelCount());
+	return new Source(Source::TYPE_STREAM, decoder->getSampleRate(),
+	                  decoder->getBitDepth(), decoder->getChannelCount());
 }
 
 love::audio::Source *Audio::newSource(love::sound::SoundData *soundData)
 {
-	Source *s = new Source(soundData->getSampleRate(), soundData->getBitDepth(), soundData->getChannelCount());
-	s->queue(soundData->getData(), soundData->getSize(),
-	         soundData->getSampleRate(), soundData->getBitDepth(), soundData->getChannelCount());
+	// A static Source holds its whole PCM and flushes it on play() — not an
+	// eager queue at creation (which would be dropped if the host voice isn't
+	// live yet).
+	Source *s = new Source(Source::TYPE_STATIC, soundData->getSampleRate(),
+	                       soundData->getBitDepth(), soundData->getChannelCount());
+	s->setStaticData(soundData->getData(), soundData->getSize());
 	return s;
 }
 
 love::audio::Source *Audio::newSource(int sampleRate, int bitDepth, int channels, int /*buffers*/)
 {
-	return new Source(sampleRate, bitDepth, channels);
+	return new Source(Source::TYPE_QUEUE, sampleRate, bitDepth, channels);
 }
 
 int Audio::getActiveSourceCount() const

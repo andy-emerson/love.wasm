@@ -17,13 +17,35 @@ import { resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { WASI } from 'node:wasi';
 
+// Resolve playwright-core — a dev-only dependency that never lives in-repo. Try
+// the invoking cwd, then the session npm dir, then $HOME, so every caller
+// (runInChromium and the standalone mic runner) resolves it the same way.
+export function resolvePlaywright() {
+  for (const base of [process.cwd(), '/root/.love-wasi/npm', process.env.HOME || '/root']) {
+    try { return createRequire(resolve(base, 'noop.js'))('playwright-core'); } catch { /* next */ }
+  }
+  throw new Error('playwright-core not resolvable');
+}
+
+// A known-frequency 16-bit mono WAV as a node Buffer — a reference tone, and the
+// fake-microphone capture file for the real-mic witness.
+export function makeSineWav(freq, rate, seconds) {
+  const n = rate * seconds, bps = 2, dataLen = n * bps;
+  const buf = Buffer.alloc(44 + dataLen);
+  buf.write('RIFF', 0); buf.writeUInt32LE(36 + dataLen, 4); buf.write('WAVE', 8);
+  buf.write('fmt ', 12); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20);
+  buf.writeUInt16LE(1, 22); buf.writeUInt32LE(rate, 24);
+  buf.writeUInt32LE(rate * bps, 28); buf.writeUInt16LE(bps, 32); buf.writeUInt16LE(16, 34);
+  buf.write('data', 36); buf.writeUInt32LE(dataLen, 40);
+  for (let i = 0; i < n; i++)
+    buf.writeInt16LE(Math.max(-1, Math.min(1, Math.sin(2 * Math.PI * freq * i / rate))) * 32767, 44 + i * bps);
+  return buf;
+}
+
 // Launch an installed Chromium and run one self-contained page function against
 // its argument, returning whatever the page function returns.
 export async function runInChromium(pageFn, arg) {
-  // playwright-core is a dev-only dependency resolved from the invoking cwd
-  // (same pattern as lua-wasi's browser witness), so it never lives in-repo.
-  const require = createRequire(resolve(process.cwd(), 'noop.js'));
-  const { chromium } = require('playwright-core');
+  const { chromium } = resolvePlaywright();
   const executablePath = process.env.CHROMIUM && existsSync(process.env.CHROMIUM)
     ? process.env.CHROMIUM
     : undefined;  // otherwise let playwright resolve its installed chromium

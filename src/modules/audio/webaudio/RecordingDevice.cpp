@@ -21,6 +21,8 @@
 #include "RecordingDevice.h"
 #include "Imports.h"
 
+#include <cstring>
+
 namespace love
 {
 namespace audio
@@ -83,7 +85,16 @@ love::sound::SoundData *RecordingDevice::getData()
 		new love::sound::SoundData(available, sampleRate, bitDepth, channels);
 
 	// Drain host PCM straight into the SoundData buffer (int16, interleaved).
-	wa_mic_read(sd->getData(), available);
+	int got = wa_mic_read(sd->getData(), available);
+
+	// If the host delivered fewer frames than it reported, silence the untouched
+	// tail rather than return uninitialized memory.
+	if (got < available)
+	{
+		int frameBytes = channels * (bitDepth / 8);
+		memset((unsigned char *)sd->getData() + (size_t)got * frameBytes, 0,
+		       (size_t)(available - got) * frameBytes);
+	}
 	return sd;
 }
 

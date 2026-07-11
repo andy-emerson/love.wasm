@@ -28,8 +28,8 @@ namespace audio
 namespace webaudio
 {
 
-Source::Source(int sampleRate, int bitDepth, int channels)
-	: love::audio::Source(Source::TYPE_QUEUE)
+Source::Source(Type type, int sampleRate, int bitDepth, int channels)
+	: love::audio::Source(type)
 	, sampleRate(sampleRate)
 	, bitDepth(bitDepth)
 	, channels(channels)
@@ -40,6 +40,13 @@ Source::~Source()
 {
 	if (handle >= 0)
 		wa_source_stop(handle);
+}
+
+void Source::setStaticData(const void *data, size_t bytes)
+{
+	const unsigned char *p = (const unsigned char *)data;
+	staticData.assign(p, p + bytes);
+	staticFlushed = false;
 }
 
 int Source::ensureHandle()
@@ -60,6 +67,17 @@ bool Source::play()
 	int h = ensureHandle();
 	if (h < 0)
 		return false;
+
+	// Flush a static source's held PCM to the host voice once, now that the
+	// handle exists (never dropped even if the voice wasn't live at creation).
+	if (!staticData.empty() && !staticFlushed)
+	{
+		int frameBytes = channels * (bitDepth / 8);
+		int frames = frameBytes > 0 ? (int)(staticData.size() / frameBytes) : 0;
+		wa_source_queue(h, staticData.data(), frames, sampleRate, bitDepth, channels);
+		staticFlushed = true;
+	}
+
 	playing = wa_source_play(h) != 0;
 	return playing;
 }

@@ -21,8 +21,6 @@
 #ifndef LOVE_AUDIO_WEBAUDIO_IMPORTS_H
 #define LOVE_AUDIO_WEBAUDIO_IMPORTS_H
 
-#include <cstddef>
-
 // The finite, host-agnostic audio import surface (readme.md: everything the
 // host supplies as imports, the same role an OS plays for desktop LÖVE). The
 // host — a browser, or the witness's mock — implements these; wasm only calls
@@ -50,11 +48,6 @@ WA_IMPORT("source_queue") void wa_source_queue(int handle, const void *pcm,
 WA_IMPORT("source_play") int wa_source_play(int handle);
 WA_IMPORT("source_stop") void wa_source_stop(int handle);
 WA_IMPORT("source_gain") void wa_source_gain(int handle, float gain);
-
-// The host AudioContext's sample rate (device rate). Informational for the
-// engine; the host owns the resampling, so wasm never acts on this beyond
-// reporting.
-WA_IMPORT("context_rate") int wa_context_rate(void);
 
 // --- Microphone capture (RecordingDevice) ---
 // The finite mic surface. A single active capture (the witness/first host use

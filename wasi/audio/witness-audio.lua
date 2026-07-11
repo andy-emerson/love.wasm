@@ -123,6 +123,16 @@ else
     local ratio = goertzel(440) / (goertzel(440 * 2.71 + 37) + 1e-9)
     check("captured SoundData carries the 440 Hz tone (ratio > 8)", ratio > 8, ratio)
     coroutine.yield(("mic seam: %d samples @ %d Hz, 440 Hz ratio %.0f"):format(count, rate, ratio))
+
+    -- Record -> playback: feed the captured SoundData to a STATIC Source and
+    -- play it, exercising the static-source path (held PCM flushed on play()).
+    local pbok, pb = pcall(love.audio.newSource, sd)
+    check("newSource(SoundData) is a static Source",
+      pbok and pb ~= nil and pb:getType() == "static", pbok and pb and pb:getType())
+    if pbok and pb ~= nil then
+      check("static Source plays the recorded SoundData", pb:play() == true, "play() false")
+      pb:stop()
+    end
   end
 end
 

@@ -29,6 +29,7 @@
 
 // STL
 #include <limits>
+#include <vector>
 
 namespace love
 {
@@ -45,9 +46,16 @@ namespace webaudio
 class Source : public love::audio::Source
 {
 public:
-	// Queueable Source (the raw-PCM path): host voice at this format.
-	Source(int sampleRate, int bitDepth, int channels);
+	// A Source of the given type (STATIC/STREAM/QUEUE) at this format. Static
+	// sources hold their PCM via setStaticData() and flush it on the first
+	// play(); queueable sources push through queue(); stream sources are not yet
+	// wired (voice created, nothing queued).
+	Source(Type type, int sampleRate, int bitDepth, int channels);
 	virtual ~Source();
+
+	// Store a static source's whole PCM buffer; flushed to the host voice on the
+	// first play() (so it is never dropped if the voice isn't live at creation).
+	void setStaticData(const void *data, size_t bytes);
 
 	virtual love::audio::Source *clone();
 	virtual bool play();
@@ -112,6 +120,9 @@ private:
 	int bitDepth = 16;
 	int channels = 1;
 	bool playing = false;
+
+	std::vector<unsigned char> staticData;   // static source PCM, flushed on play
+	bool staticFlushed = false;
 
 	float pitch = 1.0f;
 	float volume = 1.0f;

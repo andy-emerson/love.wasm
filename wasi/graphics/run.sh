@@ -60,3 +60,16 @@ GFXLIBS_DIR="${GFXLIBS_DIR:-$PREFIX/gfxlibs}" PREFIX="$PREFIX" OUT="$LOVE_WASM" 
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM"
 echo "love.graphics witness (4.1c): Chromium PASS"
+
+# ── 4.2: the first primitive draw ────────────────────────────────────────────
+# The same real backend, now drawing geometry instead of only clearing: a filled
+# rectangle over a black clear, read back to confirm the colour landed where it
+# was rasterised. This is the first time a shader (glslang -> GLSL -> real WebGL2
+# compile) and vertex streaming (a real VBO via glBufferSubData — WebGL2 forbids
+# the client-side arrays and buffer mapping the desktop paths would pick) both
+# run. Same wasm as 4.1c; only the witness lua differs. Chromium only.
+echo
+echo "### draw witness (4.2) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-draw.lua"
+echo "draw witness (4.2): Chromium PASS"

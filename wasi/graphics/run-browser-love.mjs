@@ -16,7 +16,8 @@ import { makeWebGLHost } from '../host/webgl-host.mjs';
 import { runInChromium } from '../host/witness-harness.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const boot = readFileSync(join(here, 'witness-graphics.lua'), 'utf8');
+// argv[2]: wasm module; argv[3]: witness lua (defaults to the 4.1c clear witness).
+const boot = readFileSync(process.argv[3] ?? join(here, 'witness-graphics.lua'), 'utf8');
 const b64 = readFileSync(process.argv[2] ?? join(here, 'love-graphics.wasm')).toString('base64');
 
 async function loveGraphicsPageFn({ b64, boot, shimSrc, hostSrc, driverSrc }) {

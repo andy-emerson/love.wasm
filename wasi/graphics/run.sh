@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# One-command graphics witness (build-order step 4).
+# One-command graphics witness (build-order step 4). Two witnesses:
 #
-# Sub-step 4.1a — the raw-GL readback witness: build the command module
-# (witness-gl.cpp) and run it under node's WASI with the mock love_gl host,
-# proving the WebGL2 import plumbing + glReadPixels round-trip end to end,
-# ahead of wiring LÖVE's opengl::Graphics (4.1b). The Chromium leg (real
-# WebGL2 via OffscreenCanvas) is added alongside the node leg as 4.1a lands.
+#   4.1a — raw-GL readback: a command module (witness-gl.cpp) proving the
+#          WebGL2 import plumbing + glReadPixels round-trip, on node (a mock
+#          love_gl host) and real Chromium WebGL2.
+#   4.1c — love.graphics: the real LÖVE core + love.graphics on the opengl
+#          backend, reseamed to a real WebGL2 context, clearing a framebuffer
+#          and recovering the pixel through the graphics-ext bridge. Chromium
+#          only — driving the real backend hits ~100+ GL entry points a node
+#          mock cannot fake, so the node leg stays at 4.1a.
 #
 #   PREFIX=/path/to/wasi-eh wasi/graphics/run.sh
 #

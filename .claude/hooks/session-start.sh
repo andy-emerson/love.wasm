@@ -124,8 +124,10 @@ else
     log "sysroot extracted to $PREFIX"
     [ -f "$PREFIX/PROVENANCE" ] && log "provenance: $(head -2 "$PREFIX/PROVENANCE" | tr '\n' ' ')"
   else
-    log "WARNING: could not fetch the sysroot tarball."
-    log "  If publish-sysroot.yml has not run on wasi yet, build once with:"
+    log "WARNING: could not fetch the sysroot tarball from $SYSROOT_URL."
+    log "  Expected a publish-sysroot.yml release asset on $SYSROOT_REPO (tag: $SYSROOT_TAG)."
+    log "  If that repo has no such release yet, trigger the workflow (workflow_dispatch),"
+    log "  or point at another repo's asset: LOVE_WASI_SYSROOT_REPO=owner/repo. Or build once:"
     log "    WORK=\$HOME/.love-wasi/llvm-eh PREFIX=$PREFIX wasi/toolchain/build-libcxx-eh.sh"
     log "  The witnesses need it; everything else is ready."
   fi

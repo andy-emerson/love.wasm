@@ -5,9 +5,9 @@
  * import plumbing end to end — wasm calls the love_gl imports with the right
  * arguments, the host clears a real (or mock) framebuffer, and glReadPixels
  * writes the cleared pixel BACK into wasm linear memory where wasm reads it —
- * BEFORE wiring LÖVE's thick opengl::Graphics on top. If this passes, the
- * import mechanism + host + readback round-trip are sound; only the backend
- * bring-up (4.1b) remains to isolate.
+ * separately from LÖVE's thick opengl::Graphics, so a plumbing failure is told
+ * apart from a backend-bringup failure. This isolates the import mechanism +
+ * host + readback round-trip; the full backend is witnessed by 4.1c.
  *
  * A command module (main / _start): set a known clear color, clear, read one
  * pixel back, compare within a rounding tolerance, report, exit 0/1. It talks

@@ -38,6 +38,8 @@ Audio::Audio()
 
 Audio::~Audio()
 {
+	for (auto *d : capture)
+		d->release();
 }
 
 love::audio::Source *Audio::newSource(love::sound::Decoder *decoder)
@@ -164,6 +166,24 @@ float Audio::getDopplerScale() const
 
 const std::vector<love::audio::RecordingDevice*> &Audio::getRecordingDevices()
 {
+	// Populate once from the host's device list. Empty on a real host until mic
+	// permission is granted (LÖVE's Android-shaped seam), so a game gates on the
+	// list being non-empty.
+	if (capture.empty())
+	{
+		int count = wa_mic_device_count();
+		for (int i = 0; i < count; i++)
+		{
+			char buf[256];
+			int len = wa_mic_device_name(i, buf, (int)sizeof(buf) - 1);
+			if (len < 0)
+				len = 0;
+			if (len > (int)sizeof(buf) - 1)
+				len = (int)sizeof(buf) - 1;
+			buf[len] = '\0';
+			capture.push_back(new RecordingDevice(buf));
+		}
+	}
 	return capture;
 }
 

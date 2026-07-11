@@ -19,6 +19,7 @@
  **/
 
 #include "RecordingDevice.h"
+#include "Imports.h"
 
 namespace love
 {
@@ -27,63 +28,100 @@ namespace audio
 namespace webaudio
 {
 
-const char *RecordingDevice::name = "webaudio";
-
-RecordingDevice::RecordingDevice(const char *)
+RecordingDevice::RecordingDevice(const char *name)
+	: name(name)
 {
 }
 
 RecordingDevice::~RecordingDevice()
 {
+	if (recording)
+		wa_mic_stop();
 }
 
-bool RecordingDevice::start(int, int, int, int)
+bool RecordingDevice::start(int samples, int sampleRate, int bitDepth, int channels)
 {
-	return false;
+	if (samples <= 0 || sampleRate <= 0)
+		return false;
+
+	if (recording)
+		stop();
+
+	// The host opens capture and reports the rate it will actually deliver at
+	// (it owns the resampling). A negative result means no capture available.
+	int actualRate = wa_mic_start(sampleRate, channels);
+	if (actualRate < 0)
+		return false;
+
+	this->samples = samples;
+	this->sampleRate = actualRate;   // ACTUAL rate, not the request
+	this->bitDepth = 16;             // host delivers int16
+	this->channels = channels;
+	recording = true;
+	(void)bitDepth;                  // requested depth is advisory; we deliver 16
+	return true;
 }
 
 void RecordingDevice::stop()
 {
+	if (!recording)
+		return;
+	wa_mic_stop();
+	recording = false;
 }
 
 love::sound::SoundData *RecordingDevice::getData()
 {
-	return nullptr;
-}
+	if (!recording)
+		return nullptr;
 
-int RecordingDevice::getSampleCount() const
-{
-	return 0;
-}
+	int available = wa_mic_sample_count();
+	if (available <= 0)
+		return nullptr;
 
-int RecordingDevice::getMaxSamples() const
-{
-	return 0;
-}
+	love::sound::SoundData *sd =
+		new love::sound::SoundData(available, sampleRate, bitDepth, channels);
 
-int RecordingDevice::getSampleRate() const
-{
-	return 0;
-}
-
-int RecordingDevice::getBitDepth() const
-{
-	return 0;
-}
-
-int RecordingDevice::getChannelCount() const
-{
-	return 0;
+	// Drain host PCM straight into the SoundData buffer (int16, interleaved).
+	wa_mic_read(sd->getData(), available);
+	return sd;
 }
 
 const char *RecordingDevice::getName() const
 {
-	return name;
+	return name.c_str();
+}
+
+int RecordingDevice::getMaxSamples() const
+{
+	return samples;
+}
+
+int RecordingDevice::getSampleCount() const
+{
+	if (!recording)
+		return 0;
+	return wa_mic_sample_count();
+}
+
+int RecordingDevice::getSampleRate() const
+{
+	return sampleRate;
+}
+
+int RecordingDevice::getBitDepth() const
+{
+	return bitDepth;
+}
+
+int RecordingDevice::getChannelCount() const
+{
+	return channels;
 }
 
 bool RecordingDevice::isRecording() const
 {
-	return false;
+	return recording;
 }
 
 } //webaudio

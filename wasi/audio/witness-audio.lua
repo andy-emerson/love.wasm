@@ -74,5 +74,57 @@ if sok and src then
   coroutine.yield("backend Source:play() returned: " .. tostring(played))
 end
 
+-- Microphone: the RecordingDevice seam. Backend-agnostic — the inert null
+-- backend exposes no devices (mic checks skipped); the webaudio backend drives
+-- the host mic seam, and we recover the tone from the game-facing SoundData.
+local devices = love.audio.getRecordingDevices()
+check("getRecordingDevices returns a table", type(devices) == "table", devices)
+if #devices == 0 then
+  coroutine.yield("no recording devices (inert backend) — mic checks skipped")
+else
+  local dev = devices[1]
+  check("recording device has a name",
+    type(dev:getName()) == "string" and #dev:getName() > 0, dev:getName())
+
+  -- Ask for 8000 Hz; the host can't honor it and delivers 48000 — the backend
+  -- reports the ACTUAL rate (the capability check, no wasm resampler).
+  local started = dev:start(8192, 8000, 16, 1)
+  check("RecordingDevice:start returns true", started == true, started)
+  check("getSampleRate reports the ACTUAL host rate (48000, not the 8000 asked)",
+    dev:getSampleRate() == 48000, dev:getSampleRate())
+  check("getBitDepth is 16", dev:getBitDepth() == 16, dev:getBitDepth())
+  check("getChannelCount is 1", dev:getChannelCount() == 1, dev:getChannelCount())
+
+  local n = dev:getSampleCount()
+  check("getSampleCount > 0 after start", n > 0, n)
+
+  local sd = dev:getData()
+  check("getData returns a SoundData with samples",
+    sd ~= nil and sd:getSampleCount() > 0, sd)
+
+  dev:stop()
+  check("isRecording is false after stop", dev:isRecording() == false, dev:isRecording())
+
+  -- Recover the 440 Hz tone from the captured SoundData (exactly what a game
+  -- receives) with a Goertzel filter in Lua, at the ACTUAL rate.
+  if sd ~= nil then
+    local rate = dev:getSampleRate()
+    local count = sd:getSampleCount()
+    local function goertzel(freq)
+      local w = 2 * math.pi * freq / rate
+      local c = 2 * math.cos(w)
+      local s1, s2 = 0.0, 0.0
+      for i = 0, count - 1 do
+        local s0 = sd:getSample(i) + c * s1 - s2
+        s2 = s1; s1 = s0
+      end
+      return math.sqrt(s1 * s1 + s2 * s2 - c * s1 * s2) / count
+    end
+    local ratio = goertzel(440) / (goertzel(440 * 2.71 + 37) + 1e-9)
+    check("captured SoundData carries the 440 Hz tone (ratio > 8)", ratio > 8, ratio)
+    coroutine.yield(("mic seam: %d samples @ %d Hz, 440 Hz ratio %.0f"):format(count, rate, ratio))
+  end
+end
+
 coroutine.yield(("checks done, %d failures"):format(failures))
 return failures == 0 and "STEP5-AUDIO-WITNESS: PASS" or "STEP5-AUDIO-WITNESS: FAIL"

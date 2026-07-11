@@ -56,6 +56,26 @@ WA_IMPORT("source_gain") void wa_source_gain(int handle, float gain);
 // reporting.
 WA_IMPORT("context_rate") int wa_context_rate(void);
 
+// --- Microphone capture (RecordingDevice) ---
+// The finite mic surface. A single active capture (the witness/first host use
+// one device); a multi-device host would add handles. Permission is the host's
+// concern (LÖVE's Android-shaped seam); enumeration is empty until granted on a
+// real host, so a game gates on getRecordingDevices() being non-empty.
+WA_IMPORT("mic_device_count") int wa_mic_device_count(void);
+WA_IMPORT("mic_device_name") int wa_mic_device_name(int index, char *dst, int maxLen);
+
+// Begin capture at (or near) the requested rate. Returns the ACTUAL rate the
+// host will deliver — it owns the resampling, and if it cannot honor the
+// request it reports what it gives (the capability check; no wasm DSP), or -1
+// if capture is unavailable. PCM is delivered as interleaved int16.
+WA_IMPORT("mic_start") int wa_mic_start(int requestedRate, int channels);
+WA_IMPORT("mic_stop") void wa_mic_stop(void);
+
+// Pull-based drain: how many frames are available now, and copy up to
+// maxFrames int16 frames into `dst`, returning the number copied.
+WA_IMPORT("mic_sample_count") int wa_mic_sample_count(void);
+WA_IMPORT("mic_read") int wa_mic_read(void *dst, int maxFrames);
+
 }
 
 #undef WA_IMPORT

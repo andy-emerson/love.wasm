@@ -96,9 +96,10 @@ LOVE_SOURCES="
   $AUDIO_BACKEND
   $SRC/modules/sound/SoundData.cpp
   $SRC/modules/sound/Decoder.cpp
+  $SRC/modules/sound/wrap_SoundData.cpp
   $SRC/libraries/noise1234/noise1234.cpp
   $SRC/libraries/noise1234/simplexnoise1234.cpp
-  $BOOT/pump-ext.cpp
+  $HERE/audio-ext.cpp
   $BOOT/threads-wasi.cpp
   $BOOT/filesystem-stub.cpp
 "

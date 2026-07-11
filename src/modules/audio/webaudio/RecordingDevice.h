@@ -24,6 +24,8 @@
 #include "audio/RecordingDevice.h"
 #include "sound/SoundData.h"
 
+#include <string>
+
 namespace love
 {
 namespace audio
@@ -31,10 +33,13 @@ namespace audio
 namespace webaudio
 {
 
-// Inert placeholder for now: the microphone seam (getUserMedia -> AudioWorklet,
-// permission via LÖVE's existing Android-shaped seam, rate delegated to the
-// host) is a later sub-step in this same branch — see wasi/audio/DESIGN.md.
-// Until then getRecordingDevices() returns empty, exactly like the null backend.
+// Microphone capture over the host mic seam (wa_mic_* imports). Preserves
+// LÖVE's synchronous, pull-based RecordingDevice contract: start() begins host
+// capture, the game polls getSampleCount() and drains getData(). The host owns
+// permission, the getUserMedia -> AudioWorklet graph, and the rate conversion;
+// getSampleRate() reports the ACTUAL rate the host delivers (which may differ
+// from the request — the capability check, no wasm resampler). PCM is delivered
+// as int16 (the trivial cast from the browser's Float32 lives host-side).
 class RecordingDevice : public love::audio::RecordingDevice
 {
 public:
@@ -52,7 +57,13 @@ public:
 	virtual bool isRecording() const;
 
 private:
-	static const char *name;
+	std::string name;
+	int samples = DEFAULT_SAMPLES;    // requested ring-buffer capacity
+	int sampleRate = 0;               // ACTUAL delivered rate (0 until started)
+	int bitDepth = 16;                // int16 is what the host delivers
+	int channels = DEFAULT_CHANNELS;
+	bool recording = false;
+
 }; //RecordingDevice
 
 } //webaudio

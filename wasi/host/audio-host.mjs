@@ -21,6 +21,13 @@ export function makeAudioHost() {
   const srcs = new Map();             // handle -> { rate, channels, chunks:[Float32Array], played }
   let next = 0;
 
+  // Mic mock: one device, and on start a canned 440 Hz int16 sine. It delivers
+  // at 48000 regardless of the requested rate — simulating a host that can't
+  // honor the request, so the backend reports the ACTUAL rate (the capability
+  // check; no wasm resampler). Deterministic, so the tone is recovered exactly.
+  const MIC_ACTUAL_RATE = 48000;
+  let mic = null;                     // { pcm: Int16Array, cursor }
+
   // Single-frequency energy (Goertzel), used to recover a test tone.
   const goertzel = (samples, rate, freq) => {
     const w = 2 * Math.PI * freq / rate, c = 2 * Math.cos(w);
@@ -55,6 +62,34 @@ export function makeAudioHost() {
     source_stop(handle) { const s = srcs.get(handle); if (s) s.played = false; },
     source_gain(_handle, _gain) { /* recorded by a real host; unused by the tap */ },
     context_rate() { return CONTEXT_RATE; },
+
+    mic_device_count() { return 1; },
+    mic_device_name(index, dst, maxLen) {
+      if (index !== 0 || !memory) return 0;
+      const bytes = new TextEncoder().encode('mock-mic');
+      const n = Math.min(bytes.length, maxLen);
+      new Uint8Array(memory.buffer, dst, n).set(bytes.subarray(0, n));
+      return n;
+    },
+    mic_start(_requestedRate, _channels) {
+      const frames = 8000;
+      const pcm = new Int16Array(frames);
+      for (let i = 0; i < frames; i++)
+        pcm[i] = Math.round(Math.sin(2 * Math.PI * 440 * i / MIC_ACTUAL_RATE) * 30000);
+      mic = { pcm, cursor: 0 };
+      return MIC_ACTUAL_RATE;          // ACTUAL rate, not the request
+    },
+    mic_stop() { mic = null; },
+    mic_sample_count() { return mic ? mic.pcm.length - mic.cursor : 0; },
+    mic_read(dst, maxFrames) {
+      if (!mic || !memory) return 0;
+      const n = Math.min(maxFrames, mic.pcm.length - mic.cursor);
+      const dv = new DataView(memory.buffer);
+      for (let i = 0; i < n; i++)
+        dv.setInt16(dst + i * 2, mic.pcm[mic.cursor + i], true);
+      mic.cursor += n;
+      return n;
+    },
   };
 
   const concat = (chunks) => {

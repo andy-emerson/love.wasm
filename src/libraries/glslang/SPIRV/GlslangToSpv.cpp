@@ -10885,6 +10885,7 @@ int GetSpirvGeneratorVersion()
     return 11; // Make OpEmitMeshTasksEXT a terminal instruction
 }
 
+#ifndef GLSLANG_DISABLE_FILE_OUTPUT
 // Write SPIR-V out to a binary file
 bool OutputSpvBin(const std::vector<unsigned int>& spirv, const char* baseName)
 {
@@ -10938,6 +10939,7 @@ bool OutputSpvHex(const std::vector<unsigned int>& spirv, const char* baseName, 
     out.close();
     return true;
 }
+#endif // GLSLANG_DISABLE_FILE_OUTPUT
 
 //
 // Set up the glslang traversal

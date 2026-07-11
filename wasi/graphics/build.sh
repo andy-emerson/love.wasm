@@ -53,9 +53,11 @@ LOVE_SOURCES="
   $SRC/libraries/ddsparse/ddsparse.cpp
   $SRC/libraries/noise1234/noise1234.cpp
   $SRC/libraries/noise1234/simplexnoise1234.cpp
-  $SRC/modules/timer/Timer.cpp
   $SRC/modules/window/Window.cpp
+  $SRC/modules/filesystem/FileData.cpp
+  $SRC/modules/thread/Channel.cpp
   $HERE/graphics-ext.cpp
+  $HERE/graphics-deps-stub.cpp
   $BOOT/threads-wasi.cpp
   $BOOT/filesystem-stub.cpp
 "
@@ -75,6 +77,7 @@ GLSLANG_SOURCES="
 "
 C_SOURCES="
   $SRC/libraries/lz4/lz4.c $SRC/libraries/lz4/lz4hc.c
+  $SRC/libraries/xxHash/xxhash.c
   $SRC/libraries/lua53/lstrlib.c
   $ZLIB/adler32.c $ZLIB/compress.c $ZLIB/crc32.c $ZLIB/deflate.c $ZLIB/infback.c
   $ZLIB/inffast.c $ZLIB/inflate.c $ZLIB/inftrees.c $ZLIB/trees.c $ZLIB/uncompr.c $ZLIB/zutil.c

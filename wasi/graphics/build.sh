@@ -98,7 +98,7 @@ clang++-20 --target=wasm32-wasi -O2 $EH_FLAGS \
   -I"$GLSLANG" -I"$GLSLANG/glslang" -I"$GLSLANG/SPIRV" \
   -mexec-model=reactor \
   -Wl,-z,stack-size=8388608 \
-  -Wl,--export=malloc -Wl,--export=free \
+  -Wl,--export=malloc \
   -x c++ "$LUA/onelua.c" "$ROOT/wasi/pump/pump.cpp" $LOVE_SOURCES $GLSLANG_SOURCES \
   -x c $C_SOURCES -x none \
   "$GFXLIBS_DIR/libfreetype.a" "$GFXLIBS_DIR/libharfbuzz.a" \

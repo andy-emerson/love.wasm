@@ -54,9 +54,6 @@ export function makeWebGLHost() {
     return p;
   };
 
-  const noop = () => {};
-  const glenum = (id) => id; // targets/enums pass through as numbers
-
   const imports = {
     // --- strings / errors / queries (host-reported) ---
     glGetString(name) { return internString(HOST_STRINGS[name] ?? ''); },

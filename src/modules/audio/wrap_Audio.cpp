@@ -22,7 +22,18 @@
 #include "wrap_Audio.h"
 #include "filesystem/wrap_Filesystem.h"
 
+// Backend selection is guarded so a build without OpenAL (e.g. the wasm32-wasi
+// browser port, which has no OpenAL) can compile this module entry: default
+// builds define neither macro and are byte-unchanged (OpenAL, then null). A
+// build sets LOVE_AUDIO_NO_OPENAL to drop the OpenAL backend and/or
+// LOVE_AUDIO_WEBAUDIO to add the WebAudio one. Offered upstream as a generic
+// fix (an OpenAL-less build cannot compile wrap_Audio.cpp otherwise).
+#ifndef LOVE_AUDIO_NO_OPENAL
 #include "openal/Audio.h"
+#endif
+#ifdef LOVE_AUDIO_WEBAUDIO
+#include "webaudio/Audio.h"
+#endif
 #include "null/Audio.h"
 
 #include "common/runtime.h"
@@ -679,6 +690,10 @@ extern "C" int luaopen_love_audio(lua_State *L)
 {
 	Audio *instance = instance();
 
+	if (instance != nullptr)
+		instance->retain();
+
+#ifndef LOVE_AUDIO_NO_OPENAL
 	if (instance == nullptr)
 	{
 		// Try OpenAL first.
@@ -691,8 +706,22 @@ extern "C" int luaopen_love_audio(lua_State *L)
 			std::cout << e.what() << std::endl;
 		}
 	}
-	else
-		instance->retain();
+#endif
+
+#ifdef LOVE_AUDIO_WEBAUDIO
+	if (instance == nullptr)
+	{
+		// Browser WebAudio backend.
+		try
+		{
+			instance = new love::audio::webaudio::Audio();
+		}
+		catch(love::Exception &e)
+		{
+			std::cout << e.what() << std::endl;
+		}
+	}
+#endif
 
 	if (instance == nullptr)
 	{

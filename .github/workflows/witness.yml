@@ -128,3 +128,6 @@ jobs:
 
       - name: boot witness (LÖVE core under the pump, node + real Chromium)
         run: PREFIX="$PWD/wasi-eh" wasi/boot/run.sh
+
+      - name: audio witness (love.audio playback + mic, node + Chromium + fake-device capture)
+        run: PREFIX="$PWD/wasi-eh" wasi/audio/run.sh

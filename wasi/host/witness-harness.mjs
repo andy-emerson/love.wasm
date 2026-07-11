@@ -17,13 +17,35 @@ import { resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { WASI } from 'node:wasi';
 
+// Resolve playwright-core — a dev-only dependency that never lives in-repo. Try
+// the invoking cwd, then the session npm dir, then $HOME, so every caller
+// (runInChromium and the standalone mic runner) resolves it the same way.
+export function resolvePlaywright() {
+  for (const base of [process.cwd(), '/root/.love-wasi/npm', process.env.HOME || '/root']) {
+    try { return createRequire(resolve(base, 'noop.js'))('playwright-core'); } catch { /* next */ }
+  }
+  throw new Error('playwright-core not resolvable');
+}
+
+// A known-frequency 16-bit mono WAV as a node Buffer — a reference tone, and the
+// fake-microphone capture file for the real-mic witness.
+export function makeSineWav(freq, rate, seconds) {
+  const n = rate * seconds, bps = 2, dataLen = n * bps;
+  const buf = Buffer.alloc(44 + dataLen);
+  buf.write('RIFF', 0); buf.writeUInt32LE(36 + dataLen, 4); buf.write('WAVE', 8);
+  buf.write('fmt ', 12); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20);
+  buf.writeUInt16LE(1, 22); buf.writeUInt32LE(rate, 24);
+  buf.writeUInt32LE(rate * bps, 28); buf.writeUInt16LE(bps, 32); buf.writeUInt16LE(16, 34);
+  buf.write('data', 36); buf.writeUInt32LE(dataLen, 40);
+  for (let i = 0; i < n; i++)
+    buf.writeInt16LE(Math.max(-1, Math.min(1, Math.sin(2 * Math.PI * freq * i / rate))) * 32767, 44 + i * bps);
+  return buf;
+}
+
 // Launch an installed Chromium and run one self-contained page function against
 // its argument, returning whatever the page function returns.
 export async function runInChromium(pageFn, arg) {
-  // playwright-core is a dev-only dependency resolved from the invoking cwd
-  // (same pattern as lua-wasi's browser witness), so it never lives in-repo.
-  const require = createRequire(resolve(process.cwd(), 'noop.js'));
-  const { chromium } = require('playwright-core');
+  const { chromium } = resolvePlaywright();
   const executablePath = process.env.CHROMIUM && existsSync(process.env.CHROMIUM)
     ? process.env.CHROMIUM
     : undefined;  // otherwise let playwright resolve its installed chromium
@@ -68,23 +90,70 @@ export async function commandPageFn({ b64, shimSrc }) {
 // absent, not silently wrong. arg = { b64, boot, driverSrc, shimSrc, withNow };
 // withNow appends a performance.now getter for drivers that take one (the pump).
 // Self-contained (serialized into the page).
-export async function reactorPageFn({ b64, boot, driverSrc, shimSrc, withNow }) {
+// audioHostSrc (optional) is makeAudioHost stringified: when present, the
+// love_audio import surface is provided and, after the run, each Source's
+// captured PCM is played through a real OfflineAudioContext — proving WebAudio
+// resamples the source rate to the context rate AND the tone survives (not just
+// that the seam carried it). toneHz is the frequency to recover.
+// micHostSrc (optional) is makeBrowserMicHost stringified: when present, its
+// real getUserMedia -> AudioWorklet mic_* imports override the (mock) audio
+// host's, so the RecordingDevice seam is driven by real browser capture while
+// playback keeps the deterministic tap. Requires a secure-context page (the
+// caller serves localhost) and a fake audio device (launch flags).
+export async function reactorPageFn({ b64, boot, driverSrc, shimSrc, audioHostSrc, micHostSrc, toneHz, withNow }) {
   const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   const makeWasiShim = new Function('return ' + shimSrc)();
   const shim = makeWasiShim();
   const lines = [];
+  let audio = null, mic = null;
+  const extra = {};
+  if (audioHostSrc) {
+    const makeAudioHost = new Function('return ' + audioHostSrc)();
+    audio = makeAudioHost();
+    extra.love_audio = audio.imports;
+  }
+  if (micHostSrc) {
+    const makeBrowserMicHost = new Function('return ' + micHostSrc)();
+    mic = makeBrowserMicHost();
+    extra.love_audio = { ...(extra.love_audio || {}), ...mic.imports };
+  }
   try {
     const module = await WebAssembly.compile(bytes);
     shim.autostub(module);
-    const instance = await WebAssembly.instantiate(module, { wasi_snapshot_preview1: shim.imports });
+    const instance = await WebAssembly.instantiate(module, { wasi_snapshot_preview1: shim.imports, ...extra });
     shim.bind(instance.exports.memory);
+    if (audio) audio.bind(instance.exports.memory);
+    if (mic) mic.bind(instance.exports.memory);
     instance.exports._initialize();  // reactor ctors
     const drive = new Function('return ' + driverSrc)();
     const args = [instance.exports, boot, (cb) => requestAnimationFrame(cb)];
     if (withNow) args.push(() => performance.now());
     args.push((line) => lines.push(line));
     const ok = await drive(...args);
-    return { ok, lines, stdout: shim.stdout };
+
+    // Post-run: render captured Sources through real WebAudio and recover the
+    // tone from the RENDERED output (the browser did the resample + mix).
+    let audioSources = 0, audioTone = null;
+    if (audio) {
+      const list = audio.sources();
+      audioSources = list.length;
+      let best = 0;
+      for (const s of list) {
+        if (!s.pcm.length) continue;
+        const ctxRate = 48000;
+        const frames = Math.max(1, Math.ceil(s.pcm.length * ctxRate / s.rate));
+        const off = new OfflineAudioContext(1, frames, ctxRate);
+        const buf = off.createBuffer(1, s.pcm.length, s.rate);
+        buf.getChannelData(0).set(s.pcm);
+        const node = off.createBufferSource(); node.buffer = buf; node.connect(off.destination); node.start();
+        const rendered = await off.startRendering();
+        const outCh = rendered.getChannelData(0);
+        const r = audio.goertzel(outCh, ctxRate, toneHz) / (audio.goertzel(outCh, ctxRate, toneHz * 2.71 + 37) + 1e-9);
+        best = Math.max(best, r);
+      }
+      audioTone = best;
+    }
+    return { ok, lines, stdout: shim.stdout, audioSources, audioTone };
   } catch (e) {
     // Decode the shim's proc_exit sentinel so it doesn't print [object Object].
     const error = (e && typeof e.wasiExit === 'number') ? ('proc_exit(' + e.wasiExit + ')') : String(e);
@@ -95,10 +164,15 @@ export async function reactorPageFn({ b64, boot, driverSrc, shimSrc, withNow }) 
 // Node leg: instantiate a reactor under node's WASI (an independent, complete
 // WASI host — a deliberate cross-check against the hand-rolled browser shim,
 // not a duplicate) and run the shared transcript. withNow appends a
-// performance.now getter for drivers that take one (the pump).
-export async function runReactorNode(bytes, driver, bootSrc, { withNow = false } = {}) {
+// performance.now getter for drivers that take one (the pump). extraImports adds
+// non-WASI import modules (e.g. { love_audio: audioHost.imports }); onInstance
+// runs right after instantiate so a host can bind the instance's memory before
+// any import fires.
+export async function runReactorNode(bytes, driver, bootSrc, { withNow = false, extraImports = {}, onInstance } = {}) {
   const wasi = new WASI({ version: 'preview1' });
-  const { instance } = await WebAssembly.instantiate(bytes, wasi.getImportObject());
+  const importObject = { ...wasi.getImportObject(), ...extraImports };
+  const { instance } = await WebAssembly.instantiate(bytes, importObject);
+  if (onInstance) onInstance(instance);
   wasi.initialize(instance);  // reactor: runs ctors, no _start
   const args = [instance.exports, bootSrc, (cb) => setTimeout(cb, 0)];
   if (withNow) args.push(() => performance.now());

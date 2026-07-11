@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-command graphics witness (build-order step 4). Two witnesses:
+# One-command graphics witness (build-order step 4). Three witnesses:
 #
 #   4.1a — raw-GL readback: a command module (witness-gl.cpp) proving the
 #          WebGL2 import plumbing + glReadPixels round-trip, on node (a mock
@@ -9,6 +9,9 @@
 #          and recovering the pixel through the graphics-ext bridge. Chromium
 #          only — driving the real backend hits ~100+ GL entry points a node
 #          mock cannot fake, so the node leg stays at 4.1a.
+#   4.2  — first primitive draw: the same real backend now draws a filled
+#          rectangle (shader compile + vertex stream + glDrawArrays) and reads
+#          the drawn pixel back. Same wasm as 4.1c, Chromium only.
 #
 #   PREFIX=/path/to/wasi-eh wasi/graphics/run.sh
 #

@@ -1,15 +1,22 @@
-// Step-4 (4.1c) pump extension for the graphics build: preload love (like
-// wasi/boot/pump-ext.cpp) and register the bridge the witness drives.
+// Step-4 (4.1c + 4.2) pump extension for the graphics build: preload love (like
+// wasi/boot/pump-ext.cpp) and register the two bridges the witnesses drive.
 //
 // Why a bridge: on desktop, love.window creates the GL context and calls
 // Graphics::setMode; that window backend is step-6 work, deliberately not built
-// yet (verified: setMode/clear don't need a window — isActive() is only a Lua
-// query, never a render guard). So this ext plays window's one structural role
-// for the witness — call setMode against the host's already-current WebGL2
-// context — then exercises the REAL opengl backend: clear to a known color,
-// present, and read the pixel back via glReadPixels. It drives the actual
-// engine Graphics::setMode/clear/present (the Lua wrap over these lands with the
-// window seam in step 6); the fidelity claim here is the backend, not the wrap.
+// yet. So this ext plays window's one structural role for the witness — call
+// setMode against the host's already-current WebGL2 context — then exercises the
+// REAL opengl backend. Two bridges: __wasi_gfx_clear_read (4.1c) clears to a
+// known colour and reads it back; __wasi_gfx_draw_read (4.2) draws a filled
+// rectangle and reads the drawn pixel back.
+//
+// One windowless subtlety the draw path exposed: present() guards on isActive(),
+// which requires a window, so windowless it early-returns without flushing the
+// batched draw. clear() writes the bound FBO directly so 4.1c never noticed;
+// 4.2's rectangle only enqueues, so its bridge calls flushBatchedDraws()
+// explicitly and reads the still-bound internal backbuffer FBO. The window seam
+// (step 6) restores present()'s flush + resolve-to-system-backbuffer path, and
+// the Lua wrap over these calls lands then too; the fidelity claim here is the
+// backend, not the wrap.
 #include "common/runtime.h"
 #include "common/Color.h"
 #include "common/Optional.h"

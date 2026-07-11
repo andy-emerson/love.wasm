@@ -18,6 +18,7 @@
 #include "common/runtime.h"
 #include "audio/Source.h"
 #include "video/VideoStream.h"
+#include "filesystem/File.h"
 #include "filesystem/FileData.h"
 #include "filesystem/wrap_Filesystem.h"
 #include "thread/Channel.h"
@@ -29,6 +30,7 @@
 // never RTTI-checks these, and the real modules define the authoritative ones.
 namespace love { namespace audio { love::Type Source::type("Source", &Object::type); } }
 namespace love { namespace video { love::Type VideoStream::type("VideoStream", &Object::type); } }
+namespace love { namespace filesystem { love::Type File::type("File", &Object::type); } }
 
 // love.filesystem file-loading helpers (real module is a step-6 seam). Loud.
 namespace love { namespace filesystem {

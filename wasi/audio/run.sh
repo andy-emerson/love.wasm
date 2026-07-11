@@ -29,4 +29,12 @@ node --no-warnings "$HERE/run-node.mjs" "$TMP/love-audio.wasm"
 echo "== chromium =="
 node "$HERE/run-browser.mjs" "$TMP/love-audio.wasm"
 
+# The webaudio backend also gets the real-capture mic leg: getUserMedia ->
+# AudioWorklet against a Chromium fake device, driving RecordingDevice through
+# the reactor (the mock legs above use the deterministic mic host).
+if [ "$BACKEND" = "webaudio" ]; then
+  echo "== chromium (real mic capture) =="
+  node "$HERE/run-browser-mic.mjs" "$TMP/love-audio.wasm"
+fi
+
 echo "audio witness ($BACKEND): node + browser PASS"

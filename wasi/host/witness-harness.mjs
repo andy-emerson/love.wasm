@@ -73,17 +73,27 @@ export async function commandPageFn({ b64, shimSrc }) {
 // captured PCM is played through a real OfflineAudioContext — proving WebAudio
 // resamples the source rate to the context rate AND the tone survives (not just
 // that the seam carried it). toneHz is the frequency to recover.
-export async function reactorPageFn({ b64, boot, driverSrc, shimSrc, audioHostSrc, toneHz, withNow }) {
+// micHostSrc (optional) is makeBrowserMicHost stringified: when present, its
+// real getUserMedia -> AudioWorklet mic_* imports override the (mock) audio
+// host's, so the RecordingDevice seam is driven by real browser capture while
+// playback keeps the deterministic tap. Requires a secure-context page (the
+// caller serves localhost) and a fake audio device (launch flags).
+export async function reactorPageFn({ b64, boot, driverSrc, shimSrc, audioHostSrc, micHostSrc, toneHz, withNow }) {
   const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   const makeWasiShim = new Function('return ' + shimSrc)();
   const shim = makeWasiShim();
   const lines = [];
-  let audio = null;
+  let audio = null, mic = null;
   const extra = {};
   if (audioHostSrc) {
     const makeAudioHost = new Function('return ' + audioHostSrc)();
     audio = makeAudioHost();
     extra.love_audio = audio.imports;
+  }
+  if (micHostSrc) {
+    const makeBrowserMicHost = new Function('return ' + micHostSrc)();
+    mic = makeBrowserMicHost();
+    extra.love_audio = { ...(extra.love_audio || {}), ...mic.imports };
   }
   try {
     const module = await WebAssembly.compile(bytes);
@@ -91,6 +101,7 @@ export async function reactorPageFn({ b64, boot, driverSrc, shimSrc, audioHostSr
     const instance = await WebAssembly.instantiate(module, { wasi_snapshot_preview1: shim.imports, ...extra });
     shim.bind(instance.exports.memory);
     if (audio) audio.bind(instance.exports.memory);
+    if (mic) mic.bind(instance.exports.memory);
     instance.exports._initialize();  // reactor ctors
     const drive = new Function('return ' + driverSrc)();
     const args = [instance.exports, boot, (cb) => requestAnimationFrame(cb)];

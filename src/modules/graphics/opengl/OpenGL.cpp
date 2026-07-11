@@ -36,8 +36,15 @@
 #include <cstring>
 #include <cstdio>
 
-// For SDL_GL_GetProcAddress.
+// For SDL_GL_GetProcAddress. A build that supplies the GL entry points by static
+// linkage rather than a runtime proc-address loader (e.g. the wasm32-wasi browser
+// port, whose host WebGL2 context is the GL surface) defines
+// LOVE_GRAPHICS_GL_STATIC_IMPORTS and needs no SDL here. Default builds define
+// neither macro and are byte-unchanged. Offered upstream as a generic seam (an
+// SDL-less GL build cannot otherwise compile this backend).
+#ifndef LOVE_GRAPHICS_GL_STATIC_IMPORTS
 #include <SDL3/SDL_video.h>
+#endif
 
 #ifdef LOVE_IOS
 #include <SDL3/SDL_video.h>
@@ -54,6 +61,17 @@ namespace graphics
 namespace opengl
 {
 
+#ifdef LOVE_GRAPHICS_GL_STATIC_IMPORTS
+// Supplied by the build's GL import shim (love-wasi: wasi/graphics/gl-imports.cpp,
+// generated). The GL entry points are static wasm imports; the "loader" returns
+// each import's address so glad's fp_* table populates exactly as on desktop.
+void *getStaticGLProcAddress(const char *name);
+
+static void *LOVEGetProcAddress(const char *name)
+{
+	return getStaticGLProcAddress(name);
+}
+#else
 static void *LOVEGetProcAddress(const char *name)
 {
 #ifdef LOVE_ANDROID
@@ -64,6 +82,7 @@ static void *LOVEGetProcAddress(const char *name)
 
 	return (void *) SDL_GL_GetProcAddress(name);
 }
+#endif
 
 OpenGL::TempDebugGroup::TempDebugGroup(const char *name)
 {

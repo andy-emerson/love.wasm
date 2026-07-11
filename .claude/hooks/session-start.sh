@@ -37,7 +37,24 @@ PW_BROWSERS="${PLAYWRIGHT_BROWSERS_PATH:-/opt/pw-browsers}"
 
 # Overridable knobs (env wins), so a session can pin different versions.
 SYSROOT_TAG="${LOVE_WASI_SYSROOT_TAG:-sysroot}"
-SYSROOT_URL="https://github.com/Lua2D/love-wasi/releases/download/$SYSROOT_TAG/wasi-eh.tar.gz"
+# The sysroot is published by THIS repo's publish-sysroot.yml as a release asset,
+# so fetch it from the same repo the working copy came from — derived from the
+# origin remote, so the fork it's developed on (wasiware/love-wasi today) and its
+# eventual canonical home both resolve without editing this line. A hardcoded org
+# here is the classic skew bug: the workflow publishes to $GITHUB_REPOSITORY, and
+# if the hook names a different repo the fetch 404s even though the asset exists.
+# Override with LOVE_WASI_SYSROOT_REPO=owner/repo.
+sysroot_repo() {
+  local url
+  url=$(git -C "$(dirname "${BASH_SOURCE[0]}")" remote get-url origin 2>/dev/null) || return 1
+  url=${url%.git}                       # drop a trailing .git
+  case "$url" in
+    *github.com[:/]*) printf '%s\n' "${url#*github.com}" | sed 's#^[:/]##' ;;  # -> owner/repo (https or ssh)
+    *) return 1 ;;
+  esac
+}
+SYSROOT_REPO="${LOVE_WASI_SYSROOT_REPO:-$(sysroot_repo || echo wasiware/love-wasi)}"
+SYSROOT_URL="https://github.com/$SYSROOT_REPO/releases/download/$SYSROOT_TAG/wasi-eh.tar.gz"
 NODE_VER="${LOVE_WASI_NODE_VER:-v24.18.0}"
 PLAYWRIGHT_VER="${LOVE_WASI_PLAYWRIGHT_VER:-1.61.1}"
 
@@ -107,8 +124,10 @@ else
     log "sysroot extracted to $PREFIX"
     [ -f "$PREFIX/PROVENANCE" ] && log "provenance: $(head -2 "$PREFIX/PROVENANCE" | tr '\n' ' ')"
   else
-    log "WARNING: could not fetch the sysroot tarball."
-    log "  If publish-sysroot.yml has not run on wasi yet, build once with:"
+    log "WARNING: could not fetch the sysroot tarball from $SYSROOT_URL."
+    log "  Expected a publish-sysroot.yml release asset on $SYSROOT_REPO (tag: $SYSROOT_TAG)."
+    log "  If that repo has no such release yet, trigger the workflow (workflow_dispatch),"
+    log "  or point at another repo's asset: LOVE_WASI_SYSROOT_REPO=owner/repo. Or build once:"
     log "    WORK=\$HOME/.love-wasi/llvm-eh PREFIX=$PREFIX wasi/toolchain/build-libcxx-eh.sh"
     log "  The witnesses need it; everything else is ready."
   fi

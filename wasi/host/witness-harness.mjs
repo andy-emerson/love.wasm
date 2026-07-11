@@ -68,23 +68,59 @@ export async function commandPageFn({ b64, shimSrc }) {
 // absent, not silently wrong. arg = { b64, boot, driverSrc, shimSrc, withNow };
 // withNow appends a performance.now getter for drivers that take one (the pump).
 // Self-contained (serialized into the page).
-export async function reactorPageFn({ b64, boot, driverSrc, shimSrc, withNow }) {
+// audioHostSrc (optional) is makeAudioHost stringified: when present, the
+// love_audio import surface is provided and, after the run, each Source's
+// captured PCM is played through a real OfflineAudioContext — proving WebAudio
+// resamples the source rate to the context rate AND the tone survives (not just
+// that the seam carried it). toneHz is the frequency to recover.
+export async function reactorPageFn({ b64, boot, driverSrc, shimSrc, audioHostSrc, toneHz, withNow }) {
   const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   const makeWasiShim = new Function('return ' + shimSrc)();
   const shim = makeWasiShim();
   const lines = [];
+  let audio = null;
+  const extra = {};
+  if (audioHostSrc) {
+    const makeAudioHost = new Function('return ' + audioHostSrc)();
+    audio = makeAudioHost();
+    extra.love_audio = audio.imports;
+  }
   try {
     const module = await WebAssembly.compile(bytes);
     shim.autostub(module);
-    const instance = await WebAssembly.instantiate(module, { wasi_snapshot_preview1: shim.imports });
+    const instance = await WebAssembly.instantiate(module, { wasi_snapshot_preview1: shim.imports, ...extra });
     shim.bind(instance.exports.memory);
+    if (audio) audio.bind(instance.exports.memory);
     instance.exports._initialize();  // reactor ctors
     const drive = new Function('return ' + driverSrc)();
     const args = [instance.exports, boot, (cb) => requestAnimationFrame(cb)];
     if (withNow) args.push(() => performance.now());
     args.push((line) => lines.push(line));
     const ok = await drive(...args);
-    return { ok, lines, stdout: shim.stdout };
+
+    // Post-run: render captured Sources through real WebAudio and recover the
+    // tone from the RENDERED output (the browser did the resample + mix).
+    let audioSources = 0, audioTone = null;
+    if (audio) {
+      const list = audio.sources();
+      audioSources = list.length;
+      let best = 0;
+      for (const s of list) {
+        if (!s.pcm.length) continue;
+        const ctxRate = 48000;
+        const frames = Math.max(1, Math.ceil(s.pcm.length * ctxRate / s.rate));
+        const off = new OfflineAudioContext(1, frames, ctxRate);
+        const buf = off.createBuffer(1, s.pcm.length, s.rate);
+        buf.getChannelData(0).set(s.pcm);
+        const node = off.createBufferSource(); node.buffer = buf; node.connect(off.destination); node.start();
+        const rendered = await off.startRendering();
+        const outCh = rendered.getChannelData(0);
+        const r = audio.goertzel(outCh, ctxRate, toneHz) / (audio.goertzel(outCh, ctxRate, toneHz * 2.71 + 37) + 1e-9);
+        best = Math.max(best, r);
+      }
+      audioTone = best;
+    }
+    return { ok, lines, stdout: shim.stdout, audioSources, audioTone };
   } catch (e) {
     // Decode the shim's proc_exit sentinel so it doesn't print [object Object].
     const error = (e && typeof e.wasiExit === 'number') ? ('proc_exit(' + e.wasiExit + ')') : String(e);
@@ -95,10 +131,15 @@ export async function reactorPageFn({ b64, boot, driverSrc, shimSrc, withNow }) 
 // Node leg: instantiate a reactor under node's WASI (an independent, complete
 // WASI host — a deliberate cross-check against the hand-rolled browser shim,
 // not a duplicate) and run the shared transcript. withNow appends a
-// performance.now getter for drivers that take one (the pump).
-export async function runReactorNode(bytes, driver, bootSrc, { withNow = false } = {}) {
+// performance.now getter for drivers that take one (the pump). extraImports adds
+// non-WASI import modules (e.g. { love_audio: audioHost.imports }); onInstance
+// runs right after instantiate so a host can bind the instance's memory before
+// any import fires.
+export async function runReactorNode(bytes, driver, bootSrc, { withNow = false, extraImports = {}, onInstance } = {}) {
   const wasi = new WASI({ version: 'preview1' });
-  const { instance } = await WebAssembly.instantiate(bytes, wasi.getImportObject());
+  const importObject = { ...wasi.getImportObject(), ...extraImports };
+  const { instance } = await WebAssembly.instantiate(bytes, importObject);
+  if (onInstance) onInstance(instance);
   wasi.initialize(instance);  // reactor: runs ctors, no _start
   const args = [instance.exports, bootSrc, (cb) => setTimeout(cb, 0)];
   if (withNow) args.push(() => performance.now());

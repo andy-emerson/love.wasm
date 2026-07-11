@@ -53,9 +53,25 @@ LOVE_SOURCES="
   $SRC/libraries/ddsparse/ddsparse.cpp
   $SRC/libraries/noise1234/noise1234.cpp
   $SRC/libraries/noise1234/simplexnoise1234.cpp
+  $SRC/modules/timer/Timer.cpp
+  $SRC/modules/window/Window.cpp
   $HERE/graphics-ext.cpp
   $BOOT/threads-wasi.cpp
   $BOOT/filesystem-stub.cpp
+"
+
+# glslang: LÖVE's shader reflector (graphics/Shader.cpp reflects every shader
+# through it). The subset LÖVE's CMake compiles, Unix OSDependent (wasi is
+# unix-like), minus the file-output helpers stripped by GLSLANG_DISABLE_FILE_
+# OUTPUT (two carried portability patches: InfoSink.h filesystem guard + the
+# OutputSpv guard — see the commits; the InfoSink one is upstream PR #4334).
+GLSLANG="$SRC/libraries/glslang"
+GLSLANG_SOURCES="
+  $(find "$GLSLANG/SPIRV" -maxdepth 1 -name '*.cpp')
+  $(find "$GLSLANG/glslang/GenericCodeGen" -name '*.cpp')
+  $(find "$GLSLANG/glslang/MachineIndependent" -name '*.cpp')
+  $(find "$GLSLANG/glslang/ResourceLimits" -name '*.cpp')
+  $GLSLANG/glslang/OSDependent/Unix/ossource.cpp
 "
 C_SOURCES="
   $SRC/libraries/lz4/lz4.c $SRC/libraries/lz4/lz4hc.c
@@ -71,14 +87,16 @@ clang++-20 --target=wasm32-wasi -O2 $EH_FLAGS \
   -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS \
   -DLUA_USE_JUMPTABLE=0 -DMAKE_LIB -DLUAW_EXTERNAL_EH \
   -DLOVE_GRAPHICS_GL_STATIC_IMPORTS \
+  -DGLSLANG_DISABLE_FILE_OUTPUT \
   -DHAVE_CONFIG_H -I"$HERE/config/include" \
   -I"$LUA/wasi" -I"$LUA" \
   -I"$SRC" -I"$SRC/modules" -I"$SRC/libraries" -I"$ZLIB" \
   -I"$ROOT/wasi/vendor/freetype/include" -I"$ROOT/wasi/vendor/harfbuzz/src" \
+  -I"$GLSLANG" -I"$GLSLANG/glslang" -I"$GLSLANG/SPIRV" \
   -mexec-model=reactor \
   -Wl,-z,stack-size=8388608 \
   -Wl,--export=malloc -Wl,--export=free \
-  -x c++ "$LUA/onelua.c" "$ROOT/wasi/pump/pump.cpp" $LOVE_SOURCES \
+  -x c++ "$LUA/onelua.c" "$ROOT/wasi/pump/pump.cpp" $LOVE_SOURCES $GLSLANG_SOURCES \
   -x c $C_SOURCES -x none \
   "$GFXLIBS_DIR/libfreetype.a" "$GFXLIBS_DIR/libharfbuzz.a" \
   "$PREFIX/lib/unwind-wasm.o" "$PREFIX/lib/wasi-setjmp.o" \

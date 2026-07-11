@@ -12,4 +12,7 @@
 #define LOVE_ENABLE_GRAPHICS 1
 #define LOVE_ENABLE_IMAGE 1
 #define LOVE_ENABLE_FONT 1
-#define LOVE_ENABLE_WINDOW 1
+/* love.window is NOT enabled (its backend is step 6). Graphics only needs the
+ * love::window::Window *type* (getInstance<Window> returns null with no window,
+ * which is fine — isActive() is a query, not a render gate), so the build links
+ * the base window/Window.cpp for that symbol without registering the module. */

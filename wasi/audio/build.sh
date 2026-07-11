@@ -9,9 +9,10 @@
 # deterministic PCM to the host — the real seam). Both implement the same
 # love::audio::Audio abstraction, exactly the openal/null shape upstream.
 #
-# love.sound is not compiled: the witness feeds raw PCM through a queueable
-# Source via a love.data Data pointer, so the file decoders aren't on the
-# critical path yet (see wasi/audio/config/config.h).
+# The full love.sound module (decoders/lullaby) is not enabled; the SoundData
+# type is compiled and registered (sound/wrap_SoundData.cpp + audio-ext.cpp) so
+# RecordingDevice:getData() returns a usable SoundData. The file decoders aren't
+# on the critical path yet (see wasi/audio/config/config.h).
 #
 #   PREFIX=/path/to/wasi-eh BACKEND=null OUT=love-audio.wasm wasi/audio/build.sh
 set -euo pipefail

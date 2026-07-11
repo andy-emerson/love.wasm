@@ -1,9 +1,11 @@
 # love-wasi audio backend — design decisions
 
 The build-order step-5 audio seam. This records the decisions the `webaudio`
-backend is built on, and the (carried, not-yet-built) microphone plan. It is a
-plan/decisions note — grades below are targets until the code and its witnesses
-land.
+backend is built on, and the microphone plan — both now **built and witnessed**
+(playback + microphone, 440 Hz tone-recovery on node + Chromium, including a real
+`getUserMedia` capture leg). It remains the decisions note; where a passage below
+reads as a plan, the code has since landed it (the import names are kept in sync
+with `src/modules/audio/webaudio/Imports.h`).
 
 ## The one principle: love-wasi is a pure audio adapter
 
@@ -84,20 +86,21 @@ surface (host-agnostic — any host implements it; the witness supplies a mock
 that taps PCM for the seam readback):
 
 ```
-audio_source_create(rate, channels) -> handle    // one WebAudio node per Source
-audio_source_queue(handle, ptr, frames, rate, channels)  // native-rate PCM; host builds AudioBuffer at `rate`
-audio_source_play(handle) / _stop(handle) / _set_gain(handle, g)
-audio_context_rate() -> int                        // informational; the host, not wasm, resamples
+source_create(rate, channels) -> handle           // one WebAudio node per Source
+source_queue(handle, ptr, frames, rate, bitDepth, channels)  // int PCM; host builds an AudioBuffer at `rate`
+source_play(handle) / source_stop(handle) / source_gain(handle, g)
 ```
+(module `love_audio`; a static Source holds its PCM and flushes it on play(),
+a queueable Source pushes through queue().)
 
 Its witness recovers the **tone**, not just "executes": the node leg taps PCM
 at the import boundary (Goertzel at the test frequency), the Chromium leg reads
 it back through `OfflineAudioContext`.
 
-## The microphone plan (carried — built later this session, not filed)
+## The microphone plan (built — this branch's mic sub-step)
 
-Mic is a sequential sub-step in this same branch/PR (no separate issue, by
-decision). It maps LÖVE's existing `RecordingDevice` contract onto browser
+Mic is a sub-step in this same branch/PR (no separate issue, by decision). It
+maps LÖVE's existing `RecordingDevice` contract onto browser
 capture. The contract (`src/modules/audio/RecordingDevice.h`) is synchronous and
 pull-based: `start(samples, rate, bitDepth, channels) -> bool`, then the game
 polls `getSampleCount()` / drains `getData()`; defaults 8000 Hz / 16-bit / mono.
@@ -122,13 +125,16 @@ Mapping:
   Float32→int16 cast.
 - **Sync façade:** `start()` returns true iff the host holds a live stream
   (matches Android when permission is absent); state resolves across
-  frame-pump ticks (the async-across-frames model). `mic_permission_state`,
-  `mic_request_permission`, `mic_list_devices`/`mic_device_name`, `mic_start`,
-  `mic_sample_count`, `mic_drain` — the finite, predetermined import surface.
-- **Witness:** a mock host feeds a canned sine through `mic_drain` (pure
-  RecordingDevice logic), and Chromium's fake device
-  (`--use-file-for-fake-audio-capture`) drives the real getUserMedia →
-  AudioWorklet path end-to-end (proven feasible: `wasi/audio/probe-instrument.mjs`).
+  frame-pump ticks (the async-across-frames model). `mic_device_count`,
+  `mic_device_name`, `mic_start`, `mic_stop`, `mic_sample_count`, `mic_read` —
+  the finite import surface (module `love_audio`). Permission is host-side and
+  reflected at enumeration (empty until granted), not a wasm import — that is
+  the only Lua-visible recording surface (`love.audio.getRecordingDevices`).
+- **Witness:** a mock host feeds a canned sine through `mic_read` (pure
+  RecordingDevice logic, node + Chromium), and a dedicated real-capture leg
+  (`wasi/audio/run-browser-mic.mjs`) drives the real `getUserMedia` →
+  AudioWorklet path against Chromium's fake device end-to-end — recovering the
+  tone from the game-facing `SoundData`, with permission-gated enumeration.
 
 Superseded: the earlier mic sketch had resampling live in wasm. Decision 2
 replaced that with delegate-and-capability-check; this note is the current plan.

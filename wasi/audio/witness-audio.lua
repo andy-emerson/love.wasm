@@ -1,10 +1,11 @@
--- Step-5 sub-step 1a witness: the real LÖVE core booting under the pump WITH
--- love.audio linked. Proves the audio module wires up and a Source's whole
--- lifecycle (create -> queue PCM -> play -> stop) executes without crashing,
--- through the one wasm-EH runtime. The backend's ACTUAL sound output is
--- witnessed separately at the host seam (PCM readback), not from Lua — so this
--- witness is backend-agnostic: it asserts the contract executes, not that the
--- inert null backend makes noise.
+-- Step-5 audio witness (mock host): the real LÖVE core booting under the pump
+-- WITH love.audio linked. Covers a Source's whole lifecycle (create -> queue
+-- PCM -> play -> stop) AND the microphone seam (RecordingDevice enumerate ->
+-- start -> getData, tone recovered from the SoundData, then record->playback via
+-- a static Source), through the one wasm-EH runtime. Backend-agnostic: it
+-- asserts the contract executes; the actual sound is proven at the host seam
+-- (PCM readback, and the real-capture leg in run-browser-mic.mjs). The inert
+-- null backend exposes no devices, so the mic checks self-skip there.
 local failures = 0
 local function check(name, cond, got)
   if cond then

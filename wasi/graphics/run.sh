@@ -43,3 +43,17 @@ echo "GL-WITNESS chromium: PASS"
 
 echo
 echo "raw-GL witness (4.1a): node + Chromium PASS"
+
+# ── 4.1c: the love.graphics clear/readback witness ───────────────────────────
+# The real LÖVE core + love.graphics on the opengl backend, reseamed to a real
+# WebGL2 context, driven through the graphics-ext bridge to setMode + clear +
+# read the pixel back. Chromium only: driving the real backend exercises ~100+
+# GL entry points (shader compile, framebuffer setup), which a node mock cannot
+# fake — so the fidelity leg is real WebGL2 (the node leg stays at 4.1a).
+echo
+echo "### love.graphics witness (4.1c) ###"
+LOVE_WASM="$TMP/love-graphics.wasm"
+GFXLIBS_DIR="${GFXLIBS_DIR:-$PREFIX/gfxlibs}" PREFIX="$PREFIX" OUT="$LOVE_WASM" "$HERE/build.sh" >/dev/null
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM"
+echo "love.graphics witness (4.1c): Chromium PASS"

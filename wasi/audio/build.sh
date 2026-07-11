@@ -38,21 +38,25 @@ ZLIB="$ROOT/wasi/vendor/zlib"
 # audio abstraction (null: no-ops; webaudio: host imports) — no OpenAL, no SDL.
 # $AUDIO_DEFS drives wrap_Audio.cpp's guarded backend selection (the generic
 # upstream seam): this port never has OpenAL, so both backends define
-# LOVE_AUDIO_NO_OPENAL; webaudio additionally selects itself.
+# LOVE_AUDIO_NO_OPENAL; webaudio additionally selects itself. The null backend
+# is wrap_Audio.cpp's universal last-resort fallback (unguarded new null::Audio),
+# so it is ALWAYS linked; webaudio adds its files and is tried first.
+NULL_BACKEND="
+  $SRC/modules/audio/null/Audio.cpp
+  $SRC/modules/audio/null/Source.cpp
+  $SRC/modules/audio/null/RecordingDevice.cpp
+"
 case "$BACKEND" in
   null)
     AUDIO_DEFS="-DLOVE_AUDIO_NO_OPENAL"
-    AUDIO_BACKEND="
-      $SRC/modules/audio/null/Audio.cpp
-      $SRC/modules/audio/null/Source.cpp
-      $SRC/modules/audio/null/RecordingDevice.cpp
-    " ;;
+    AUDIO_BACKEND="$NULL_BACKEND" ;;
   webaudio)
     AUDIO_DEFS="-DLOVE_AUDIO_NO_OPENAL -DLOVE_AUDIO_WEBAUDIO"
     AUDIO_BACKEND="
       $SRC/modules/audio/webaudio/Audio.cpp
       $SRC/modules/audio/webaudio/Source.cpp
       $SRC/modules/audio/webaudio/RecordingDevice.cpp
+      $NULL_BACKEND
     " ;;
   *) echo "unknown BACKEND=$BACKEND (want null|webaudio)" >&2; exit 2 ;;
 esac

@@ -81,10 +81,12 @@ namespace love {
 namespace graphics {
 namespace opengl {
 
-// The loader glad's gladLoadGLLoader() calls once per GL entry point. Returns
-// the address of the matching static import, or null for anything the WebGL2
-// host doesn't provide (glad then leaves that fp_* null / its GLAD flag false).
-void *webgl_gl_loader(const char *name)
+// The GL proc-address hook the OpenGL backend calls under
+// LOVE_GRAPHICS_GL_STATIC_IMPORTS (its guarded loader seam) in place of
+// SDL_GL_GetProcAddress. Returns the address of the matching static import, or
+// null for anything the WebGL2 host doesn't provide (glad then leaves that fp_*
+// null / its GLAD flag false — the faithful GLES 3.0 profile).
+void *getStaticGLProcAddress(const char *name)
 {
 	static const struct { const char *name; void *fn; } table[] = {''')
 

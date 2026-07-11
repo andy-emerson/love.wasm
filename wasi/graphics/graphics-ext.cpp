@@ -6,8 +6,10 @@
 // yet. So this ext plays window's one structural role for the witness — call
 // setMode against the host's already-current WebGL2 context — then exercises the
 // REAL opengl backend. Two bridges: __wasi_gfx_clear_read (4.1c) clears to a
-// known colour and reads it back; __wasi_gfx_draw_read (4.2) draws a filled
-// rectangle and reads the drawn pixel back.
+// known colour and reads it back; __wasi_gfx_draw_read (4.2) fills half the
+// buffer with a rectangle and reads one pixel inside it and one outside, so the
+// witness confirms the primitive is positioned (drawn colour inside, clear
+// colour outside), not merely that the buffer is coloured.
 //
 // One windowless subtlety the draw path exposed: present() guards on isActive(),
 // which requires a window, so windowless it early-returns without flushing the
@@ -61,19 +63,28 @@ static int w_clear_read(lua_State *L)
 	return 4;
 }
 
-// __wasi_gfx_draw_read(r, g, b) -> (R, G, B, A) as 0..255 ints.
+// __wasi_gfx_draw_read(dr, dg, db, cr, cg, cb)
+//   -> (Rin, Gin, Bin, Ain,  Rout, Gout, Bout, Aout) as 0..255 ints.
 // The step-4 (4.2) witness: the first real geometry through the backend. Brings
-// the opengl backend up against the current host WebGL2 context, clears to
-// black, then draws a filled rectangle covering the whole 4x4 backbuffer in
-// (r,g,b,1) — exercising the batched-draw path (shader compile + vertex stream +
-// glDrawArrays), which the clear-only 4.1c witness never touched. Presents and
-// reads the centre pixel (2,2) back: recovering (r,g,b) proves the colour landed
-// where the geometry was rasterised, not merely that the buffer was cleared.
+// the opengl backend up against the current host WebGL2 context, clears the
+// whole 4x4 backbuffer to (cr,cg,cb,1), then draws a filled rectangle over only
+// the LEFT HALF (x 0->2, full height) in the distinct colour (dr,dg,db,1) —
+// exercising the batched-draw path (shader compile + vertex stream +
+// glDrawArrays), which the clear-only 4.1c witness never touched. It reads back
+// two pixels: one inside the rectangle (left column) and one outside it (right
+// column). Recovering the DRAW colour on the left AND the CLEAR colour on the
+// right proves the geometry landed where it was rasterised — position, not just
+// "something is coloured". The left-half rectangle spans full height, so the
+// inside/outside distinction is purely horizontal (x is not flipped between
+// LÖVE and glReadPixels), sidestepping the framebuffer Y-flip entirely.
 static int w_draw_read(lua_State *L)
 {
-	double r = luaL_checknumber(L, 1);
-	double g = luaL_checknumber(L, 2);
-	double b = luaL_checknumber(L, 3);
+	double dr = luaL_checknumber(L, 1);
+	double dg = luaL_checknumber(L, 2);
+	double db = luaL_checknumber(L, 3);
+	double cr = luaL_checknumber(L, 4);
+	double cg = luaL_checknumber(L, 5);
+	double cb = luaL_checknumber(L, 6);
 
 	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
 	if (gfx == nullptr)
@@ -83,13 +94,13 @@ static int w_draw_read(lua_State *L)
 	bb.width = bb.pixelWidth = 4;
 	bb.height = bb.pixelHeight = 4;
 
-	graphics::OptionalColorD black(ColorD(0.0, 0.0, 0.0, 1.0));
+	graphics::OptionalColorD clear(ColorD(cr, cg, cb, 1.0));
 
 	luax_catchexcept(L, [&]() {
 		gfx->setMode(nullptr, bb);
-		gfx->clear(black, OptionalInt(), OptionalDouble());
-		gfx->setColor(Colorf((float) r, (float) g, (float) b, 1.0f));
-		gfx->rectangle(graphics::Graphics::DRAW_FILL, 0.0f, 0.0f, 4.0f, 4.0f);
+		gfx->clear(clear, OptionalInt(), OptionalDouble());
+		gfx->setColor(Colorf((float) dr, (float) dg, (float) db, 1.0f));
+		gfx->rectangle(graphics::Graphics::DRAW_FILL, 0.0f, 0.0f, 2.0f, 4.0f);
 		// rectangle() only enqueues into the batched-draw stream; the actual
 		// glDrawArrays happens on flush. present() would flush, but it early-
 		// returns while windowless (isActive() needs the step-6 window), so we
@@ -99,13 +110,18 @@ static int w_draw_read(lua_State *L)
 		gfx->flushBatchedDraws();
 	});
 
-	// Centre pixel of the 4x4 backbuffer: unambiguously inside the rectangle.
-	unsigned char px[4] = {0, 0, 0, 0};
-	glReadPixels(2, 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+	// Left column (x=0): inside the rectangle. Right column (x=3): outside it.
+	// y is arbitrary (2) since the rectangle spans the full height.
+	unsigned char in[4] = {0, 0, 0, 0};
+	unsigned char out[4] = {0, 0, 0, 0};
+	glReadPixels(0, 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, in);
+	glReadPixels(3, 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, out);
 
 	for (int i = 0; i < 4; i++)
-		lua_pushinteger(L, px[i]);
-	return 4;
+		lua_pushinteger(L, in[i]);
+	for (int i = 0; i < 4; i++)
+		lua_pushinteger(L, out[i]);
+	return 8;
 }
 
 extern "C" void pump_open_extensions(lua_State *L)

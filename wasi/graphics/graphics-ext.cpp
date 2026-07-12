@@ -1,18 +1,21 @@
-// Step-4 (4.1c + 4.2 + 4.3) pump extension for the graphics build: preload love
-// (like wasi/boot/pump-ext.cpp) and register the bridges the witnesses drive.
+// Step-4 (4.1c + 4.2 + 4.3 + 4.4) pump extension for the graphics build: preload
+// love (like wasi/boot/pump-ext.cpp) and register the bridges the witnesses drive.
 //
 // Why a bridge: on desktop, love.window creates the GL context and calls
 // Graphics::setMode; that window backend is step-6 work, deliberately not built
 // yet. So this ext plays window's one structural role for the witness — call
 // setMode against the host's already-current WebGL2 context — then exercises the
-// REAL opengl backend. Three bridges: __wasi_gfx_clear_read (4.1c) clears to a
+// REAL opengl backend. Four bridges: __wasi_gfx_clear_read (4.1c) clears to a
 // known colour and reads it back; __wasi_gfx_draw_read (4.2) fills half the
 // buffer with a rectangle and reads one pixel inside it and one outside, so the
 // witness confirms the primitive is positioned (drawn colour inside, clear
 // colour outside), not merely that the buffer is coloured; __wasi_gfx_draw_prims
 // (4.3) draws the rest of the 2D primitive set — circle, triangle, points,
 // line-mode rectangle, polyline — in one frame and reads a covered pixel of each
-// back (plus the outline's hollow centre, and a background pixel).
+// back (plus the outline's hollow centre, and a background pixel);
+// __wasi_gfx_draw_texture (4.4) uploads a 2x2 four-texel image to a real texture
+// and draws it scaled, reading each texel's block back to prove upload + sampler
+// + UV mapping.
 //
 // One windowless subtlety the draw path exposed: present() guards on isActive(),
 // which requires a window, so windowless it early-returns without flushing the
@@ -30,7 +33,9 @@
 #include "common/Color.h"
 #include "common/Optional.h"
 #include "common/Vector.h"
+#include "common/Matrix.h"
 #include "graphics/Graphics.h"
+#include "image/ImageData.h"
 #include "libraries/glad/gladfuncs.hpp"
 
 extern "C" int luaopen_love(lua_State *L);
@@ -207,10 +212,77 @@ static int w_draw_prims(lua_State *L)
 	return 28;
 }
 
+// __wasi_gfx_draw_texture() -> 20 ints: five (R,G,B,A) samples, in this order —
+//   texel(0,0) TL, texel(1,0) TR, texel(0,1) BL, texel(1,1) BR, background.
+// The step-4 (4.4) witness: the first texture through the backend. It builds a
+// 2x2 RGBA8 image with four distinct texels from CPU pixels (image::ImageData ->
+// Texture::Slices -> newTexture, which uploads via glTexStorage2D/glTexSubImage),
+// sets NEAREST filtering, and draws it scaled 4x over a distinct clear so each
+// texel covers a 4x4 block of the 16x16 backbuffer. The constant colour is white
+// so the texture's own colour passes through the textured shader unmodified.
+// Reading the centre of each block back recovers that texel's colour AND its
+// position — proving texture upload, sampler binding, the STANDARD_TEXTURE
+// shader, and correct UV mapping (orientation included: texel (0,0) lands
+// top-left). A background pixel confirms the clear colour survives off the quad.
+// The four texel colours are fixed here and mirrored in witness-texture.lua.
+static int w_draw_texture(lua_State *L)
+{
+	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
+	if (gfx == nullptr)
+		return luaL_error(L, "love.graphics is not registered (require it first)");
+
+	const int W = 16, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	graphics::OptionalColorD clear(ColorD(0.3, 0.3, 0.3, 1.0)); // (76,76,76)
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+		gfx->clear(clear, OptionalInt(), OptionalDouble());
+		gfx->setColor(Colorf(1, 1, 1, 1)); // white: texture colour passes through
+
+		auto *img = new image::ImageData(2, 2, PIXELFORMAT_RGBA8_UNORM);
+		img->setPixel(0, 0, Colorf(0.2f, 0.4f, 0.6f, 1.0f)); // TL (51,102,153)
+		img->setPixel(1, 0, Colorf(0.8f, 0.2f, 0.2f, 1.0f)); // TR (204,51,51)
+		img->setPixel(0, 1, Colorf(0.2f, 0.6f, 0.2f, 1.0f)); // BL (51,153,51)
+		img->setPixel(1, 1, Colorf(0.6f, 0.2f, 0.8f, 1.0f)); // BR (153,51,204)
+
+		graphics::Texture::Slices slices(graphics::TEXTURE_2D);
+		slices.set(0, 0, img);
+		img->release(); // Slices retains it; drop our creation ref.
+
+		graphics::Texture::Settings st;
+		st.width = 2; st.height = 2;
+		graphics::Texture *tex = gfx->newTexture(st, &slices);
+
+		graphics::SamplerState ss = tex->getSamplerState();
+		ss.minFilter = ss.magFilter = graphics::SamplerState::FILTER_NEAREST;
+		tex->setSamplerState(ss);
+
+		Matrix4 m(4.0f, 4.0f, 0.0f, 4.0f, 4.0f, 0.0f, 0.0f, 0.0f, 0.0f); // at (4,4), 4x
+		gfx->draw(tex, m);
+		gfx->flushBatchedDraws();
+		tex->release();
+	});
+
+	// Centre of each 4x4 texel block (LÖVE space), plus a background corner.
+	const int sx[5] = { 6, 10,  6, 10,  1 };
+	const int sy[5] = { 6,  6, 10, 10,  1 };
+	for (int i = 0; i < 5; i++)
+	{
+		unsigned char px[4] = {0, 0, 0, 0};
+		glReadPixels(sx[i], H - 1 - sy[i], 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+		for (int j = 0; j < 4; j++)
+			lua_pushinteger(L, px[j]);
+	}
+	return 20;
+}
+
 extern "C" void pump_open_extensions(lua_State *L)
 {
 	love::luax_preload(L, luaopen_love, "love");
 	lua_register(L, "__wasi_gfx_clear_read", w_clear_read);
 	lua_register(L, "__wasi_gfx_draw_read", w_draw_read);
 	lua_register(L, "__wasi_gfx_draw_prims", w_draw_prims);
+	lua_register(L, "__wasi_gfx_draw_texture", w_draw_texture);
 }

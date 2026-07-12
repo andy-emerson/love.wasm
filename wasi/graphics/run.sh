@@ -89,3 +89,15 @@ echo "### primitive-set witness (4.3) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-prims.lua"
 echo "primitive-set witness (4.3): Chromium PASS"
+
+# ── 4.4: the first texture ───────────────────────────────────────────────────
+# The first real pixel data through the backend: a 2x2 four-texel RGBA8 image
+# uploaded to a GL texture (glTexStorage2D/glTexSubImage) and drawn scaled with
+# NEAREST filtering, each texel's block read back to recover its colour and
+# position — proving texture upload, sampler binding, the textured shader, and
+# correct UV mapping. Same wasm as 4.1c/4.2/4.3; only the witness lua differs.
+echo
+echo "### texture witness (4.4) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-texture.lua"
+echo "texture witness (4.4): Chromium PASS"

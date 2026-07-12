@@ -13,7 +13,12 @@
 // reported limits: glGetString/glGetIntegerv/glGetFloatv answer from the real
 // context (gl.getParameter), never a static assumption.
 export function makeWebGLHost() {
-  const canvas = new OffscreenCanvas(4, 4);
+  // The system backbuffer LÖVE renders to when no MSAA internal backbuffer is
+  // requested (the witness case). Sized generously so a witness can setMode to
+  // any size up to this and position primitives with room; each witness reads
+  // back within its own viewport (anchored at the canvas's bottom-left origin),
+  // so a larger canvas never disturbs a smaller setMode.
+  const canvas = new OffscreenCanvas(64, 64);
   const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, alpha: true, antialias: false });
 
   let memory, malloc;

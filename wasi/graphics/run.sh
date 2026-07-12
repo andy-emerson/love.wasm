@@ -76,3 +76,16 @@ echo "### draw witness (4.2) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-draw.lua"
 echo "draw witness (4.2): Chromium PASS"
+
+# ── 4.3: the rest of the 2D primitive set ────────────────────────────────────
+# The same real backend drawing every remaining primitive category in one frame:
+# a high-vertex fan (filled circle), an arbitrary filled triangle, points
+# (gl_PointSize), and the distinct STROKE path (line-mode rectangle outline +
+# polyline). Each is read back at a covered pixel; the outline's hollow centre
+# and a background pixel confirm the clear colour survives where nothing drew.
+# Same wasm as 4.1c/4.2; only the witness lua differs. Chromium only.
+echo
+echo "### primitive-set witness (4.3) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-prims.lua"
+echo "primitive-set witness (4.3): Chromium PASS"

@@ -19,7 +19,10 @@ export function makeWebGLHost() {
   // back within its own viewport (anchored at the canvas's bottom-left origin),
   // so a larger canvas never disturbs a smaller setMode.
   const canvas = new OffscreenCanvas(64, 64);
-  const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, alpha: true, antialias: false });
+  // depth + stencil so the system backbuffer has the attachments love.graphics
+  // needs for depth testing and stencil masking (WebGL context attributes
+  // default both to false; the real preview needs them).
+  const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, alpha: true, antialias: false, depth: true, stencil: true });
 
   let memory, malloc;
   const HEAPU8  = () => new Uint8Array(memory.buffer);

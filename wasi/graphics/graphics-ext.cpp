@@ -1,4 +1,4 @@
-// Step-4 (4.1c + 4.2 + 4.3 + 4.4 + 4.5 + 4.6 + 4.7) pump extension for the
+// Step-4 (4.1c + 4.2 + 4.3 + 4.4 + 4.5 + 4.6 + 4.7 + 4.8) pump extension for the
 // graphics build: preload love (wasi/boot/pump-ext.cpp) and register the bridges.
 //
 // Why a bridge: on desktop, love.window creates the GL context and calls
@@ -21,7 +21,9 @@
 // canvas (4.6) renders into an off-screen canvas (render-target Texture) and
 // samples it back onto the backbuffer, proving the render-to-texture round trip;
 // __wasi_gfx_draw_text (4.7) prints text with the embedded default font, proving
-// FreeType glyph rasterisation feeds the textured-draw path.
+// FreeType glyph rasterisation feeds the textured-draw path; __wasi_gfx_draw_
+// state (4.8) exercises the cross-cutting render state — additive blend, scissor
+// clipping, stencil masking — in one frame, proving each composites/clips draws.
 //
 // One windowless subtlety the draw path exposed: present() guards on isActive(),
 // which requires a window, so windowless it early-returns without flushing the
@@ -464,6 +466,74 @@ static int w_draw_text(lua_State *L)
 	return 6;
 }
 
+// __wasi_gfx_draw_state() -> 20 ints: five (R,G,B,A) samples, in this order —
+//   blend result, scissor inside, scissor clipped-out, stencil inside,
+//   stencil masked-out.
+// The step-4 (4.8) witness: the cross-cutting render state — blend, scissor,
+// stencil — exercised in one frame over a distinct grey clear (51,51,51). It
+// draws (1) a rectangle top-left with ADDITIVE blend, so the result is grey +
+// draw = (153,153,153) not a replace; (2) a full-buffer blue rectangle with a
+// SCISSOR set to a 6x6 sub-rect, so blue lands only inside the scissor; and
+// (3) a 6x6 STENCIL mask, then a full-buffer red rectangle tested against it, so
+// red lands only where the stencil was written. Reading five pixels back proves
+// each: the blend sum inside its rect, blue inside the scissor but the clear
+// colour just outside it (blue was clipped), red inside the stencil but the
+// clear colour just outside it (red was masked). Needs a stencil-capable
+// backbuffer (host context depth+stencil; BackbufferSettings.stencil).
+static int w_draw_state(lua_State *L)
+{
+	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
+	if (gfx == nullptr)
+		return luaL_error(L, "love.graphics is not registered (require it first)");
+
+	const int W = 16, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	bb.stencil = true; bb.depth = true;
+	graphics::OptionalColorD clear(ColorD(0.2, 0.2, 0.2, 1.0)); // (51,51,51)
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+		gfx->clear(clear, OptionalInt(), OptionalDouble());
+
+		// (1) Additive blend, top-left: (0.4,0.4,0.4) added over the grey clear.
+		gfx->setBlendMode(graphics::BLEND_ADD, graphics::BLENDALPHA_MULTIPLY);
+		gfx->setColor(Colorf(0.4f, 0.4f, 0.4f, 1.0f));
+		gfx->rectangle(graphics::Graphics::DRAW_FILL, 1, 1, 6, 6);
+		gfx->setBlendMode(graphics::BLEND_ALPHA, graphics::BLENDALPHA_MULTIPLY);
+
+		// (2) Scissor, top-right: full-buffer blue draw clipped to a 6x6 rect.
+		gfx->setScissor(FRect{9, 1, 6, 6});
+		gfx->setColor(Colorf(0.2f, 0.4f, 0.6f, 1.0f)); // (51,102,153)
+		gfx->rectangle(graphics::Graphics::DRAW_FILL, 0, 0, 16, 16);
+		gfx->setScissor();
+
+		// (3) Stencil, bottom-left: mark a 6x6 stencil, then full-buffer red
+		//     draw tested against it.
+		gfx->setStencilMode(graphics::STENCIL_MODE_DRAW, 1);
+		gfx->rectangle(graphics::Graphics::DRAW_FILL, 1, 9, 6, 6);
+		gfx->setStencilMode(graphics::STENCIL_MODE_TEST, 1);
+		gfx->setColor(Colorf(0.8f, 0.2f, 0.4f, 1.0f)); // (204,51,102)
+		gfx->rectangle(graphics::Graphics::DRAW_FILL, 0, 0, 16, 16);
+		gfx->setStencilMode();
+
+		gfx->flushBatchedDraws();
+	});
+
+	// LÖVE-space samples: blend, scissor-in, scissor-out (below its rect),
+	// stencil-in, stencil-out (above its rect).
+	const int sx[5] = { 3, 11, 11,  3,  3 };
+	const int sy[5] = { 3,  3, 10, 11,  7 };
+	for (int i = 0; i < 5; i++)
+	{
+		unsigned char px[4] = {0, 0, 0, 0};
+		glReadPixels(sx[i], H - 1 - sy[i], 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+		for (int j = 0; j < 4; j++)
+			lua_pushinteger(L, px[j]);
+	}
+	return 20;
+}
+
 extern "C" void pump_open_extensions(lua_State *L)
 {
 	love::luax_preload(L, luaopen_love, "love");
@@ -474,4 +544,5 @@ extern "C" void pump_open_extensions(lua_State *L)
 	lua_register(L, "__wasi_gfx_draw_shader", w_draw_shader);
 	lua_register(L, "__wasi_gfx_draw_canvas", w_draw_canvas);
 	lua_register(L, "__wasi_gfx_draw_text", w_draw_text);
+	lua_register(L, "__wasi_gfx_draw_state", w_draw_state);
 }

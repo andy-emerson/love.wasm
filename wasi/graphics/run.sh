@@ -135,3 +135,14 @@ echo "### text witness (4.7) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-text.lua"
 echo "text witness (4.7): Chromium PASS"
+
+# ── 4.8: the cross-cutting render state ──────────────────────────────────────
+# Not a new drawing surface — the state that composites and clips draws: additive
+# blend (grey + draw summed, not replaced), scissor (a full-buffer draw clipped
+# to a sub-rect), and stencil (a full-buffer draw masked to a written region),
+# all in one frame with a stencil-capable backbuffer. Same wasm as 4.1c–4.7.
+echo
+echo "### render-state witness (4.8) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-state.lua"
+echo "render-state witness (4.8): Chromium PASS"

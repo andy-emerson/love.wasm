@@ -1,5 +1,5 @@
-// Step-4 (4.1c + 4.2 + 4.3 + 4.4 + 4.5 + 4.6) pump extension for the graphics
-// build: preload love (like wasi/boot/pump-ext.cpp) and register witness bridges.
+// Step-4 (4.1c + 4.2 + 4.3 + 4.4 + 4.5 + 4.6 + 4.7) pump extension for the
+// graphics build: preload love (wasi/boot/pump-ext.cpp) and register the bridges.
 //
 // Why a bridge: on desktop, love.window creates the GL context and calls
 // Graphics::setMode; that window backend is step-6 work, deliberately not built
@@ -19,7 +19,9 @@
 // inverts the vertex colour and draws with it, proving the glslang -> WebGL2 GLSL
 // path runs for shader code that did not ship with the engine; __wasi_gfx_draw_
 // canvas (4.6) renders into an off-screen canvas (render-target Texture) and
-// samples it back onto the backbuffer, proving the render-to-texture round trip.
+// samples it back onto the backbuffer, proving the render-to-texture round trip;
+// __wasi_gfx_draw_text (4.7) prints text with the embedded default font, proving
+// FreeType glyph rasterisation feeds the textured-draw path.
 //
 // One windowless subtlety the draw path exposed: present() guards on isActive(),
 // which requires a window, so windowless it early-returns without flushing the
@@ -40,6 +42,9 @@
 #include "common/Matrix.h"
 #include "graphics/Graphics.h"
 #include "graphics/Shader.h"
+#include "graphics/Font.h"
+#include "font/TextShaper.h"
+#include "font/TrueTypeRasterizer.h"
 #include "image/ImageData.h"
 #include "libraries/glad/gladfuncs.hpp"
 
@@ -396,6 +401,69 @@ static int w_draw_canvas(lua_State *L)
 	return 16;
 }
 
+// __wasi_gfx_draw_text() -> (inkLeft, inkRight,  Rbg, Gbg, Bbg, Abg).
+// The step-4 (4.7) witness: the first text — the last major drawing surface. It
+// prints "Aj" with the embedded default font (NotoSans) at the top-left of a
+// 32x16 backbuffer over a distinct clear, in the ink colour (51,102,153). Text
+// is the FreeType rasterizer (a glyph rasterised to a GPU atlas) feeding the
+// textured-draw path 4.4 proved — so this exercises real glyph rasterisation,
+// the atlas texture, and shaped/positioned glyph quads. Because glyph shapes are
+// anti-aliased and font-specific, the witness is coverage-based, not pixel-exact:
+// it counts "ink" pixels (blue-dominant, unlike the grey clear) in the left half
+// (where the text is) and the right half (which must stay empty), and samples a
+// background corner. Real localised coverage + an empty right half + a surviving
+// clear background prove the glyphs rasterised and landed where the text was
+// drawn — not that a specific pixel took a specific value.
+//
+// (LA8 note: the glyph atlas's native LA8 format needs texture swizzle, which
+// WebGL2 lacks; the OpenGL.cpp pixel-format seam reports LA8 unsupported so the
+// atlas falls back to RGBA8 here.)
+static int w_draw_text(lua_State *L)
+{
+	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
+	if (gfx == nullptr)
+		return luaL_error(L, "love.graphics is not registered (require it first)");
+
+	const int W = 32, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	graphics::OptionalColorD clear(ColorD(0.3, 0.3, 0.3, 1.0)); // (76,76,76)
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+		gfx->clear(clear, OptionalInt(), OptionalDouble());
+		font::TrueTypeRasterizer::Settings fs;
+		graphics::Font *font = gfx->newDefaultFont(12, fs);
+		gfx->setFont(font);
+		gfx->setColor(Colorf(1, 1, 1, 1)); // white; per-glyph colour comes from the string
+		std::vector<font::ColoredString> str;
+		str.push_back({ "Aj", Colorf(0.2f, 0.4f, 0.6f, 1.0f) }); // ink (51,102,153)
+		Matrix4 m(1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+		gfx->print(str, m);
+		gfx->flushBatchedDraws();
+		font->release();
+	});
+
+	unsigned char px[32*16*4];
+	glReadPixels(0, 0, W, H, GL_RGBA, GL_UNSIGNED_BYTE, px);
+	int inkLeft = 0, inkRight = 0;
+	for (int y = 0; y < H; y++)
+	{
+		for (int x = 0; x < W; x++)
+		{
+			unsigned char *p = &px[(y * W + x) * 4];
+			bool ink = ((int)p[2] - (int)p[0]) > 40; // blue-dominant vs grey clear
+			if (ink) { if (x < W / 2) inkLeft++; else inkRight++; }
+		}
+	}
+	lua_pushinteger(L, inkLeft);
+	lua_pushinteger(L, inkRight);
+	unsigned char corner[4] = {0, 0, 0, 0};
+	glReadPixels(W - 1, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, corner); // far corner
+	for (int j = 0; j < 4; j++) lua_pushinteger(L, corner[j]);
+	return 6;
+}
+
 extern "C" void pump_open_extensions(lua_State *L)
 {
 	love::luax_preload(L, luaopen_love, "love");
@@ -405,4 +473,5 @@ extern "C" void pump_open_extensions(lua_State *L)
 	lua_register(L, "__wasi_gfx_draw_texture", w_draw_texture);
 	lua_register(L, "__wasi_gfx_draw_shader", w_draw_shader);
 	lua_register(L, "__wasi_gfx_draw_canvas", w_draw_canvas);
+	lua_register(L, "__wasi_gfx_draw_text", w_draw_text);
 }

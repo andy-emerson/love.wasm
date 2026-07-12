@@ -123,3 +123,15 @@ echo "### canvas witness (4.6) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-canvas.lua"
 echo "canvas witness (4.6): Chromium PASS"
+
+# ── 4.7: the first text ──────────────────────────────────────────────────────
+# The last major drawing surface: print text with the embedded default font.
+# Real FreeType glyph rasterisation → a GPU glyph atlas → the textured-draw path,
+# checked by ink coverage where the text is (empty elsewhere). Needs the LA8
+# pixel-format seam (WebGL2 lacks the texture swizzle LÖVE's LA8 atlas uses, so
+# it falls back to RGBA8). Same wasm as 4.1c–4.6; only the witness lua differs.
+echo
+echo "### text witness (4.7) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-text.lua"
+echo "text witness (4.7): Chromium PASS"

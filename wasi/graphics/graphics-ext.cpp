@@ -1,11 +1,11 @@
-// Step-4 (4.1c + 4.2 + 4.3 + 4.4 + 4.5) pump extension for the graphics build:
-// preload love (like wasi/boot/pump-ext.cpp) and register the witness bridges.
+// Step-4 (4.1c + 4.2 + 4.3 + 4.4 + 4.5 + 4.6) pump extension for the graphics
+// build: preload love (like wasi/boot/pump-ext.cpp) and register witness bridges.
 //
 // Why a bridge: on desktop, love.window creates the GL context and calls
 // Graphics::setMode; that window backend is step-6 work, deliberately not built
 // yet. So this ext plays window's one structural role for the witness — call
 // setMode against the host's already-current WebGL2 context — then exercises the
-// REAL opengl backend. Four bridges: __wasi_gfx_clear_read (4.1c) clears to a
+// REAL opengl backend. Bridges: __wasi_gfx_clear_read (4.1c) clears to a
 // known colour and reads it back; __wasi_gfx_draw_read (4.2) fills half the
 // buffer with a rectangle and reads one pixel inside it and one outside, so the
 // witness confirms the primitive is positioned (drawn colour inside, clear
@@ -17,7 +17,9 @@
 // and draws it scaled, reading each texel's block back to prove upload + sampler
 // + UV mapping; __wasi_gfx_draw_shader (4.5) compiles a user pixel shader that
 // inverts the vertex colour and draws with it, proving the glslang -> WebGL2 GLSL
-// path runs for shader code that did not ship with the engine.
+// path runs for shader code that did not ship with the engine; __wasi_gfx_draw_
+// canvas (4.6) renders into an off-screen canvas (render-target Texture) and
+// samples it back onto the backbuffer, proving the render-to-texture round trip.
 //
 // One windowless subtlety the draw path exposed: present() guards on isActive(),
 // which requires a window, so windowless it early-returns without flushing the
@@ -334,6 +336,66 @@ static int w_draw_shader(lua_State *L)
 	return 8;
 }
 
+// __wasi_gfx_draw_canvas() -> 16 ints: four (R,G,B,A) samples, in this order —
+//   canvas rect B (top-left), canvas clear A (top-right), canvas clear A
+//   (bottom-left), backbuffer background.
+// The step-4 (4.6) witness: the first render target. It creates an 8x8 canvas
+// (a render-target Texture), switches rendering INTO it (an FBO switch), clears
+// it to A and fills its top-left quadrant with B, switches back to the
+// backbuffer, then draws the canvas texture onto the backbuffer at 1:1 over a
+// distinct background clear. Reading four pixels back proves: render-target
+// creation, rendering into a texture then sampling it out (round trip through an
+// off-screen FBO), and correct orientation in BOTH axes — B is recovered only at
+// the top-left of the canvas region (not flipped), A elsewhere on the canvas,
+// and the background clear survives outside it.
+static int w_draw_canvas(lua_State *L)
+{
+	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
+	if (gfx == nullptr)
+		return luaL_error(L, "love.graphics is not registered (require it first)");
+
+	const int W = 16, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	graphics::OptionalColorD bgclear(ColorD(0.3, 0.3, 0.3, 1.0));     // (76,76,76)
+	graphics::OptionalColorD canvasclear(ColorD(0.2, 0.4, 0.6, 1.0)); // A (51,102,153)
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+		gfx->clear(bgclear, OptionalInt(), OptionalDouble());
+
+		graphics::Texture::Settings st;
+		st.width = 8; st.height = 8;
+		st.renderTarget = true;
+		graphics::Texture *canvas = gfx->newTexture(st, nullptr);
+
+		gfx->setRenderTarget(graphics::Graphics::RenderTarget(canvas), 0);
+		gfx->clear(canvasclear, OptionalInt(), OptionalDouble());
+		gfx->setColor(Colorf(0.8f, 0.2f, 0.2f, 1.0f)); // B (204,51,51)
+		gfx->rectangle(graphics::Graphics::DRAW_FILL, 0.0f, 0.0f, 4.0f, 4.0f); // top-left quadrant
+		gfx->flushBatchedDraws();
+		gfx->setRenderTarget(); // back to the backbuffer
+
+		gfx->setColor(Colorf(1, 1, 1, 1)); // white: canvas colour passes through
+		Matrix4 m(4.0f, 4.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f); // at (4,4), 1:1
+		gfx->draw(canvas, m);
+		gfx->flushBatchedDraws();
+		canvas->release();
+	});
+
+	// LÖVE-space samples; the canvas covers (4,4)-(12,12), B its top-left quad.
+	const int sx[4] = { 5, 10,  6,  1 };
+	const int sy[4] = { 5,  5, 10,  1 };
+	for (int i = 0; i < 4; i++)
+	{
+		unsigned char px[4] = {0, 0, 0, 0};
+		glReadPixels(sx[i], H - 1 - sy[i], 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+		for (int j = 0; j < 4; j++)
+			lua_pushinteger(L, px[j]);
+	}
+	return 16;
+}
+
 extern "C" void pump_open_extensions(lua_State *L)
 {
 	love::luax_preload(L, luaopen_love, "love");
@@ -342,4 +404,5 @@ extern "C" void pump_open_extensions(lua_State *L)
 	lua_register(L, "__wasi_gfx_draw_prims", w_draw_prims);
 	lua_register(L, "__wasi_gfx_draw_texture", w_draw_texture);
 	lua_register(L, "__wasi_gfx_draw_shader", w_draw_shader);
+	lua_register(L, "__wasi_gfx_draw_canvas", w_draw_canvas);
 }

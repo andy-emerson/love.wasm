@@ -112,3 +112,14 @@ echo "### shader witness (4.5) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-shader.lua"
 echo "shader witness (4.5): Chromium PASS"
+
+# ── 4.6: the first render target ─────────────────────────────────────────────
+# The first draw that does not go to the backbuffer: render into an off-screen
+# 8x8 canvas (a render-target Texture), then sample it back onto the backbuffer.
+# Reads confirm the rendered content round-trips through the off-screen FBO with
+# orientation preserved. Same wasm as 4.1c–4.5; only the witness lua differs.
+echo
+echo "### canvas witness (4.6) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-canvas.lua"
+echo "canvas witness (4.6): Chromium PASS"

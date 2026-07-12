@@ -1,5 +1,5 @@
-// Step-4 (4.1c + 4.2 + 4.3 + 4.4) pump extension for the graphics build: preload
-// love (like wasi/boot/pump-ext.cpp) and register the bridges the witnesses drive.
+// Step-4 (4.1c + 4.2 + 4.3 + 4.4 + 4.5) pump extension for the graphics build:
+// preload love (like wasi/boot/pump-ext.cpp) and register the witness bridges.
 //
 // Why a bridge: on desktop, love.window creates the GL context and calls
 // Graphics::setMode; that window backend is step-6 work, deliberately not built
@@ -15,7 +15,9 @@
 // back (plus the outline's hollow centre, and a background pixel);
 // __wasi_gfx_draw_texture (4.4) uploads a 2x2 four-texel image to a real texture
 // and draws it scaled, reading each texel's block back to prove upload + sampler
-// + UV mapping.
+// + UV mapping; __wasi_gfx_draw_shader (4.5) compiles a user pixel shader that
+// inverts the vertex colour and draws with it, proving the glslang -> WebGL2 GLSL
+// path runs for shader code that did not ship with the engine.
 //
 // One windowless subtlety the draw path exposed: present() guards on isActive(),
 // which requires a window, so windowless it early-returns without flushing the
@@ -35,6 +37,7 @@
 #include "common/Vector.h"
 #include "common/Matrix.h"
 #include "graphics/Graphics.h"
+#include "graphics/Shader.h"
 #include "image/ImageData.h"
 #include "libraries/glad/gladfuncs.hpp"
 
@@ -278,6 +281,59 @@ static int w_draw_texture(lua_State *L)
 	return 20;
 }
 
+// __wasi_gfx_draw_shader() -> (Rin, Gin, Bin, Ain,  Rout, Gout, Bout, Aout).
+// The step-4 (4.5) witness: the first USER shader through the backend. It
+// compiles a LÖVE-GLSL pixel shader whose effect() *inverts* the incoming vertex
+// colour (a function of its input, not a constant), sets it active, draws a
+// filled rectangle over the left half in setColor (0.8,0.6,0.4), then reads back.
+// The left half must be the inverted colour (0.2,0.4,0.6) — proving the custom
+// shader was translated by glslang, compiled + linked as real WebGL2 GLSL, bound,
+// and actually executed with the vertex colour reaching it — while the right half
+// stays the clear colour. If the default shader had run instead, the left half
+// would be (0.8,0.6,0.4). The full-height left half sidesteps the Y-flip.
+static int w_draw_shader(lua_State *L)
+{
+	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
+	if (gfx == nullptr)
+		return luaL_error(L, "love.graphics is not registered (require it first)");
+
+	const int W = 16, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	graphics::OptionalColorD clear(ColorD(0.3, 0.3, 0.3, 1.0)); // (76,76,76)
+
+	const char *pixelsrc =
+		"vec4 effect(vec4 vcolor, Image tex, vec2 texcoord, vec2 pixcoord)\n"
+		"{\n"
+		"    return vec4(1.0 - vcolor.rgb, 1.0);\n"
+		"}\n";
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+		gfx->clear(clear, OptionalInt(), OptionalDouble());
+
+		std::vector<std::string> stages;
+		stages.push_back(pixelsrc);
+		graphics::Shader::CompileOptions opts;
+		graphics::Shader *shader = gfx->newShader(stages, opts);
+
+		gfx->setShader(shader);
+		gfx->setColor(Colorf(0.8f, 0.6f, 0.4f, 1.0f)); // inverted by effect() -> (0.2,0.4,0.6)
+		gfx->rectangle(graphics::Graphics::DRAW_FILL, 0.0f, 0.0f, 8.0f, 16.0f);
+		gfx->flushBatchedDraws();
+		gfx->setShader(); // back to the default shader
+		shader->release();
+	});
+
+	unsigned char in[4] = {0, 0, 0, 0};
+	unsigned char out[4] = {0, 0, 0, 0};
+	glReadPixels(4, 8, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, in);   // left: shader output
+	glReadPixels(12, 8, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, out); // right: clear
+	for (int i = 0; i < 4; i++) lua_pushinteger(L, in[i]);
+	for (int i = 0; i < 4; i++) lua_pushinteger(L, out[i]);
+	return 8;
+}
+
 extern "C" void pump_open_extensions(lua_State *L)
 {
 	love::luax_preload(L, luaopen_love, "love");
@@ -285,4 +341,5 @@ extern "C" void pump_open_extensions(lua_State *L)
 	lua_register(L, "__wasi_gfx_draw_read", w_draw_read);
 	lua_register(L, "__wasi_gfx_draw_prims", w_draw_prims);
 	lua_register(L, "__wasi_gfx_draw_texture", w_draw_texture);
+	lua_register(L, "__wasi_gfx_draw_shader", w_draw_shader);
 }

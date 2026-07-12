@@ -101,3 +101,14 @@ echo "### texture witness (4.4) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-texture.lua"
 echo "texture witness (4.4): Chromium PASS"
+
+# ── 4.5: the first user shader ───────────────────────────────────────────────
+# The first shader code that did not ship with the engine: a LÖVE-GLSL pixel
+# shader whose effect() inverts the vertex colour, compiled through glslang to
+# real WebGL2 GLSL, bound, and executed — recovered by reading back the inverted
+# colour. Same wasm as 4.1c–4.4; only the witness lua differs.
+echo
+echo "### shader witness (4.5) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-shader.lua"
+echo "shader witness (4.5): Chromium PASS"

@@ -21,8 +21,8 @@ source "$ROOT/wasi/witness/legs.sh"
 PREFIX="$PREFIX" OUT="$TMP/libmodplug.a" "$HERE/build.sh"
 
 # Synthesize the test module and embed it (witness reads mod_bytes[] / mod_len).
-python3 "$HERE/make-witness-mod.py" > "$TMP/witness.mod"
-python3 "$ROOT/wasi/witness/embed.py" "$TMP/witness.mod" mod_bytes mod_len > "$TMP/mod_data.h"
+node "$HERE/make-witness-mod.mjs" > "$TMP/witness.mod"
+node "$ROOT/wasi/witness/embed.mjs" "$TMP/witness.mod" mod_bytes mod_len > "$TMP/mod_data.h"
 
 clang-20 --target=wasm32-wasi -O2 -I"$HERE/include" -I"$TMP" \
   -c "$HERE/witness.c" -o "$TMP/witness.o"

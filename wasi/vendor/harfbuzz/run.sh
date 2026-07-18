@@ -23,7 +23,7 @@ PREFIX="$PREFIX" OUT="$TMP/libfreetype.a" "$FT/build.sh"
 PREFIX="$PREFIX" OUT="$TMP/libharfbuzz.a" "$HERE/build.sh"
 
 # 2. Embed the font.
-python3 "$ROOT/wasi/witness/embed.py" "$ROOT/extra/resources/Vera.ttf" vera_ttf > "$TMP/vera_font.h"
+node "$ROOT/wasi/witness/embed.mjs" "$ROOT/extra/resources/Vera.ttf" vera_ttf > "$TMP/vera_font.h"
 
 # 3. Link the witness against both archives + the sysroot's setjmp/EH runtime.
 # shellcheck disable=SC2086

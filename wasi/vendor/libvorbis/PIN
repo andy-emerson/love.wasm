@@ -25,5 +25,5 @@ SUBSET — what is vendored and why:
 
 Built to a static archive by build.sh; witnessed by run.sh (decodes LÖVE's
 bundled testing/resources/tone.ogg to PCM and checks rate/channels/samples)
-under node + Chromium + wasmtime. Update by re-dropping the decode subset from
+under node + Chromium + Firefox. Update by re-dropping the decode subset from
 a newer release and refreshing this PIN. Never edit upstream files in place.

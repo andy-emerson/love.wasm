@@ -1,7 +1,7 @@
 // Vendored-libmodplug witness: prove tracker/module music actually decodes in
 // wasm, the way LÖVE's love.sound ModPlugDecoder does (ModPlug_Load a module
 // from memory, then ModPlug_Read PCM). The module is synthesized by
-// make-witness-mod.py (a minimal audible MOD, embedded by run.sh as mod_data.h)
+// make-witness-mod.mjs (a minimal audible MOD, embedded by run.sh as mod_data.h)
 // so the input is deterministic and needs no committed binary. Requires the
 // module to load and decode to non-silent PCM. A command module (C over the
 // libmodplug C API): writes the transcript to stdout, exits 0 only on

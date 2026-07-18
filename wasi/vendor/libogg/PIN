@@ -23,6 +23,6 @@ Files:
 
 Built to a static archive by build.sh; witnessed by run.sh (a page/packet
 framing round-trip — data + b_o_s/e_o_s survive) under node + Chromium +
-wasmtime. Update by re-dropping from a newer release and refreshing this PIN
+Firefox. Update by re-dropping from a newer release and refreshing this PIN
 (regenerate config_types.h if the .in template changes). Never edit upstream
 files in place.

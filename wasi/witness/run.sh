@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-command step-0 witness. Two artifacts, each required to pass under every
-# available engine (node:wasi, real Chromium, and — when installed — wasmtime):
+# available engine (node:wasi, real Chromium, and — when installed — Firefox):
 #
 #   1. EH witness      — eh-typed-catch.cpp: the standardized wasm-EH claim
 #                        (typed catch, carried payload, destructors on unwind).
@@ -12,9 +12,10 @@
 #   PREFIX=/path/to/wasi-eh wasi/witness/run.sh
 #
 # PREFIX is the install prefix produced by wasi/toolchain/build-libcxx-eh.sh
-# (default ./wasi-eh). Browser leg needs playwright-core resolvable from the
+# (default ./wasi-eh). Browser legs need playwright-core resolvable from the
 # invoking cwd and either an installed playwright chromium or CHROMIUM set to a
-# chromium executable. wasmtime leg needs the `wasmtime` python package.
+# chromium executable; the Firefox (SpiderMonkey) non-V8 cross-check leg
+# additionally needs playwright's firefox installed.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -58,4 +59,4 @@ clang++-20 --target=wasm32-wasi $EH_FLAGS -Wno-unused-command-line-argument \
 echo "### SjLj+EH witness ###"
 witness_legs "$TMP/sjlj-eh.wasm" "SJLJ-EH-WITNESS: PASS" check-eh
 
-echo "witness: EH + SjLj PASS on node + browser$(witness_wasmtime_suffix)"
+echo "witness: EH + SjLj PASS on node + browser$(witness_firefox_suffix)"

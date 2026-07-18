@@ -42,20 +42,34 @@ export function makeSineWav(freq, rate, seconds) {
   return buf;
 }
 
-// Launch an installed Chromium and run one self-contained page function against
-// its argument, returning whatever the page function returns.
-export async function runInChromium(pageFn, arg) {
-  const { chromium } = resolvePlaywright();
-  const executablePath = process.env.CHROMIUM && existsSync(process.env.CHROMIUM)
+// Launch an installed Playwright browser ENGINE (chromium | firefox | webkit)
+// and run one self-contained page function against its argument, returning
+// whatever the page function returns. Firefox (SpiderMonkey) and WebKit
+// (JavaScriptCore) are non-V8 engines: running the same command witness there
+// is the independent-engine cross-check of the wasm encoding (issue #5) — an
+// implementation fully independent of the V8 that node:wasi and Chromium share,
+// needing no runtime beyond Playwright, already the browser host. For chromium the
+// provisioned binary can be pinned via $CHROMIUM; the others let Playwright
+// resolve whatever it installed.
+export async function runInBrowser(engine, pageFn, arg) {
+  const browserType = resolvePlaywright()[engine];
+  if (!browserType)
+    throw new Error(`unknown playwright engine: ${engine}`);
+  const executablePath = engine === 'chromium' && process.env.CHROMIUM && existsSync(process.env.CHROMIUM)
     ? process.env.CHROMIUM
-    : undefined;  // otherwise let playwright resolve its installed chromium
-  const browser = await chromium.launch(executablePath ? { executablePath } : {});
+    : undefined;  // otherwise let playwright resolve its installed browser
+  const browser = await browserType.launch(executablePath ? { executablePath } : {});
   try {
     const page = await browser.newPage();
     return await page.evaluate(pageFn, arg);
   } finally {
     await browser.close();
   }
+}
+
+// Back-compat wrapper — the pump/boot/audio browser witnesses call this directly.
+export async function runInChromium(pageFn, arg) {
+  return runInBrowser('chromium', pageFn, arg);
 }
 
 // In-page: instantiate a wasm32-wasi COMMAND module, run _start, report the

@@ -2,7 +2,7 @@
 # One-command witness for vendored libmodplug: build the archive, synthesize a
 # minimal audible MOD, link a command module that loads + decodes it via the
 # libmodplug C API, and require MODPLUG-WITNESS: PASS under node:wasi, real
-# Chromium, and wasmtime.
+# Chromium, and Firefox.
 #
 #   PREFIX=/path/to/wasi-eh wasi/vendor/libmodplug/run.sh
 #
@@ -33,4 +33,4 @@ clang++-20 --target=wasm32-wasi $EH_FLAGS -Wno-unused-command-line-argument \
   -o "$TMP/mp-witness.wasm"
 
 witness_legs "$TMP/mp-witness.wasm" "MODPLUG-WITNESS: PASS" check-eh
-echo "libmodplug witness: decoded tracker music in wasm on node + browser$(witness_wasmtime_suffix)"
+echo "libmodplug witness: decoded tracker music in wasm on node + browser$(witness_firefox_suffix)"

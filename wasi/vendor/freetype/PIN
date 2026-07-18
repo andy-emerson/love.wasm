@@ -32,5 +32,5 @@ FreeType uses setjmp/longjmp (smooth/ftgrays.c, sfnt/ttcmap.c), which the apt
 wasi-libc omits; it links the sysroot's wasm setjmp support (wasi/toolchain/
 setjmp), so its TUs compile with $EH_FLAGS $SJLJ_FLAGS. Built to a static
 archive by build.sh; witnessed by run.sh (renders glyph 'A' from Vera.ttf in
-node + Chromium + wasmtime). Update by re-dropping the subset from a newer
+node + Chromium + Firefox). Update by re-dropping the subset from a newer
 release and refreshing this PIN. Never edit upstream files in place.

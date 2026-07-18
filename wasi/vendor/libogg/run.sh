@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-command witness for vendored libogg: build the archive, link a pure-C
 # command module that round-trips an Ogg packet through the framing layer, and
-# require OGG-WITNESS: PASS under node:wasi, real Chromium, and wasmtime.
+# require OGG-WITNESS: PASS under node:wasi, real Chromium, and Firefox.
 #
 #   wasi/vendor/libogg/run.sh
 #
@@ -25,4 +25,4 @@ clang-20 --target=wasm32-wasi -O2 \
 
 # Pure C, no wasm-EH → no encoding check (3rd arg omitted).
 witness_legs "$TMP/ogg-witness.wasm" "OGG-WITNESS: PASS"
-echo "libogg witness: framing round-trip in wasm on node + browser$(witness_wasmtime_suffix)"
+echo "libogg witness: framing round-trip in wasm on node + browser$(witness_firefox_suffix)"

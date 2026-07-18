@@ -10,7 +10,7 @@
 // half (sjlj-part.c, $SJLJ_FLAGS) does a setjmp/longjmp roundtrip; this C++
 // half (wasm-EH, no SjLj flag) catches a thrown exception. A command module —
 // writes the transcript to stdout and exits 0 only if both hold. Driven by
-// wasi/witness/run.sh under node:wasi, real Chromium, and wasmtime — the same
+// wasi/witness/run.sh under node:wasi, real Chromium, and Firefox — the same
 // three engines as the EH witness.
 #include <cstdio>
 #include <cstring>

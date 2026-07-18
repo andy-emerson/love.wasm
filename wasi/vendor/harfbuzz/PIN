@@ -30,5 +30,5 @@ hb-config.hh defaults plus these -D flags):
 
 Built to a static archive by build.sh; witnessed by run.sh (shapes "Hello"
 with hb-ft over Vera.ttf and checks the glyph run) under node + Chromium +
-wasmtime. Update by re-dropping the subset from a newer release and refreshing
+Firefox. Update by re-dropping the subset from a newer release and refreshing
 this PIN. Never edit upstream files in place.

@@ -15,6 +15,11 @@ on:
 jobs:
   eh-witness:
     runs-on: ubuntu-24.04
+    # SpiderMonkey (Firefox) is the sole non-V8 cross-check now, so it must never
+    # silently vanish (e.g. a Playwright version skew): WITNESS_REQUIRE_FIREFOX
+    # makes legs.sh treat a missing firefox as a hard failure, not a skip.
+    env:
+      WITNESS_REQUIRE_FIREFOX: '1'
     steps:
       - uses: actions/checkout@v4
 
@@ -45,15 +50,14 @@ jobs:
           # by default; the floor is non-monotone per line (lua-wasi #27).
           node-version: '>=24.15 <25'
 
-      - name: chromium
-        run: npm i --no-save playwright@1.61.1 && npx playwright install --with-deps chromium
+      - name: chromium + firefox (V8 + SpiderMonkey non-V8 cross-check)
+        # legs.sh runs the Firefox leg beside Chromium: SpiderMonkey agreeing with
+        # V8 on the standardized wasm-EH encoding is the independent cross-check
+        # (issue #5), with no runtime beyond Playwright — already the browser host,
+        # so the whole witness path is Node-only (no pypi, no standalone binary).
+        run: npm i --no-save playwright@1.61.1 && npx playwright install --with-deps chromium firefox
 
-      - name: wasmtime (independent non-V8 engine, issue #5)
-        # run.sh auto-detects this and adds a wasmtime leg to the EH witness;
-        # Cranelift agreeing with V8 lifts the EH claim to cross-checked.
-        run: python3 -m pip install --user wasmtime || python3 -m pip install --break-system-packages wasmtime
-
-      - name: EH + SjLj witnesses (node:wasi + real Chromium + wasmtime)
+      - name: EH + SjLj witnesses (node:wasi + real Chromium + Firefox/SpiderMonkey)
         run: PREFIX="$PWD/wasi-eh" wasi/witness/run.sh
 
       - name: FreeType vendor witness (rasterize a glyph in wasm)

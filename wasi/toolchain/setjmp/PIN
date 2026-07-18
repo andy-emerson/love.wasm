@@ -19,6 +19,6 @@ headers into $PREFIX/include and compiles rt.c (with the repo's EH flags)
 to $PREFIX/lib/wasi-setjmp.o. Any TU that calls setjmp/longjmp is compiled
 with $EH_FLAGS + $SJLJ_FLAGS (wasi/toolchain/eh-flags.sh) and links
 wasi-setjmp.o. Witnessed by wasi/witness/sjlj-eh.cpp (setjmp + a C++ throw
-in one module, node + Chromium + wasmtime). Update by replacing the three
+in one module, node + Chromium + Firefox). Update by replacing the three
 files wholesale from a newer wasi-libc and refreshing this PIN. Never edit
 in place.

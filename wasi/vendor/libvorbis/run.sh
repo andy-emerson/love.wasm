@@ -2,7 +2,7 @@
 # One-command witness for vendored libvorbis: build libogg + libvorbis, link a
 # pure-C command module that decodes LÖVE's bundled tone.ogg via the vorbisfile
 # API, and require VORBIS-WITNESS: PASS under node:wasi, real Chromium, and
-# wasmtime.
+# Firefox.
 #
 #   wasi/vendor/libvorbis/run.sh
 #
@@ -32,4 +32,4 @@ clang-20 --target=wasm32-wasi -O2 \
 
 # Pure C, no wasm-EH → no encoding check (3rd arg omitted).
 witness_legs "$TMP/vorbis-witness.wasm" "VORBIS-WITNESS: PASS"
-echo "libvorbis witness: decoded Ogg Vorbis in wasm on node + browser$(witness_wasmtime_suffix)"
+echo "libvorbis witness: decoded Ogg Vorbis in wasm on node + browser$(witness_firefox_suffix)"

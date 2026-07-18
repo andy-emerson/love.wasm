@@ -46,9 +46,9 @@ export function makeSineWav(freq, rate, seconds) {
 // and run one self-contained page function against its argument, returning
 // whatever the page function returns. Firefox (SpiderMonkey) and WebKit
 // (JavaScriptCore) are non-V8 engines: running the same command witness there
-// is an independent cross-check of the wasm encoding — the browser-native
-// counterpart of the wasmtime (Cranelift) leg, but with no extra runtime
-// dependency, since Playwright is already the browser host. For chromium the
+// is the independent-engine cross-check of the wasm encoding (issue #5) — an
+// implementation fully independent of the V8 that node:wasi and Chromium share,
+// needing no runtime beyond Playwright, already the browser host. For chromium the
 // provisioned binary can be pinned via $CHROMIUM; the others let Playwright
 // resolve whatever it installed.
 export async function runInBrowser(engine, pageFn, arg) {

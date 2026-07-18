@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-command witness for vendored FreeType: build the archive, link a command
 # module that rasterizes glyph 'A' from LÖVE's bundled Vera.ttf, and require
-# FT-RENDER: PASS under node:wasi, real Chromium, and wasmtime — the same three
+# FT-RENDER: PASS under node:wasi, real Chromium, and Firefox — the same three
 # engines as the step-0 witness. Reuses the witness runners.
 #
 #   PREFIX=/path/to/wasi-eh wasi/vendor/freetype/run.sh
@@ -39,4 +39,4 @@ clang++-20 --target=wasm32-wasi $EH_FLAGS -Wno-unused-command-line-argument \
   -o "$TMP/ft-witness.wasm"
 
 witness_legs "$TMP/ft-witness.wasm" "FT-RENDER: PASS" check-eh
-echo "FreeType witness: rasterized in wasm on node + browser$(witness_wasmtime_suffix)"
+echo "FreeType witness: rasterized in wasm on node + browser$(witness_firefox_suffix)"

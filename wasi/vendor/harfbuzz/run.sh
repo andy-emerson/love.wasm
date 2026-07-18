@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-command witness for vendored HarfBuzz: build HarfBuzz + FreeType, link a
 # command module that shapes "Hello" with hb-ft over LÖVE's bundled Vera.ttf,
-# and require HB-SHAPE: PASS under node:wasi, real Chromium, and wasmtime.
+# and require HB-SHAPE: PASS under node:wasi, real Chromium, and Firefox.
 #
 #   PREFIX=/path/to/wasi-eh wasi/vendor/harfbuzz/run.sh
 #
@@ -39,4 +39,4 @@ clang++-20 --target=wasm32-wasi $EH_FLAGS -Wno-unused-command-line-argument \
   -o "$TMP/hb-witness.wasm"
 
 witness_legs "$TMP/hb-witness.wasm" "HB-SHAPE: PASS" check-eh
-echo "HarfBuzz witness: shaped text in wasm on node + browser$(witness_wasmtime_suffix)"
+echo "HarfBuzz witness: shaped text in wasm on node + browser$(witness_firefox_suffix)"

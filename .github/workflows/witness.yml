@@ -45,8 +45,11 @@ jobs:
           # by default; the floor is non-monotone per line (lua-wasi #27).
           node-version: '>=24.15 <25'
 
-      - name: chromium
-        run: npm i --no-save playwright@1.61.1 && npx playwright install --with-deps chromium
+      - name: chromium + firefox (V8 + SpiderMonkey non-V8 cross-check)
+        # legs.sh auto-detects the installed firefox and adds a Firefox leg:
+        # SpiderMonkey agreeing with V8 on the standardized wasm-EH encoding is an
+        # independent cross-check with no runtime beyond Playwright itself.
+        run: npm i --no-save playwright@1.61.1 && npx playwright install --with-deps chromium firefox
 
       - name: wasmtime (independent non-V8 engine, issue #5)
         # run.sh auto-detects this and adds a wasmtime leg to the EH witness;

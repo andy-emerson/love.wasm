@@ -12,9 +12,10 @@
 #   PREFIX=/path/to/wasi-eh wasi/witness/run.sh
 #
 # PREFIX is the install prefix produced by wasi/toolchain/build-libcxx-eh.sh
-# (default ./wasi-eh). Browser leg needs playwright-core resolvable from the
+# (default ./wasi-eh). Browser legs need playwright-core resolvable from the
 # invoking cwd and either an installed playwright chromium or CHROMIUM set to a
-# chromium executable. wasmtime leg needs the `wasmtime` python package.
+# chromium executable; the Firefox cross-check leg additionally needs playwright's
+# firefox installed. wasmtime leg needs the `wasmtime` python package.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -58,4 +59,4 @@ clang++-20 --target=wasm32-wasi $EH_FLAGS -Wno-unused-command-line-argument \
 echo "### SjLj+EH witness ###"
 witness_legs "$TMP/sjlj-eh.wasm" "SJLJ-EH-WITNESS: PASS" check-eh
 
-echo "witness: EH + SjLj PASS on node + browser$(witness_wasmtime_suffix)"
+echo "witness: EH + SjLj PASS on node + browser$(witness_wasmtime_suffix)$(witness_firefox_suffix)"

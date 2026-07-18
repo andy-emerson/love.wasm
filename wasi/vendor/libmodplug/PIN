@@ -25,7 +25,7 @@ under HAVE_CONFIG_H, which we never define, so upstream defaults apply):
                 libc++. Links into the EH artifact normally.
 
 Built to a static archive by build.sh; witnessed by run.sh, which synthesizes
-a minimal audible ProTracker MOD (make-witness-mod.py — one square-wave sample,
+a minimal audible ProTracker MOD (make-witness-mod.mjs — one square-wave sample,
 one note) and requires ModPlug to load + decode it to non-silent PCM, under
 node + Chromium + Firefox. Update by re-dropping from a newer commit and
 refreshing this PIN. Never edit upstream files in place.

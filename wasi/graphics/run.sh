@@ -156,3 +156,13 @@ echo "### mesh witness (4.9) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-mesh.lua"
 echo "mesh witness (4.9): Chromium PASS"
+
+# ── 4.10: SpriteBatch (+ Quad) ───────────────────────────────────────────────
+# Batched textured quads in one draw, and sub-region sampling: a SpriteBatch on a
+# 2x2 four-texel texture with a full-texture sprite plus a Quad sprite selecting
+# one texel, read back to confirm both sprites and the sub-region. Same wasm.
+echo
+echo "### spritebatch witness (4.10) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-spritebatch.lua"
+echo "spritebatch witness (4.10): Chromium PASS"

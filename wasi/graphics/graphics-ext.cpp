@@ -1,4 +1,4 @@
-// Step-4 (4.1c + 4.2 + 4.3 + 4.4 + 4.5 + 4.6 + 4.7 + 4.8 + 4.9) pump extension
+// Step-4 (4.1c + 4.2 .. 4.10) pump extension
 // for the graphics build: preload love (pump-ext.cpp) and register the bridges.
 //
 // Why a bridge: on desktop, love.window creates the GL context and calls
@@ -24,7 +24,9 @@
 // FreeType glyph rasterisation feeds the textured-draw path; __wasi_gfx_draw_
 // state (4.8) exercises the cross-cutting render state — additive blend, scissor
 // clipping, stencil masking — in one frame, proving each composites/clips draws;
-// __wasi_gfx_draw_mesh (4.9) draws a custom-vertex Mesh through a user-owned VBO.
+// __wasi_gfx_draw_mesh (4.9) draws a custom-vertex Mesh through a user-owned VBO;
+// __wasi_gfx_draw_spritebatch (4.10) batches textured quads (+ a Quad sub-region)
+// into one draw.
 //
 // One windowless subtlety the draw path exposed: present() guards on isActive(),
 // which requires a window, so windowless it early-returns without flushing the
@@ -47,6 +49,8 @@
 #include "graphics/Shader.h"
 #include "graphics/Font.h"
 #include "graphics/Mesh.h"
+#include "graphics/SpriteBatch.h"
+#include "graphics/Quad.h"
 #include "graphics/vertex.h"
 #include "font/TextShaper.h"
 #include "font/TrueTypeRasterizer.h"
@@ -586,6 +590,80 @@ static int w_draw_mesh(lua_State *L)
 	return 8;
 }
 
+// Build a 2x2 four-texel NEAREST texture (shared by the spritebatch witness).
+static graphics::Texture *makeQuadTexture(graphics::Graphics *gfx)
+{
+	auto *img = new image::ImageData(2, 2, PIXELFORMAT_RGBA8_UNORM);
+	img->setPixel(0, 0, Colorf(0.2f, 0.4f, 0.6f, 1.0f)); // TL (51,102,153)
+	img->setPixel(1, 0, Colorf(0.8f, 0.2f, 0.2f, 1.0f)); // TR (204,51,51)
+	img->setPixel(0, 1, Colorf(0.2f, 0.6f, 0.2f, 1.0f)); // BL (51,153,51)
+	img->setPixel(1, 1, Colorf(0.6f, 0.2f, 0.8f, 1.0f)); // BR (153,51,204)
+	graphics::Texture::Slices slices(graphics::TEXTURE_2D);
+	slices.set(0, 0, img);
+	img->release();
+	graphics::Texture::Settings st;
+	st.width = 2; st.height = 2;
+	graphics::Texture *tex = gfx->newTexture(st, &slices);
+	graphics::SamplerState ss = tex->getSamplerState();
+	ss.minFilter = ss.magFilter = graphics::SamplerState::FILTER_NEAREST;
+	tex->setSamplerState(ss);
+	return tex;
+}
+
+// __wasi_gfx_draw_spritebatch() -> 16 ints: four (R,G,B,A) samples —
+//   sprite-1 texel A (TL), sprite-1 texel D (BR), quad-sprite (TR texel), background.
+// The step-4 (4.10) witness: SpriteBatch + Quad. It builds a 2x2 four-texel
+// texture, makes a SpriteBatch on it, and adds TWO sprites from ONE batch: a
+// full-texture sprite scaled 4x (top-left), and a Quad sprite selecting just the
+// texture's top-right texel scaled 4x (lower-right). Drawing the batch once and
+// reading back proves batched textured-quad drawing (multiple sprites, one draw),
+// per-sprite transforms (the two land in different places), and Quad sub-region
+// sampling (the quad sprite is pure TR colour, not the whole texture).
+static int w_draw_spritebatch(lua_State *L)
+{
+	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
+	if (gfx == nullptr)
+		return luaL_error(L, "love.graphics is not registered (require it first)");
+
+	const int W = 16, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	graphics::OptionalColorD clear(ColorD(0.3, 0.3, 0.3, 1.0)); // (76,76,76)
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+		gfx->clear(clear, OptionalInt(), OptionalDouble());
+		gfx->setColor(Colorf(1, 1, 1, 1));
+
+		graphics::Texture *tex = makeQuadTexture(gfx);
+		graphics::SpriteBatch *sb = gfx->newSpriteBatch(tex, 8, graphics::BUFFERDATAUSAGE_STATIC);
+		sb->setColor(Colorf(1, 1, 1, 1));
+
+		Matrix4 m1(1.0f, 1.0f, 0.0f, 4.0f, 4.0f, 0, 0, 0, 0); // full texture, top-left, 4x
+		sb->add(m1);
+		graphics::Quad *q = gfx->newQuad(graphics::Quad::Viewport{1.0, 0.0, 1.0, 1.0}, 2, 2); // TR texel
+		Matrix4 m2(9.0f, 9.0f, 0.0f, 4.0f, 4.0f, 0, 0, 0, 0); // quad sprite, lower-right, 4x
+		sb->add(q, m2);
+		q->release();
+
+		gfx->draw(sb, Matrix4());
+		gfx->flushBatchedDraws();
+		sb->release();
+		tex->release();
+	});
+
+	const int sx[4] = { 3,  7, 11, 14 };
+	const int sy[4] = { 3,  7, 11,  2 };
+	for (int i = 0; i < 4; i++)
+	{
+		unsigned char px[4] = {0, 0, 0, 0};
+		glReadPixels(sx[i], H - 1 - sy[i], 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+		for (int j = 0; j < 4; j++)
+			lua_pushinteger(L, px[j]);
+	}
+	return 16;
+}
+
 extern "C" void pump_open_extensions(lua_State *L)
 {
 	love::luax_preload(L, luaopen_love, "love");
@@ -598,4 +676,5 @@ extern "C" void pump_open_extensions(lua_State *L)
 	lua_register(L, "__wasi_gfx_draw_text", w_draw_text);
 	lua_register(L, "__wasi_gfx_draw_state", w_draw_state);
 	lua_register(L, "__wasi_gfx_draw_mesh", w_draw_mesh);
+	lua_register(L, "__wasi_gfx_draw_spritebatch", w_draw_spritebatch);
 }

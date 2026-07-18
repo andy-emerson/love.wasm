@@ -151,7 +151,17 @@ async function runEngine(engine, wavPath) {
     const context = await browser.newContext({ permissions: ['microphone'] }).catch(() => browser.newContext());
     const page = await context.newPage();
     await page.goto(`http://localhost:${port}/`);
-    const res = await page.evaluate(pageProbe);
+    // page.evaluate has NO default timeout: a headless engine whose getUserMedia
+    // or audioWorklet.addModule never settles (WebKit has no fake mic and may not
+    // accept a blob-URL worklet) would hang the evaluate — and the CI job — until
+    // GitHub's step ceiling. A probe must never do that, so cap it: on timeout,
+    // record the engine as probe-timed-out and move on (the finally tears the
+    // hung page down via browser.close()).
+    let timer;
+    const res = await Promise.race([
+      page.evaluate(pageProbe),
+      new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('probe evaluate timed out (25s)')), 25000); }),
+    ]).finally(() => clearTimeout(timer));
     return { engine, ...res };
   } catch (e) {
     return { engine, launchError: String(e) };

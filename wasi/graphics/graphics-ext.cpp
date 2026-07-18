@@ -959,9 +959,67 @@ static int w_draw_buffer(lua_State *L)
 	return pushSamples(L, H, sx, sy, 2);
 }
 
+// __wasi_gfx_ceiling() -> 7 ints: f_glsl4, f_indirect, f_texel, compute_rejected,
+//   then post-health R, G, B.
+// The step-4 (4.17) witness: the WebGL2 ceiling, witnessed as gracefully ABSENT
+// (issue #36). WebGL2 is OpenGL ES 3.0 — it has no compute shaders, no indirect
+// draw, no texture/texel buffers, no SSBO. This does not implement them; it
+// proves the engine reports them unsupported and REJECTS them cleanly rather
+// than crashing. It reads the capability flags (GLSL4/compute, indirect draw,
+// texel buffer — all expected false), then tries to compile a compute shader and
+// confirms it throws a catchable love::Exception (not an abort), and finally
+// clears + reads a pixel to prove the graphics module is still healthy after the
+// rejection. Chromium only.
+static int w_ceiling(lua_State *L)
+{
+	auto *gfx = witnessGfx(L);
+
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = 4; bb.height = bb.pixelHeight = 4;
+
+	int glsl4 = -1, indirect = -1, texel = -1, computeRejected = 0;
+	unsigned char px[4] = {0, 0, 0, 0};
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+
+		const graphics::Graphics::Capabilities &caps = gfx->getCapabilities();
+		glsl4    = caps.features[graphics::Graphics::FEATURE_GLSL4] ? 1 : 0;
+		indirect = caps.features[graphics::Graphics::FEATURE_INDIRECT_DRAW] ? 1 : 0;
+		texel    = caps.features[graphics::Graphics::FEATURE_TEXEL_BUFFER] ? 1 : 0;
+
+		// A compute shader must be rejected cleanly (GLSL 4 absent on WebGL2).
+		try
+		{
+			std::vector<std::string> stages;
+			stages.push_back("void computemain() { }");
+			graphics::Shader::CompileOptions opts;
+			graphics::Shader *cs = gfx->newShader(stages, opts);
+			cs->release(); // reached only if it did NOT throw -> not rejected
+		}
+		catch (love::Exception &)
+		{
+			computeRejected = 1; // graceful: a catchable exception, not a crash
+		}
+
+		// Still healthy after the rejection: a normal clear round-trips.
+		gfx->clear(graphics::OptionalColorD(ColorD(0.2, 0.4, 0.6, 1.0)), OptionalInt(), OptionalDouble());
+		glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+	});
+
+	lua_pushinteger(L, glsl4);
+	lua_pushinteger(L, indirect);
+	lua_pushinteger(L, texel);
+	lua_pushinteger(L, computeRejected);
+	for (int i = 0; i < 3; i++)
+		lua_pushinteger(L, px[i]);
+	return 7;
+}
+
 extern "C" void pump_open_extensions(lua_State *L)
 {
 	love::luax_preload(L, luaopen_love, "love");
+	lua_register(L, "__wasi_gfx_ceiling", w_ceiling);
 	lua_register(L, "__wasi_gfx_draw_buffer", w_draw_buffer);
 	lua_register(L, "__wasi_gfx_readback", w_draw_readback);
 	lua_register(L, "__wasi_gfx_draw_msaa", w_draw_msaa);

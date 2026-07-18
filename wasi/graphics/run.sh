@@ -236,3 +236,15 @@ echo "### buffer witness (4.16) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-buffer.lua"
 echo "buffer witness (4.16): Chromium PASS"
+
+# ── 4.17: the WebGL2 ceiling, witnessed as gracefully absent (#36) ────────────
+# Not a capability but its DECLARED ABSENCE. WebGL2 (ES 3.0) has no compute, no
+# indirect draw, no texel/texture buffers, no SSBO. This proves the engine
+# reports them unsupported and rejects a compute shader with a catchable error
+# (not a crash), and stays healthy afterwards — the line between "forgotten" and
+# "declared divergence". Same wasm as 4.1c-4.16.
+echo
+echo "### ceiling witness (4.17) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-ceiling.lua"
+echo "ceiling witness (4.17): Chromium PASS"

@@ -1,5 +1,5 @@
-// Step-4 (4.1c + 4.2 + 4.3 + 4.4 + 4.5 + 4.6 + 4.7 + 4.8) pump extension for the
-// graphics build: preload love (wasi/boot/pump-ext.cpp) and register the bridges.
+// Step-4 (4.1c + 4.2 + 4.3 + 4.4 + 4.5 + 4.6 + 4.7 + 4.8 + 4.9) pump extension
+// for the graphics build: preload love (pump-ext.cpp) and register the bridges.
 //
 // Why a bridge: on desktop, love.window creates the GL context and calls
 // Graphics::setMode; that window backend is step-6 work, deliberately not built
@@ -23,7 +23,8 @@
 // __wasi_gfx_draw_text (4.7) prints text with the embedded default font, proving
 // FreeType glyph rasterisation feeds the textured-draw path; __wasi_gfx_draw_
 // state (4.8) exercises the cross-cutting render state — additive blend, scissor
-// clipping, stencil masking — in one frame, proving each composites/clips draws.
+// clipping, stencil masking — in one frame, proving each composites/clips draws;
+// __wasi_gfx_draw_mesh (4.9) draws a custom-vertex Mesh through a user-owned VBO.
 //
 // One windowless subtlety the draw path exposed: present() guards on isActive(),
 // which requires a window, so windowless it early-returns without flushing the
@@ -45,6 +46,8 @@
 #include "graphics/Graphics.h"
 #include "graphics/Shader.h"
 #include "graphics/Font.h"
+#include "graphics/Mesh.h"
+#include "graphics/vertex.h"
 #include "font/TextShaper.h"
 #include "font/TrueTypeRasterizer.h"
 #include "image/ImageData.h"
@@ -534,6 +537,55 @@ static int w_draw_state(lua_State *L)
 	return 20;
 }
 
+// __wasi_gfx_draw_mesh() -> (Rin, Gin, Bin, Ain,  Rout, Gout, Bout, Aout).
+// The step-4 (4.9) witness: the first Mesh — custom vertex geometry through a
+// USER-owned vertex buffer, not the batched draw stream. It builds a 3-vertex
+// triangle mesh in LÖVE's default vertex format (position + texcoord + per-vertex
+// colour), uploads it to a real VBO via newMesh, and draws it. The constant
+// colour is white so the mesh's own per-vertex colour (51,102,153) passes
+// through. Reading inside the triangle (draw colour) and outside (clear colour)
+// proves mesh creation, the custom-format vertex upload, and the mesh draw path.
+static int w_draw_mesh(lua_State *L)
+{
+	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
+	if (gfx == nullptr)
+		return luaL_error(L, "love.graphics is not registered (require it first)");
+
+	const int W = 16, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	graphics::OptionalColorD clear(ColorD(0.6, 0.4, 0.2, 1.0)); // (153,102,51)
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+		gfx->clear(clear, OptionalInt(), OptionalDouble());
+		gfx->setColor(Colorf(1, 1, 1, 1)); // white: mesh vertex colour passes through
+
+		Color32 c(51, 102, 153, 255);
+		graphics::Vertex verts[3] = {
+			{  2.0f,  2.0f, 0.0f, 0.0f, c },
+			{ 14.0f,  2.0f, 0.0f, 0.0f, c },
+			{  8.0f, 14.0f, 0.0f, 0.0f, c },
+		};
+		auto fmt = graphics::Mesh::getDefaultVertexFormat();
+		graphics::Mesh *mesh = gfx->newMesh(fmt, verts, sizeof(verts),
+			graphics::PRIMITIVE_TRIANGLES, graphics::BUFFERDATAUSAGE_STATIC);
+
+		Matrix4 m; // identity — mesh drawn in its own coordinates
+		gfx->draw(mesh, m);
+		gfx->flushBatchedDraws();
+		mesh->release();
+	});
+
+	unsigned char in[4] = {0, 0, 0, 0};
+	unsigned char out[4] = {0, 0, 0, 0};
+	glReadPixels(8, H - 1 - 6, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, in);   // inside the triangle
+	glReadPixels(1, H - 1 - 13, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, out); // outside it
+	for (int i = 0; i < 4; i++) lua_pushinteger(L, in[i]);
+	for (int i = 0; i < 4; i++) lua_pushinteger(L, out[i]);
+	return 8;
+}
+
 extern "C" void pump_open_extensions(lua_State *L)
 {
 	love::luax_preload(L, luaopen_love, "love");
@@ -545,4 +597,5 @@ extern "C" void pump_open_extensions(lua_State *L)
 	lua_register(L, "__wasi_gfx_draw_canvas", w_draw_canvas);
 	lua_register(L, "__wasi_gfx_draw_text", w_draw_text);
 	lua_register(L, "__wasi_gfx_draw_state", w_draw_state);
+	lua_register(L, "__wasi_gfx_draw_mesh", w_draw_mesh);
 }

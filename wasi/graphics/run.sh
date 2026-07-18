@@ -146,3 +146,13 @@ echo "### render-state witness (4.8) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-state.lua"
 echo "render-state witness (4.8): Chromium PASS"
+
+# ── 4.9: the first higher-level drawable — Mesh ──────────────────────────────
+# Custom vertex geometry through a user-owned VBO (not the batched stream): a
+# 3-vertex triangle mesh in LÖVE's default vertex format, uploaded via newMesh
+# and drawn, read back inside/outside. Same wasm as 4.1c–4.8.
+echo
+echo "### mesh witness (4.9) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-mesh.lua"
+echo "mesh witness (4.9): Chromium PASS"

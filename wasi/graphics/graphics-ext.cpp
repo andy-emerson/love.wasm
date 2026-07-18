@@ -113,12 +113,8 @@ static int w_clear_read(lua_State *L)
 		gfx->present(nullptr);
 	});
 
-	unsigned char px[4] = {0, 0, 0, 0};
-	glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
-
-	for (int i = 0; i < 4; i++)
-		lua_pushinteger(L, px[i]);
-	return 4;
+	const int sx[1] = {0}, sy[1] = {0}; // uniform clear: any pixel recovers it
+	return pushSamples(L, bb.height, sx, sy, 1);
 }
 
 // __wasi_gfx_draw_read(dr, dg, db, cr, cg, cb)
@@ -167,17 +163,9 @@ static int w_draw_read(lua_State *L)
 	});
 
 	// Left column (x=0): inside the rectangle. Right column (x=3): outside it.
-	// y is arbitrary (2) since the rectangle spans the full height.
-	unsigned char in[4] = {0, 0, 0, 0};
-	unsigned char out[4] = {0, 0, 0, 0};
-	glReadPixels(0, 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, in);
-	glReadPixels(3, 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, out);
-
-	for (int i = 0; i < 4; i++)
-		lua_pushinteger(L, in[i]);
-	for (int i = 0; i < 4; i++)
-		lua_pushinteger(L, out[i]);
-	return 8;
+	// y is arbitrary since the rectangle spans the full height.
+	const int sx[2] = {0, 3}, sy[2] = {2, 2};
+	return pushSamples(L, bb.height, sx, sy, 2);
 }
 
 
@@ -345,13 +333,10 @@ static int w_draw_shader(lua_State *L)
 		shader->release();
 	});
 
-	unsigned char in[4] = {0, 0, 0, 0};
-	unsigned char out[4] = {0, 0, 0, 0};
-	glReadPixels(4, 8, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, in);   // left: shader output
-	glReadPixels(12, 8, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, out); // right: clear
-	for (int i = 0; i < 4; i++) lua_pushinteger(L, in[i]);
-	for (int i = 0; i < 4; i++) lua_pushinteger(L, out[i]);
-	return 8;
+	// Left half (x<8): shader output. Right half: clear. Full-height rect, so the
+	// exact y is immaterial to the inside/outside split.
+	const int sx[2] = {4, 12}, sy[2] = {8, 8};
+	return pushSamples(L, H, sx, sy, 2);
 }
 
 // __wasi_gfx_draw_canvas() -> 16 ints: four (R,G,B,A) samples, in this order —
@@ -563,13 +548,8 @@ static int w_draw_mesh(lua_State *L)
 		mesh->release();
 	});
 
-	unsigned char in[4] = {0, 0, 0, 0};
-	unsigned char out[4] = {0, 0, 0, 0};
-	glReadPixels(8, H - 1 - 6, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, in);   // inside the triangle
-	glReadPixels(1, H - 1 - 13, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, out); // outside it
-	for (int i = 0; i < 4; i++) lua_pushinteger(L, in[i]);
-	for (int i = 0; i < 4; i++) lua_pushinteger(L, out[i]);
-	return 8;
+	const int sx[2] = {8, 1}, sy[2] = {6, 13}; // inside the triangle, then outside it
+	return pushSamples(L, H, sx, sy, 2);
 }
 
 // Build a 2x2 four-texel NEAREST texture (shared by the spritebatch witness).
@@ -681,13 +661,8 @@ static int w_draw_particles(lua_State *L)
 		tex->release();
 	});
 
-	unsigned char in[4] = {0, 0, 0, 0};
-	unsigned char out[4] = {0, 0, 0, 0};
-	glReadPixels(7, H - 1 - 7, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, in);   // inside the particle blob
-	glReadPixels(2, H - 1 - 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, out);  // corner background
-	for (int i = 0; i < 4; i++) lua_pushinteger(L, in[i]);
-	for (int i = 0; i < 4; i++) lua_pushinteger(L, out[i]);
-	return 8;
+	const int sx[2] = {7, 2}, sy[2] = {7, 2}; // inside the particle blob, then corner background
+	return pushSamples(L, H, sx, sy, 2);
 }
 
 extern "C" void pump_open_extensions(lua_State *L)

@@ -247,7 +247,7 @@ export function makeWebGLHost() {
     'glPushDebugGroupKHR', 'glPushGroupMarkerEXT', 'glResolveMultisampleFramebufferAPPLE',
     'glShaderStorageBlockBinding', 'glTexBuffer', 'glTextureView', 'glUnmapBuffer',
   ];
-  for (const name of STUBS) if (!(name in imports)) imports[name] = (function (n) { return function () { /* never expected on the clear path */ }; })(name);
+  for (const name of STUBS) if (!(name in imports)) imports[name] = ((n) => () => { console.warn('[webgl-host] unimplemented GL entry point called: ' + n); })(name);
 
   return {
     imports,

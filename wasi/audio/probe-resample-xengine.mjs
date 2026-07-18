@@ -92,40 +92,51 @@ async function pageProbe() {
     out.playback = { bufferRate: srcRate, ctxRate: rendered.sampleRate, tone: dominant(rendered.getChannelData(0), rendered.sampleRate) };
   } catch (e) { out.playback = { error: String(e) }; }
 
-  // B. Capture (fake mic; the fragile, per-engine point)
+  // B. Capture (fake mic; the fragile, per-engine point). Wrapped in an IN-PAGE
+  // hard cap: a getUserMedia / audioWorklet.addModule that never settles (seen on
+  // headless Firefox) would otherwise strand the whole evaluate and throw away
+  // playback A too. On cap, record the engine as capture-timed-out — playback
+  // still returns — instead of losing everything to the outer Node guard.
   try {
-    const requested = 16000;
-    let ctx, ctxErr = null;
-    try { ctx = new AudioContext({ sampleRate: requested }); }
-    catch (e) { ctxErr = String(e); ctx = new AudioContext(); }
-    if (ctx.state === 'suspended') { try { await ctx.resume(); } catch { /* ignore */ } }
+    const CAP_MS = 8000;
+    const captureWork = (async () => {
+      const requested = 16000;
+      let ctx, ctxErr = null;
+      try { ctx = new AudioContext({ sampleRate: requested }); }
+      catch (e) { ctxErr = String(e); ctx = new AudioContext(); }
+      if (ctx.state === 'suspended') { try { await ctx.resume(); } catch { /* ignore */ } }
 
-    let stream = null, gumErr = null;
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-    catch (e) { gumErr = String(e); }
+      let stream = null, gumErr = null;
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+      catch (e) { gumErr = String(e); }
 
-    const result = { requested, ctxRate: ctx.sampleRate, ctxHonored: ctx.sampleRate === requested, ctxErr, gumErr, srcErr: null };
-    if (stream) {
-      let src = null;
-      try { src = ctx.createMediaStreamSource(stream); }
-      catch (e) { result.srcErr = String(e); }
-      if (src) {
-        const workletSrc = `class Cap extends AudioWorkletProcessor{process(i){const c=i[0][0];if(c&&c.length)this.port.postMessage(c.slice(0));return true}}registerProcessor('cap',Cap)`;
-        const url = URL.createObjectURL(new Blob([workletSrc], { type: 'application/javascript' }));
-        await ctx.audioWorklet.addModule(url);
-        const node = new AudioWorkletNode(ctx, 'cap');
-        const frames = []; node.port.onmessage = (e) => frames.push(e.data);
-        const mute = ctx.createGain(); mute.gain.value = 0;
-        src.connect(node); node.connect(mute); mute.connect(ctx.destination);
-        await new Promise(r => setTimeout(r, 600));
-        node.port.onmessage = null; stream.getTracks().forEach(t => t.stop());
-        const total = frames.reduce((a, f) => a + f.length, 0);
-        const pcm = new Float32Array(total); let k = 0; for (const f of frames) { pcm.set(f, k); k += f.length; }
-        result.samples = total; result.tone = dominant(pcm, ctx.sampleRate);
+      const result = { requested, ctxRate: ctx.sampleRate, ctxHonored: ctx.sampleRate === requested, ctxErr, gumErr, srcErr: null };
+      if (stream) {
+        let src = null;
+        try { src = ctx.createMediaStreamSource(stream); }
+        catch (e) { result.srcErr = String(e); }
+        if (src) {
+          const workletSrc = `class Cap extends AudioWorkletProcessor{process(i){const c=i[0][0];if(c&&c.length)this.port.postMessage(c.slice(0));return true}}registerProcessor('cap',Cap)`;
+          const url = URL.createObjectURL(new Blob([workletSrc], { type: 'application/javascript' }));
+          await ctx.audioWorklet.addModule(url);
+          const node = new AudioWorkletNode(ctx, 'cap');
+          const frames = []; node.port.onmessage = (e) => frames.push(e.data);
+          const mute = ctx.createGain(); mute.gain.value = 0;
+          src.connect(node); node.connect(mute); mute.connect(ctx.destination);
+          await new Promise(r => setTimeout(r, 600));
+          node.port.onmessage = null; stream.getTracks().forEach(t => t.stop());
+          const total = frames.reduce((a, f) => a + f.length, 0);
+          const pcm = new Float32Array(total); let k = 0; for (const f of frames) { pcm.set(f, k); k += f.length; }
+          result.samples = total; result.tone = dominant(pcm, ctx.sampleRate);
+        }
       }
-    }
-    try { await ctx.close(); } catch { /* ignore */ }
-    out.capture = result;
+      try { await ctx.close(); } catch { /* ignore */ }
+      return result;
+    })();
+    out.capture = await Promise.race([
+      captureWork,
+      new Promise((res) => setTimeout(() => res({ timedOut: CAP_MS }), CAP_MS)),
+    ]);
   } catch (e) { out.capture = { error: String(e) }; }
 
   return out;
@@ -148,7 +159,13 @@ async function runEngine(engine, wavPath) {
   let browser = null;
   try {
     browser = await bt.launch(launchOpts(engine, wavPath, executablePath));
-    const context = await browser.newContext({ permissions: ['microphone'] }).catch(() => browser.newContext());
+    // No newContext({permissions:['microphone']}): Playwright validates it lazily
+    // at newPage and WebKit rejects the string outright ("Unknown permission:
+    // microphone"), which killed the whole WebKit leg. Each engine's launchOpts
+    // already handles the grant (chromium --use-fake-ui; firefox permission.disabled
+    // pref); WebKit has no fake mic, so its getUserMedia simply rejects and is
+    // recorded as gumErr — a real finding, not a harness crash.
+    const context = await browser.newContext();
     const page = await context.newPage();
     await page.goto(`http://localhost:${port}/`);
     // page.evaluate has NO default timeout: a headless engine whose getUserMedia
@@ -188,6 +205,7 @@ async function main() {
     console.log(`    -> resample delegated: ${pOk ? 'YES' : 'NO'} (tone ~${p.tone?.hz}Hz, ratio ${p.tone?.ratio?.toFixed?.(0)})`);
     console.log(`  B capture  : ${JSON.stringify(c)}`);
     if (c.error) { console.log(`    -> capture ERROR: ${c.error}`); continue; }
+    if (c.timedOut) { console.log(`    -> capture TIMED OUT after ${c.timedOut}ms (getUserMedia/addModule never settled on this headless engine)`); continue; }
     const honored = c.ctxHonored && !c.srcErr && !c.gumErr;
     const tonal = c.tone && c.tone.ratio > 8;
     console.log(`    -> ctx honored @16000: ${honored ? 'YES' : 'NO'} (got ${c.ctxRate}${c.gumErr ? '; getUserMedia: ' + c.gumErr : ''}${c.srcErr ? '; createMediaStreamSource: ' + c.srcErr : ''})`);

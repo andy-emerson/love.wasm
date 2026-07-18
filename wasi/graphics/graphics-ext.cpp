@@ -787,9 +787,62 @@ static int w_draw_mrt(lua_State *L)
 	return pushSamples(L, H, sx, sy, 3);
 }
 
+// __wasi_gfx_draw_msaa() -> 16 ints: four (R,G,B,A) samples —
+//   interior, diagonal-edge, exterior, background.
+// The step-4 (4.14) witness: a multisampled (MSAA) render target — the multisample
+// mechanism WebGL2 exposes as renderbufferStorageMultisample + a blitFramebuffer
+// resolve, distinct from the single-sample canvas of 4.6. An 8x8 msaa=4 canvas is
+// cleared black, a white right-triangle with a y=x hypotenuse is drawn into it
+// (its diagonal edge crossing pixel centres), then the target is unbound — which
+// resolves the multisample buffer down to the texture — and drawn to the
+// backbuffer. The proof is the EDGE pixel: a fully-interior pixel reads white and
+// a fully-exterior pixel reads the black clear, but the pixel the hypotenuse
+// bisects reads an INTERMEDIATE grey — only possible if the edge was
+// coverage-sampled (anti-aliased), i.e. the multisample resolve ran. Chromium only.
+static int w_draw_msaa(lua_State *L)
+{
+	auto *gfx = witnessGfx(L);
+
+	const int W = 16, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	graphics::OptionalColorD bgclear(ColorD(0.3, 0.3, 0.3, 1.0));     // (76,76,76)
+	graphics::OptionalColorD canvasclear(ColorD(0.0, 0.0, 0.0, 1.0)); // black
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+		gfx->clear(bgclear, OptionalInt(), OptionalDouble());
+
+		graphics::Texture::Settings st;
+		st.width = 8; st.height = 8; st.renderTarget = true; st.msaa = 4;
+		graphics::Texture *canvas = gfx->newTexture(st, nullptr);
+
+		gfx->setRenderTarget(graphics::Graphics::RenderTarget(canvas), 0);
+		gfx->clear(canvasclear, OptionalInt(), OptionalDouble());
+		gfx->setColor(Colorf(1, 1, 1, 1)); // white triangle
+		Vector2 tri[3] = { Vector2(0.0f, 0.0f), Vector2(8.0f, 0.0f), Vector2(8.0f, 8.0f) };
+		gfx->polygon(graphics::Graphics::DRAW_FILL, tri, 3, false); // 3 distinct verts, not a closed loop
+		gfx->flushBatchedDraws();
+		gfx->setRenderTarget(); // unbind -> resolves the multisample buffer to the texture
+
+		gfx->setColor(Colorf(1, 1, 1, 1)); // white: canvas colour passes through
+		Matrix4 m(0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f); // canvas at (0,0), 1:1
+		gfx->draw(canvas, m);
+		gfx->flushBatchedDraws();
+		canvas->release();
+	});
+
+	// interior (y<x -> white), the y=x edge (intermediate), exterior (y>x -> black),
+	// and a backbuffer pixel outside the 8x8 canvas (grey). LÖVE-space.
+	const int sx[4] = { 6, 4, 2, 12 };
+	const int sy[4] = { 2, 4, 6, 12 };
+	return pushSamples(L, H, sx, sy, 4);
+}
+
 extern "C" void pump_open_extensions(lua_State *L)
 {
 	love::luax_preload(L, luaopen_love, "love");
+	lua_register(L, "__wasi_gfx_draw_msaa", w_draw_msaa);
 	lua_register(L, "__wasi_gfx_draw_mrt", w_draw_mrt);
 	lua_register(L, "__wasi_gfx_draw_transform", w_draw_transform);
 	lua_register(L, "__wasi_gfx_draw_particles", w_draw_particles);

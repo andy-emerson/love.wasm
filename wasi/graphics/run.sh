@@ -200,3 +200,15 @@ echo "### mrt witness (4.13) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-mrt.lua"
 echo "mrt witness (4.13): Chromium PASS"
+
+# ── 4.14: a multisampled (MSAA) render target ────────────────────────────────
+# The multisample mechanism (renderbufferStorageMultisample + a blitFramebuffer
+# resolve), distinct from 4.6's single-sample canvas. An msaa=4 canvas takes a
+# white triangle whose diagonal edge bisects pixel centres; after the resolve,
+# the edge pixel reads an intermediate grey (coverage-sampled) while interior
+# and exterior read solid — the anti-aliasing proves the resolve ran. Same wasm.
+echo
+echo "### msaa witness (4.14) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-msaa.lua"
+echo "msaa witness (4.14): Chromium PASS"

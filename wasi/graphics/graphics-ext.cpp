@@ -839,9 +839,67 @@ static int w_draw_msaa(lua_State *L)
 	return pushSamples(L, H, sx, sy, 4);
 }
 
+// __wasi_gfx_readback() -> 8 ints: two (R,G,B,A) samples read through the ENGINE
+//   API — a drawn-quadrant pixel and a clear-region pixel.
+// The step-4 (4.15) witness: love.graphics' own texture readback. Every prior
+// witness recovered pixels with the bridge's raw glReadPixels; this one draws
+// into an 8x8 render target, then calls gfx->readbackTexture() — the path behind
+// Texture:newImageData / love.graphics.readbackTexture — to pull the GPU texture
+// into a CPU ImageData, and samples that ImageData with getPixel(). Recovering
+// the draw colour at the drawn quadrant and the clear colour elsewhere, in
+// top-left ImageData space, proves the engine's readback (and its orientation
+// handling) works — not just our test harness's. Chromium only.
+static int w_draw_readback(lua_State *L)
+{
+	auto *gfx = witnessGfx(L);
+
+	const int W = 16, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	graphics::OptionalColorD grey(ColorD(0.3, 0.3, 0.3, 1.0)); // (76,76,76)
+
+	Colorf drawn, cleared;
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+
+		graphics::Texture::Settings st;
+		st.width = 8; st.height = 8; st.renderTarget = true;
+		graphics::Texture *canvas = gfx->newTexture(st, nullptr);
+
+		gfx->setRenderTarget(graphics::Graphics::RenderTarget(canvas), 0);
+		gfx->clear(grey, OptionalInt(), OptionalDouble());
+		gfx->setColor(Colorf(0.2f, 0.4f, 0.6f, 1.0f)); // (51,102,153)
+		gfx->rectangle(graphics::Graphics::DRAW_FILL, 0.0f, 0.0f, 4.0f, 4.0f); // top-left quadrant
+		gfx->flushBatchedDraws();
+		gfx->setRenderTarget(); // back to the backbuffer
+
+		// The engine's own readback path — NOT glReadPixels. Pulls the GPU texture
+		// into a CPU ImageData in top-left space, the same call Texture:newImageData
+		// and love.graphics.readbackTexture use.
+		love::Rect r = {0, 0, 8, 8};
+		image::ImageData *pixels = gfx->readbackTexture(canvas, 0, 0, r, nullptr, 0, 0);
+		drawn = pixels->getPixel(2, 2);   // inside the drawn quadrant
+		cleared = pixels->getPixel(6, 6); // clear region
+		pixels->release();
+		canvas->release();
+	});
+
+	auto pushColor = [&](const Colorf &c) {
+		lua_pushinteger(L, (int)(c.r * 255.0f + 0.5f));
+		lua_pushinteger(L, (int)(c.g * 255.0f + 0.5f));
+		lua_pushinteger(L, (int)(c.b * 255.0f + 0.5f));
+		lua_pushinteger(L, (int)(c.a * 255.0f + 0.5f));
+	};
+	pushColor(drawn);
+	pushColor(cleared);
+	return 8;
+}
+
 extern "C" void pump_open_extensions(lua_State *L)
 {
 	love::luax_preload(L, luaopen_love, "love");
+	lua_register(L, "__wasi_gfx_readback", w_draw_readback);
 	lua_register(L, "__wasi_gfx_draw_msaa", w_draw_msaa);
 	lua_register(L, "__wasi_gfx_draw_mrt", w_draw_mrt);
 	lua_register(L, "__wasi_gfx_draw_transform", w_draw_transform);

@@ -212,3 +212,15 @@ echo "### msaa witness (4.14) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-msaa.lua"
 echo "msaa witness (4.14): Chromium PASS"
+
+# ── 4.15: the engine's own texture readback ──────────────────────────────────
+# Every prior leg recovered pixels with the bridge's raw glReadPixels; this one
+# draws into a render target and calls gfx->readbackTexture() — the path behind
+# Texture:newImageData / love.graphics.readbackTexture — pulling the GPU texture
+# into a CPU ImageData, then samples it with getPixel(). Proves the engine's own
+# readback (and orientation handling), not just the harness's. Same wasm.
+echo
+echo "### readback witness (4.15) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-readback.lua"
+echo "readback witness (4.15): Chromium PASS"

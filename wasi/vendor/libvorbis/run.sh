@@ -22,7 +22,7 @@ OUT="$TMP/libogg.a" "$OGG/build.sh"
 OUT="$TMP/libvorbis.a" "$HERE/build.sh"
 
 # Embed the test clip.
-python3 "$ROOT/wasi/witness/embed.py" "$ROOT/testing/resources/tone.ogg" tone_ogg > "$TMP/tone_ogg.h"
+node "$ROOT/wasi/witness/embed.mjs" "$ROOT/testing/resources/tone.ogg" tone_ogg > "$TMP/tone_ogg.h"
 
 clang-20 --target=wasm32-wasi -O2 \
   -I"$HERE/include" -I"$OGG/include" -I"$TMP" \

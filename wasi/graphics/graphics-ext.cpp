@@ -1,4 +1,4 @@
-// Step-4 (4.1c + 4.2 .. 4.11) pump extension for the graphics build: preload
+// Step-4 (4.1c + 4.2 .. 4.20) pump extension for the graphics build: preload
 // love (pump-ext.cpp) and register the witness bridges.
 //
 // Why a bridge: on desktop, love.window creates the GL context and calls
@@ -27,7 +27,12 @@
 // __wasi_gfx_draw_mesh (4.9) draws a custom-vertex Mesh through a user-owned VBO;
 // __wasi_gfx_draw_spritebatch (4.10) batches textured quads (+ a Quad sub-region)
 // into one draw; __wasi_gfx_draw_particles (4.11) emits, simulates, and draws a
-// ParticleSystem.
+// ParticleSystem. The compose-only API tail and extended tail follow the same
+// pattern (each bridge documented at its definition): __wasi_gfx_draw_transform
+// (4.12), _draw_mrt (4.13), _draw_msaa (4.14), _readback (4.15, the engine's own
+// texture readback), _draw_buffer (4.16, explicit GraphicsBuffer), _ceiling
+// (4.17, the WebGL2 ceiling reported gracefully absent), _draw_instanced (4.18),
+// _draw_depth (4.19), and _draw_imagefont (4.20).
 //
 // One windowless subtlety the draw path exposed: present() guards on isActive(),
 // which requires a window, so windowless it early-returns without flushing the
@@ -54,6 +59,7 @@
 #include "graphics/ParticleSystem.h"
 #include "graphics/Quad.h"
 #include "graphics/vertex.h"
+#include "font/Font.h"
 #include "font/TextShaper.h"
 #include "font/TrueTypeRasterizer.h"
 #include "image/ImageData.h"
@@ -1016,9 +1022,207 @@ static int w_ceiling(lua_State *L)
 	return 7;
 }
 
+// __wasi_gfx_draw_imagefont() -> 5 ints: ink-pixel count, then a clear-corner
+//   (R,G,B) sample.
+// The step-4 (4.20) witness: a non-default font via a genuinely different
+// construction path. 4.7 proved the embedded default font (real FreeType glyph
+// rasterisation). This builds an ImageFont — a font whose glyphs come from an
+// image, not FreeType: a 9x5 RGBA image with a magenta separator column between
+// two solid-white glyph blocks, turned into a font via newImageRasterizer +
+// newFont. Printing "AB" with an ink colour renders the white glyph blocks in
+// that colour (white * colour). Counting ink-coloured pixels (the glyphs drew)
+// and confirming a far corner stayed the clear colour proves the image-glyph
+// font path — distinct from FreeType. Chromium only.
+static int w_draw_imagefont(lua_State *L)
+{
+	auto *gfx = witnessGfx(L);
+	auto *fontmod = Module::getInstance<font::Font>(Module::M_FONT);
+	if (fontmod == nullptr)
+		luaL_error(L, "love.font is not registered (require it first)");
+
+	const int W = 16, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	graphics::OptionalColorD clear(ColorD(0.3, 0.3, 0.3, 1.0)); // (76,76,76)
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+		gfx->clear(clear, OptionalInt(), OptionalDouble());
+
+		// ImageFont source: separator (magenta) columns delimit two white glyphs.
+		auto *img = new image::ImageData(9, 5, PIXELFORMAT_RGBA8_UNORM);
+		for (int y = 0; y < 5; y++)
+			for (int x = 0; x < 9; x++)
+			{
+				bool spacer = (x == 0 || x == 4 || x == 8);
+				img->setPixel(x, y, spacer ? Colorf(1, 0, 1, 1) : Colorf(1, 1, 1, 1));
+			}
+		font::Rasterizer *r = fontmod->newImageRasterizer(img, "AB", 0, 1.0f);
+		img->release();
+		graphics::Font *font = gfx->newFont(r);
+		r->release();
+
+		gfx->setFont(font);
+		gfx->setColor(Colorf(1, 1, 1, 1)); // per-glyph colour comes from the string
+		std::vector<font::ColoredString> str;
+		str.push_back({ "AB", Colorf(0.2f, 0.4f, 0.6f, 1.0f) }); // ink (51,102,153)
+		Matrix4 m(1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+		gfx->print(str, m);
+		gfx->flushBatchedDraws();
+		font->release();
+	});
+
+	// Count ink pixels (glyphs in 51,102,153) across the buffer; sample a corner.
+	unsigned char buf[16 * 16 * 4];
+	glReadPixels(0, 0, W, H, GL_RGBA, GL_UNSIGNED_BYTE, buf);
+	int ink = 0;
+	for (int i = 0; i < W * H; i++)
+	{
+		int r = buf[i * 4], g = buf[i * 4 + 1], b = buf[i * 4 + 2];
+		if (abs(r - 51) <= 12 && abs(g - 102) <= 12 && abs(b - 153) <= 12)
+			ink++;
+	}
+	unsigned char corner[4] = {0, 0, 0, 0};
+	glReadPixels(W - 2, 1, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, corner); // LÖVE (14,14): no text
+
+	lua_pushinteger(L, ink);
+	for (int i = 0; i < 3; i++)
+		lua_pushinteger(L, corner[i]);
+	return 4;
+}
+
+// __wasi_gfx_draw_depth() -> 12 ints: three (R,G,B,A) samples —
+//   near-only, overlap, far-only.
+// The step-4 (4.19) witness: the depth buffer + depth test (setDepthMode). A
+// depth-capable backbuffer is cleared to far (1.0); depth test is LESS with
+// write. A NEAR quad (green, gl_Position.z = -0.5) is drawn FIRST over the left;
+// a FAR quad (red, z = +0.5) is drawn SECOND over the right, overlapping. Painter's
+// algorithm (draw order) would paint the overlap red — but with depth test the
+// later, farther quad is REJECTED where the nearer one already wrote depth, so the
+// overlap stays green. Reading near-only (green), overlap (green — depth won over
+// draw order), and far-only (red — the far quad still draws where nothing is in
+// front) proves depth write + depth test. Each shader hardcodes gl_Position.z
+// AFTER the projection multiply, so it doesn't depend on how the ortho maps z.
+static int w_draw_depth(lua_State *L)
+{
+	auto *gfx = witnessGfx(L);
+
+	const int W = 16, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	bb.depth = true; // allocate a depth buffer on the backbuffer
+	graphics::OptionalColorD clear(ColorD(0.3, 0.3, 0.3, 1.0)); // (76,76,76)
+
+	const char *nearsrc =
+		"vec4 position(mat4 transform_projection, vec4 vertex_position)\n"
+		"{ vec4 p = transform_projection * vertex_position; p.z = -0.5 * p.w; return p; }\n";
+	const char *farsrc =
+		"vec4 position(mat4 transform_projection, vec4 vertex_position)\n"
+		"{ vec4 p = transform_projection * vertex_position; p.z =  0.5 * p.w; return p; }\n";
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+		gfx->clear(clear, OptionalInt(), OptionalDouble(1.0)); // clear colour + depth to far
+		gfx->setDepthMode(graphics::COMPARE_LESS, true);
+
+		std::vector<std::string> ns; ns.push_back(nearsrc);
+		std::vector<std::string> fs; fs.push_back(farsrc);
+		graphics::Shader::CompileOptions opts;
+		graphics::Shader *nearsh = gfx->newShader(ns, opts);
+		graphics::Shader *farsh  = gfx->newShader(fs, opts);
+
+		gfx->setShader(nearsh); // NEAR, drawn first
+		gfx->setColor(Colorf(0.2f, 0.6f, 0.2f, 1.0f)); // (51,153,51)
+		gfx->rectangle(graphics::Graphics::DRAW_FILL, 0.0f, 0.0f, 10.0f, 16.0f); // left
+		gfx->flushBatchedDraws();
+
+		gfx->setShader(farsh); // FAR, drawn second, overlapping — must lose in the overlap
+		gfx->setColor(Colorf(0.8f, 0.2f, 0.2f, 1.0f)); // (204,51,51)
+		gfx->rectangle(graphics::Graphics::DRAW_FILL, 6.0f, 0.0f, 10.0f, 16.0f); // right
+		gfx->flushBatchedDraws();
+
+		gfx->setShader();
+		gfx->setDepthMode(); // restore (depth test off)
+		nearsh->release();
+		farsh->release();
+	});
+
+	// near-only (3,8), overlap (8,8), far-only (13,8).
+	const int sx[3] = { 3, 8, 13 };
+	const int sy[3] = { 8, 8,  8 };
+	return pushSamples(L, H, sx, sy, 3);
+}
+
+// __wasi_gfx_draw_instanced() -> 20 ints: five (R,G,B,A) samples —
+//   four instance cells (grid), then a gap pixel.
+// The step-4 (4.18) witness: instanced drawing. ONE drawInstanced call renders N
+// copies of a single mesh, each placed by love_InstanceID (= gl_InstanceID) — the
+// WebGL2-native glDrawArraysInstanced path, no seam. A 4x4 quad mesh is drawn 4x
+// with a vertex shader that offsets instance i into a 2x2 grid cell (spacing 8),
+// so the four instances land in four distinct cells from a single call. Reading
+// each cell's colour plus an untouched gap between them proves the instances
+// rendered at their per-instance positions, not stacked. Chromium only.
+static int w_draw_instanced(lua_State *L)
+{
+	auto *gfx = witnessGfx(L);
+
+	const int W = 16, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	graphics::OptionalColorD clear(ColorD(0.3, 0.3, 0.3, 1.0)); // (76,76,76)
+
+	const char *vsrc =
+		"vec4 position(mat4 transform_projection, vec4 vertex_position)\n"
+		"{\n"
+		"    float cell = 8.0;\n"
+		"    float col = mod(float(love_InstanceID), 2.0);\n"
+		"    float row = floor(float(love_InstanceID) / 2.0);\n"
+		"    vertex_position.x += col * cell;\n"
+		"    vertex_position.y += row * cell;\n"
+		"    return transform_projection * vertex_position;\n"
+		"}\n";
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+		gfx->clear(clear, OptionalInt(), OptionalDouble());
+		gfx->setColor(Colorf(1, 1, 1, 1)); // white: mesh vertex colour passes through
+
+		Color32 c(51, 102, 153, 255); // (51,102,153)
+		graphics::Vertex verts[4] = {           // a 4x4 quad at the origin (fan)
+			{ 0.0f, 0.0f, 0.0f, 0.0f, c },
+			{ 4.0f, 0.0f, 0.0f, 0.0f, c },
+			{ 4.0f, 4.0f, 0.0f, 0.0f, c },
+			{ 0.0f, 4.0f, 0.0f, 0.0f, c },
+		};
+		auto fmt = graphics::Mesh::getDefaultVertexFormat();
+		graphics::Mesh *mesh = gfx->newMesh(fmt, verts, sizeof(verts),
+			graphics::PRIMITIVE_TRIANGLE_FAN, graphics::BUFFERDATAUSAGE_STATIC);
+
+		std::vector<std::string> stages;
+		stages.push_back(vsrc);
+		graphics::Shader::CompileOptions opts;
+		graphics::Shader *sh = gfx->newShader(stages, opts);
+		gfx->setShader(sh);
+
+		gfx->drawInstanced(mesh, Matrix4(), 4); // one call -> 4 instances
+		gfx->flushBatchedDraws();
+		gfx->setShader();
+		sh->release();
+		mesh->release();
+	});
+
+	// four instance cells (2,2)/(10,2)/(2,10)/(10,10), then a gap at (6,6).
+	const int sx[5] = { 2, 10, 2, 10, 6 };
+	const int sy[5] = { 2,  2, 10, 10, 6 };
+	return pushSamples(L, H, sx, sy, 5);
+}
+
 extern "C" void pump_open_extensions(lua_State *L)
 {
 	love::luax_preload(L, luaopen_love, "love");
+	lua_register(L, "__wasi_gfx_draw_instanced", w_draw_instanced);
+	lua_register(L, "__wasi_gfx_draw_depth", w_draw_depth);
+	lua_register(L, "__wasi_gfx_draw_imagefont", w_draw_imagefont);
 	lua_register(L, "__wasi_gfx_ceiling", w_ceiling);
 	lua_register(L, "__wasi_gfx_draw_buffer", w_draw_buffer);
 	lua_register(L, "__wasi_gfx_readback", w_draw_readback);

@@ -6,13 +6,17 @@
 #          love_gl host) and real Chromium WebGL2. The only node leg — driving
 #          the real backend below hits ~100+ GL entry points a node mock cannot
 #          fake, so those legs are Chromium-only.
-#   4.1c .. 4.11 — the real LÖVE core + love.graphics on the reused opengl
+#   4.1c .. 4.20 — the real LÖVE core + love.graphics on the reused opengl
 #          backend, reseamed to a real WebGL2 context, driven through the
 #          graphics-ext bridges to draw and read pixels back: clear (4.1c),
 #          first primitive (4.2), the primitive set (4.3), textures (4.4), a
 #          user shader (4.5), a canvas (4.6), text (4.7), blend/scissor/stencil
-#          (4.8), and the drawables — Mesh (4.9), SpriteBatch+Quad (4.10),
-#          ParticleSystem (4.11). One wasm build, one witness lua per leg.
+#          (4.8), the drawables — Mesh (4.9), SpriteBatch+Quad (4.10),
+#          ParticleSystem (4.11) — the compose-only API tail — transforms (4.12),
+#          MRT (4.13), MSAA (4.14), engine readback (4.15), GraphicsBuffer (4.16),
+#          the WebGL2 ceiling as a graceful divergence (4.17) — and the extended
+#          tail: instancing (4.18), depth test (4.19), an ImageFont (4.20). One
+#          wasm build, one witness lua per leg.
 #
 #   PREFIX=/path/to/wasi-eh wasi/graphics/run.sh
 #
@@ -248,3 +252,36 @@ echo "### ceiling witness (4.17) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-ceiling.lua"
 echo "ceiling witness (4.17): Chromium PASS"
+
+# ── 4.18: instanced drawing ──────────────────────────────────────────────────
+# One drawInstanced call renders N copies of a mesh, each positioned by
+# love_InstanceID (WebGL2-native glDrawArraysInstanced, no seam). Four instances
+# land in four distinct grid cells from a single call; each cell + a gap between
+# them are read back. Same wasm as 4.1c-4.17.
+echo
+echo "### instanced witness (4.18) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-instanced.lua"
+echo "instanced witness (4.18): Chromium PASS"
+
+# ── 4.19: the depth buffer + depth test ──────────────────────────────────────
+# setDepthMode with a depth-capable backbuffer. A near quad is drawn first and a
+# far quad second, overlapping; depth test LESS rejects the later-but-farther
+# quad in the overlap (painter's order would have painted it), proving depth
+# write + test. No seam. Same wasm as 4.1c-4.18.
+echo
+echo "### depth witness (4.19) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-depth.lua"
+echo "depth witness (4.19): Chromium PASS"
+
+# ── 4.20: a non-default font (ImageFont) ─────────────────────────────────────
+# 4.7 proved the embedded default font (FreeType). This builds an ImageFont — a
+# font whose glyphs come from an image, a different construction path than
+# FreeType — via newImageRasterizer + newFont, prints it, and confirms ink
+# coverage. No seam. Same wasm as 4.1c-4.19.
+echo
+echo "### imagefont witness (4.20) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-imagefont.lua"
+echo "imagefont witness (4.20): Chromium PASS"

@@ -665,9 +665,65 @@ static int w_draw_particles(lua_State *L)
 	return pushSamples(L, H, sx, sy, 2);
 }
 
+// __wasi_gfx_draw_transform() -> 16 ints: four (R,G,B,A) samples —
+//   translate quad, scale quad, rotate(pi) quad, background.
+// The step-4 (4.12) witness: the coordinate-system transform stack — the first
+// of the compose-only API tail. Every prior witness drew in identity space; this
+// drives push/translate/scale/rotate/pop and reads back where each draw landed.
+// Three unit rectangles are each drawn inside a push/pop pair with a different
+// transform: translate(8,8) puts one at (8..12,8..12); scale(4,4) blows a 1x1 up
+// to (0..4,0..4); translate(16,16)+rotate(pi) (180°, direction-agnostic) lands a
+// 4x4 at (12..16,12..16). Because each op is push/pop wrapped, the SECOND draw
+// landing at the origin (not offset by the first translate) also proves pop
+// restored the stack to identity. Reads recover each quad's colour at its
+// predicted place plus an untouched background pixel.
+static int w_draw_transform(lua_State *L)
+{
+	auto *gfx = witnessGfx(L);
+
+	const int W = 16, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	graphics::OptionalColorD clear(ColorD(0.3, 0.3, 0.3, 1.0)); // (76,76,76)
+
+	const float PI = 3.14159265358979f;
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+		gfx->clear(clear, OptionalInt(), OptionalDouble());
+
+		gfx->push(graphics::Graphics::STACK_TRANSFORM);
+		gfx->translate(8.0f, 8.0f);
+		gfx->setColor(Colorf(0.2f, 0.4f, 0.6f, 1.0f)); // (51,102,153)
+		gfx->rectangle(graphics::Graphics::DRAW_FILL, 0.0f, 0.0f, 4.0f, 4.0f);
+		gfx->pop();
+
+		gfx->push(graphics::Graphics::STACK_TRANSFORM);
+		gfx->scale(4.0f, 4.0f);
+		gfx->setColor(Colorf(0.8f, 0.2f, 0.2f, 1.0f)); // (204,51,51)
+		gfx->rectangle(graphics::Graphics::DRAW_FILL, 0.0f, 0.0f, 1.0f, 1.0f);
+		gfx->pop();
+
+		gfx->push(graphics::Graphics::STACK_TRANSFORM);
+		gfx->translate(16.0f, 16.0f);
+		gfx->rotate(PI);
+		gfx->setColor(Colorf(0.2f, 0.6f, 0.2f, 1.0f)); // (51,153,51)
+		gfx->rectangle(graphics::Graphics::DRAW_FILL, 0.0f, 0.0f, 4.0f, 4.0f);
+		gfx->pop();
+
+		gfx->flushBatchedDraws();
+	});
+
+	// translate quad, scale quad, rotate quad, background — all LÖVE-space.
+	const int sx[4] = { 10, 1, 14, 6 };
+	const int sy[4] = { 10, 1, 14, 2 };
+	return pushSamples(L, H, sx, sy, 4);
+}
+
 extern "C" void pump_open_extensions(lua_State *L)
 {
 	love::luax_preload(L, luaopen_love, "love");
+	lua_register(L, "__wasi_gfx_draw_transform", w_draw_transform);
 	lua_register(L, "__wasi_gfx_draw_particles", w_draw_particles);
 	lua_register(L, "__wasi_gfx_clear_read", w_clear_read);
 	lua_register(L, "__wasi_gfx_draw_read", w_draw_read);

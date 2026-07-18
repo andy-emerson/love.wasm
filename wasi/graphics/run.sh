@@ -177,3 +177,14 @@ echo "### particlesystem witness (4.11) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-particles.lua"
 echo "particlesystem witness (4.11): Chromium PASS"
+
+# ── 4.12: the coordinate-system transform stack ──────────────────────────────
+# First of the compose-only API tail: not a new drawing surface, but the
+# transform every draw rides. push/translate/scale/rotate/pop drive three unit
+# rectangles into three predicted cells (and the origin-landing one proves pop
+# restores the stack), read back at each. Same wasm as 4.1c-4.11.
+echo
+echo "### transform witness (4.12) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-transform.lua"
+echo "transform witness (4.12): Chromium PASS"

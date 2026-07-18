@@ -6,15 +6,25 @@
 // Self-contained by contract (no imports, no outer-scope refs), so it can be
 // stringified and serialized into a page like the other browser hosts.
 //
-// Coverage: the context-bringup + clear/readback path (what the step-4 witness
-// exercises) is implemented for real; entry points WebGL2 lacks or the witness
-// never calls (compute, indirect draw, buffer mapping, debug groups, MSAA
-// resolve) are present as no-ops/throwers so instantiation succeeds. Host-
-// reported limits: glGetString/glGetIntegerv/glGetFloatv answer from the real
-// context (gl.getParameter), never a static assumption.
+// Coverage: everything the step-4 witnesses (4.1c..4.11 — clear, draws, the 2D
+// primitive set, textures, user shaders, canvases, text, blend/scissor/stencil,
+// mesh, spritebatch, particles) exercise is implemented for real; entry points
+// WebGL2 lacks or no witness calls (compute, indirect draw, buffer mapping,
+// debug groups, MSAA resolve) are present as loud-warning stubs so
+// instantiation succeeds. Host-reported limits: glGetString/glGetIntegerv/
+// glGetFloatv answer from the real context (gl.getParameter), never a static
+// assumption.
 export function makeWebGLHost() {
-  const canvas = new OffscreenCanvas(4, 4);
-  const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, alpha: true, antialias: false });
+  // The system backbuffer LÖVE renders to when no MSAA internal backbuffer is
+  // requested (the witness case). Sized generously so a witness can setMode to
+  // any size up to this and position primitives with room; each witness reads
+  // back within its own viewport (anchored at the canvas's bottom-left origin),
+  // so a larger canvas never disturbs a smaller setMode.
+  const canvas = new OffscreenCanvas(64, 64);
+  // depth + stencil so the system backbuffer has the attachments love.graphics
+  // needs for depth testing and stencil masking (WebGL context attributes
+  // default both to false; the real preview needs them).
+  const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, alpha: true, antialias: false, depth: true, stencil: true });
 
   let memory, malloc;
   const HEAPU8  = () => new Uint8Array(memory.buffer);
@@ -222,7 +232,7 @@ export function makeWebGLHost() {
     glDeleteSync: (id) => { const o = get(id); if (o) { gl.deleteSync(o); objs.delete(id); } },
   };
 
-  // Present but not driven by the clear witness (WebGL2 lacks them, or they are
+  // Present but not driven by any step-4 witness (WebGL2 lacks them, or they are
   // desktop-GL / debug / compute paths the backend feature-gates off). Provided
   // so instantiation succeeds; a call that slips through logs loudly.
   const STUBS = [
@@ -239,7 +249,7 @@ export function makeWebGLHost() {
     'glPushDebugGroupKHR', 'glPushGroupMarkerEXT', 'glResolveMultisampleFramebufferAPPLE',
     'glShaderStorageBlockBinding', 'glTexBuffer', 'glTextureView', 'glUnmapBuffer',
   ];
-  for (const name of STUBS) if (!(name in imports)) imports[name] = (function (n) { return function () { /* never expected on the clear path */ }; })(name);
+  for (const name of STUBS) if (!(name in imports)) imports[name] = ((n) => () => { console.warn('[webgl-host] unimplemented GL entry point called: ' + n); })(name);
 
   return {
     imports,

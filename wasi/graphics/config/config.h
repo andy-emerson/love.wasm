@@ -1,9 +1,9 @@
 /* Module selection for the wasi build (step-4 graphics bring-up) — consumed by
  * src/common/config.h via HAVE_CONFIG_H, same door as the boot/audio configs.
  * Step 4's set: step 3's core plus love.graphics (opengl backend on WebGL2
- * static imports) and the modules graphics depends on to construct — image
- * (ImageData/Image), font (default font raster), and window (the "active" gate;
- * a minimal host-canvas seam). love.audio is left out of this build.
+ * static imports) and the two modules graphics depends on to construct — image
+ * (ImageData/Image) and font (default font raster). love.window is NOT enabled
+ * (see the note below the defines); love.audio is left out of this build.
  */
 #define LOVE_ENABLE_LOVE 1
 #define LOVE_ENABLE_DATA 1

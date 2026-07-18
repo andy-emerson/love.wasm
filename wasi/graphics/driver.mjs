@@ -24,7 +24,7 @@ export async function driveGraphics(x, bootSrc, schedule, log) {
   if (st === -1) {
     const verdict = out();
     log('final: ' + verdict);
-    return verdict === 'STEP4-GRAPHICS-WITNESS: PASS';
+    return /: PASS$/.test(verdict);
   }
   log('pump status ' + st + ': ' + out());
   return false;

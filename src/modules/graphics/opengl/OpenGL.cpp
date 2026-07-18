@@ -2032,7 +2032,15 @@ uint32 OpenGL::getPixelFormatUsageFlags(PixelFormat pixelformat)
 		break;
 
 	case PIXELFORMAT_LA8_UNORM:
+#ifndef LOVE_GRAPHICS_GL_STATIC_IMPORTS
 		flags |= commonsample;
+#endif
+		// The wasm32-wasi WebGL2 backend maps LA8 to GL_RG8 + texture swizzle
+		// (GL_TEXTURE_SWIZZLE_*, see getFormat), which WebGL2 does not support —
+		// creating such a texture fails with GL_INVALID_ENUM. Report LA8 as
+		// unsupported under the WebGL2 seam so callers (the font glyph atlas)
+		// take their existing RGBA8 fallback. Guarded by the same macro as the
+		// GL loader (see OpenGL.cpp top); default builds are byte-unchanged.
 		break;
 
 	case PIXELFORMAT_RGBA4_UNORM:

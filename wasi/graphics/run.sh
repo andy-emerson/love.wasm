@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
-# One-command graphics witness (build-order step 4). Two witnesses:
+# One-command graphics witness (build-order step 4). Two kinds of leg:
 #
 #   4.1a — raw-GL readback: a command module (witness-gl.cpp) proving the
 #          WebGL2 import plumbing + glReadPixels round-trip, on node (a mock
-#          love_gl host) and real Chromium WebGL2.
-#   4.1c — love.graphics: the real LÖVE core + love.graphics on the opengl
-#          backend, reseamed to a real WebGL2 context, clearing a framebuffer
-#          and recovering the pixel through the graphics-ext bridge. Chromium
-#          only — driving the real backend hits ~100+ GL entry points a node
-#          mock cannot fake, so the node leg stays at 4.1a.
+#          love_gl host) and real Chromium WebGL2. The only node leg — driving
+#          the real backend below hits ~100+ GL entry points a node mock cannot
+#          fake, so those legs are Chromium-only.
+#   4.1c .. 4.11 — the real LÖVE core + love.graphics on the reused opengl
+#          backend, reseamed to a real WebGL2 context, driven through the
+#          graphics-ext bridges to draw and read pixels back: clear (4.1c),
+#          first primitive (4.2), the primitive set (4.3), textures (4.4), a
+#          user shader (4.5), a canvas (4.6), text (4.7), blend/scissor/stencil
+#          (4.8), and the drawables — Mesh (4.9), SpriteBatch+Quad (4.10),
+#          ParticleSystem (4.11). One wasm build, one witness lua per leg.
 #
 #   PREFIX=/path/to/wasi-eh wasi/graphics/run.sh
 #
@@ -60,3 +64,187 @@ GFXLIBS_DIR="${GFXLIBS_DIR:-$PREFIX/gfxlibs}" PREFIX="$PREFIX" OUT="$LOVE_WASM" 
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM"
 echo "love.graphics witness (4.1c): Chromium PASS"
+
+# ── 4.2: the first primitive draw ────────────────────────────────────────────
+# The same real backend, now drawing geometry instead of only clearing: a filled
+# rectangle over a black clear, read back to confirm the colour landed where it
+# was rasterised. This is the first time a shader (glslang -> GLSL -> real WebGL2
+# compile) and vertex streaming (a real VBO via glBufferSubData — WebGL2 forbids
+# the client-side arrays and buffer mapping the desktop paths would pick) both
+# run. Same wasm as 4.1c; only the witness lua differs. Chromium only.
+echo
+echo "### draw witness (4.2) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-draw.lua"
+echo "draw witness (4.2): Chromium PASS"
+
+# ── 4.3: the rest of the 2D primitive set ────────────────────────────────────
+# The same real backend drawing every remaining primitive category in one frame:
+# a high-vertex fan (filled circle), an arbitrary filled triangle, points
+# (gl_PointSize), and the distinct STROKE path (line-mode rectangle outline +
+# polyline). Each is read back at a covered pixel; the outline's hollow centre
+# and a background pixel confirm the clear colour survives where nothing drew.
+# Same wasm as 4.1c/4.2; only the witness lua differs. Chromium only.
+echo
+echo "### primitive-set witness (4.3) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-prims.lua"
+echo "primitive-set witness (4.3): Chromium PASS"
+
+# ── 4.4: the first texture ───────────────────────────────────────────────────
+# The first real pixel data through the backend: a 2x2 four-texel RGBA8 image
+# uploaded to a GL texture (glTexStorage2D/glTexSubImage) and drawn scaled with
+# NEAREST filtering, each texel's block read back to recover its colour and
+# position — proving texture upload, sampler binding, the textured shader, and
+# correct UV mapping. Same wasm as 4.1c/4.2/4.3; only the witness lua differs.
+echo
+echo "### texture witness (4.4) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-texture.lua"
+echo "texture witness (4.4): Chromium PASS"
+
+# ── 4.5: the first user shader ───────────────────────────────────────────────
+# The first shader code that did not ship with the engine: a LÖVE-GLSL pixel
+# shader whose effect() inverts the vertex colour, compiled through glslang to
+# real WebGL2 GLSL, bound, and executed — recovered by reading back the inverted
+# colour. Same wasm as 4.1c–4.4; only the witness lua differs.
+echo
+echo "### shader witness (4.5) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-shader.lua"
+echo "shader witness (4.5): Chromium PASS"
+
+# ── 4.6: the first render target ─────────────────────────────────────────────
+# The first draw that does not go to the backbuffer: render into an off-screen
+# 8x8 canvas (a render-target Texture), then sample it back onto the backbuffer.
+# Reads confirm the rendered content round-trips through the off-screen FBO with
+# orientation preserved. Same wasm as 4.1c–4.5; only the witness lua differs.
+echo
+echo "### canvas witness (4.6) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-canvas.lua"
+echo "canvas witness (4.6): Chromium PASS"
+
+# ── 4.7: the first text ──────────────────────────────────────────────────────
+# The last major drawing surface: print text with the embedded default font.
+# Real FreeType glyph rasterisation → a GPU glyph atlas → the textured-draw path,
+# checked by ink coverage where the text is (empty elsewhere). Needs the LA8
+# pixel-format seam (WebGL2 lacks the texture swizzle LÖVE's LA8 atlas uses, so
+# it falls back to RGBA8). Same wasm as 4.1c–4.6; only the witness lua differs.
+echo
+echo "### text witness (4.7) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-text.lua"
+echo "text witness (4.7): Chromium PASS"
+
+# ── 4.8: the cross-cutting render state ──────────────────────────────────────
+# Not a new drawing surface — the state that composites and clips draws: additive
+# blend (grey + draw summed, not replaced), scissor (a full-buffer draw clipped
+# to a sub-rect), and stencil (a full-buffer draw masked to a written region),
+# all in one frame with a stencil-capable backbuffer. Same wasm as 4.1c–4.7.
+echo
+echo "### render-state witness (4.8) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-state.lua"
+echo "render-state witness (4.8): Chromium PASS"
+
+# ── 4.9: the first higher-level drawable — Mesh ──────────────────────────────
+# Custom vertex geometry through a user-owned VBO (not the batched stream): a
+# 3-vertex triangle mesh in LÖVE's default vertex format, uploaded via newMesh
+# and drawn, read back inside/outside. Same wasm as 4.1c–4.8.
+echo
+echo "### mesh witness (4.9) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-mesh.lua"
+echo "mesh witness (4.9): Chromium PASS"
+
+# ── 4.10: SpriteBatch (+ Quad) ───────────────────────────────────────────────
+# Batched textured quads in one draw, and sub-region sampling: a SpriteBatch on a
+# 2x2 four-texel texture with a full-texture sprite plus a Quad sprite selecting
+# one texel, read back to confirm both sprites and the sub-region. Same wasm.
+echo
+echo "### spritebatch witness (4.10) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-spritebatch.lua"
+echo "spritebatch witness (4.10): Chromium PASS"
+
+# ── 4.11: ParticleSystem ─────────────────────────────────────────────────────
+# The last higher-level drawable, and the first with a real per-frame simulation:
+# emit long-lived particles at a point (zero speed -> deterministic blob), advance
+# the sim with update(), draw, read the blob back. Same wasm as 4.1c-4.10.
+echo
+echo "### particlesystem witness (4.11) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-particles.lua"
+echo "particlesystem witness (4.11): Chromium PASS"
+
+# ── 4.12: the coordinate-system transform stack ──────────────────────────────
+# First of the compose-only API tail: not a new drawing surface, but the
+# transform every draw rides. push/translate/scale/rotate/pop drive three unit
+# rectangles into three predicted cells (and the origin-landing one proves pop
+# restores the stack), read back at each. Same wasm as 4.1c-4.11.
+echo
+echo "### transform witness (4.12) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-transform.lua"
+echo "transform witness (4.12): Chromium PASS"
+
+# ── 4.13: multiple render targets (MRT) ──────────────────────────────────────
+# A distinct backend mechanism: several colour attachments on one FBO
+# (glDrawBuffers) driven by a multi-output pixel shader. One draw of an MRT
+# shader (love_Canvases[0]/[1]) fills two bound render-target textures with
+# distinct colours; each is drawn back and read to confirm the two attachments
+# received independent outputs. Same wasm as 4.1c-4.12.
+echo
+echo "### mrt witness (4.13) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-mrt.lua"
+echo "mrt witness (4.13): Chromium PASS"
+
+# ── 4.14: a multisampled (MSAA) render target ────────────────────────────────
+# The multisample mechanism (renderbufferStorageMultisample + a blitFramebuffer
+# resolve), distinct from 4.6's single-sample canvas. An msaa=4 canvas takes a
+# white triangle whose diagonal edge bisects pixel centres; after the resolve,
+# the edge pixel reads an intermediate grey (coverage-sampled) while interior
+# and exterior read solid — the anti-aliasing proves the resolve ran. Same wasm.
+echo
+echo "### msaa witness (4.14) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-msaa.lua"
+echo "msaa witness (4.14): Chromium PASS"
+
+# ── 4.15: the engine's own texture readback ──────────────────────────────────
+# Every prior leg recovered pixels with the bridge's raw glReadPixels; this one
+# draws into a render target and calls gfx->readbackTexture() — the path behind
+# Texture:newImageData / love.graphics.readbackTexture — pulling the GPU texture
+# into a CPU ImageData, then samples it with getPixel(). Proves the engine's own
+# readback (and orientation handling), not just the harness's. Same wasm.
+echo
+echo "### readback witness (4.15) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-readback.lua"
+echo "readback witness (4.15): Chromium PASS"
+
+# ── 4.16: an explicit GraphicsBuffer as a Mesh vertex source ──────────────────
+# love.graphics.newBuffer — a user-owned GPU buffer, not the implicit one 4.9's
+# Mesh made. The bridge creates the Buffer directly, attaches it to a Mesh via
+# BufferAttributes, and draws; the triangle recovers its colour. Binds the buffer
+# as a vertex source (no glMapBufferRange, which WebGL2 forbids — map-based
+# readbackBuffer is a #36 divergence). Same wasm as 4.1c-4.15.
+echo
+echo "### buffer witness (4.16) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-buffer.lua"
+echo "buffer witness (4.16): Chromium PASS"
+
+# ── 4.17: the WebGL2 ceiling, witnessed as gracefully absent (#36) ────────────
+# Not a capability but its DECLARED ABSENCE. WebGL2 (ES 3.0) has no compute, no
+# indirect draw, no texel/texture buffers, no SSBO. This proves the engine
+# reports them unsupported and rejects a compute shader with a catchable error
+# (not a crash), and stays healthy afterwards — the line between "forgotten" and
+# "declared divergence". Same wasm as 4.1c-4.16.
+echo
+echo "### ceiling witness (4.17) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-ceiling.lua"
+echo "ceiling witness (4.17): Chromium PASS"

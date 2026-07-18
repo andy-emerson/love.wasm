@@ -56,9 +56,15 @@ growing one is the "becomes its own project" trap. So:
 
 **Evidence:** `wasi/audio/probe-resample.mjs` proved both paths in Chromium
 (playback 24000→48000 tone intact; capture context honored at 16000 with the
-tone intact). Firefox/WebKit are **unverified** — tracked in **issue #33**. The
-runtime check keeps the port correct on all engines regardless; only the mic's
-rate *faithfulness* on Firefox/WebKit is open.
+tone intact). The cross-engine successor `wasi/audio/probe-resample-xengine.mjs`
+drives Chromium + Firefox + WebKit (issue #33) and runs as a CI step in the
+`pump-witness` job (where all three browsers install) — recording per engine
+whether the requested capture rate is honored, whether `createMediaStreamSource`
+survives a rate mismatch, and whether a tone survives (detected by a dominant-
+frequency sweep, since each engine's fake mic emits a different tone; WebKit
+headless may have no fake mic at all, which the probe records rather than fails
+on). The runtime capability check keeps the port correct on all engines
+regardless; the probe only records the mic's rate *faithfulness* per engine.
 
 ## Decision 3 — Device-agnostic fidelity draws the wasm/host line
 

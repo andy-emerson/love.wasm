@@ -1,8 +1,10 @@
 // Step-5 resampling-delegation probe: can WebAudio do the rate conversion for
 // us — for BOTH playback and mic capture — so love-wasi needs no resampler of
 // its own? Decides between "delegate resampling everywhere" (no custom DSP) and
-// "vendor one proven resampler". Chromium only here (the pre-provisioned
-// browser); Firefox/WebKit remain claims until they can be driven too.
+// "vendor one proven resampler". This original runs Chromium only (the pre-
+// provisioned browser). The cross-engine successor probe-resample-xengine.mjs
+// drives Chromium + Firefox + WebKit (issue #33), run in CI where all three
+// install; this file stays as the single-engine, file-fed-WAV reference.
 //
 //   node wasi/audio/probe-resample.mjs
 //

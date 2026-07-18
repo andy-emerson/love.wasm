@@ -188,3 +188,15 @@ echo "### transform witness (4.12) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-transform.lua"
 echo "transform witness (4.12): Chromium PASS"
+
+# ── 4.13: multiple render targets (MRT) ──────────────────────────────────────
+# A distinct backend mechanism: several colour attachments on one FBO
+# (glDrawBuffers) driven by a multi-output pixel shader. One draw of an MRT
+# shader (love_Canvases[0]/[1]) fills two bound render-target textures with
+# distinct colours; each is drawn back and read to confirm the two attachments
+# received independent outputs. Same wasm as 4.1c-4.12.
+echo
+echo "### mrt witness (4.13) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-mrt.lua"
+echo "mrt witness (4.13): Chromium PASS"

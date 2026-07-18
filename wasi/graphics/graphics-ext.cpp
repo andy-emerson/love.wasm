@@ -720,9 +720,77 @@ static int w_draw_transform(lua_State *L)
 	return pushSamples(L, H, sx, sy, 4);
 }
 
+// __wasi_gfx_draw_mrt() -> 12 ints: three (R,G,B,A) samples —
+//   target-0 colour, target-1 colour, background.
+// The step-4 (4.13) witness: multiple render targets — a distinct backend
+// mechanism (several colour attachments on one FBO + glDrawBuffers, and a shader
+// with multiple outputs), not just composing proven paths. Two 8x8 render-target
+// textures are bound together with setRenderTargets, and ONE draw of an MRT pixel
+// shader (void effect() writing love_Canvases[0] and love_Canvases[1] to two
+// distinct colours) fills both. Unbound, each target is then drawn onto the
+// backbuffer side by side and read back: target 0 recovering its colour AND
+// target 1 recovering its DIFFERENT colour from that single draw proves the two
+// attachments received independent shader outputs. Chromium only.
+static int w_draw_mrt(lua_State *L)
+{
+	auto *gfx = witnessGfx(L);
+
+	const int W = 16, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	graphics::OptionalColorD clear(ColorD(0.3, 0.3, 0.3, 1.0)); // (76,76,76)
+
+	const char *mrtsrc =
+		"void effect()\n"
+		"{\n"
+		"    love_Canvases[0] = vec4(0.2, 0.4, 0.6, 1.0);\n" // (51,102,153)
+		"    love_Canvases[1] = vec4(0.8, 0.2, 0.2, 1.0);\n" // (204,51,51)
+		"}\n";
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+		gfx->clear(clear, OptionalInt(), OptionalDouble());
+
+		graphics::Texture::Settings st;
+		st.width = 8; st.height = 8; st.renderTarget = true;
+		graphics::Texture *ca = gfx->newTexture(st, nullptr);
+		graphics::Texture *cb = gfx->newTexture(st, nullptr);
+
+		graphics::Graphics::RenderTargets rts;
+		rts.colors.push_back(graphics::Graphics::RenderTarget(ca));
+		rts.colors.push_back(graphics::Graphics::RenderTarget(cb));
+		gfx->setRenderTargets(rts);
+
+		std::vector<std::string> stages;
+		stages.push_back(mrtsrc);
+		graphics::Shader::CompileOptions opts;
+		graphics::Shader *sh = gfx->newShader(stages, opts);
+		gfx->setShader(sh);
+		gfx->setColor(Colorf(1, 1, 1, 1));
+		gfx->rectangle(graphics::Graphics::DRAW_FILL, 0.0f, 0.0f, 8.0f, 8.0f); // fill both targets
+		gfx->flushBatchedDraws();
+		gfx->setShader();
+		gfx->setRenderTarget(); // back to the backbuffer
+
+		gfx->setColor(Colorf(1, 1, 1, 1)); // white: canvas colour passes through
+		Matrix4 ma(0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f); // target 0 -> left
+		gfx->draw(ca, ma);
+		Matrix4 mb(8.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f); // target 1 -> right
+		gfx->draw(cb, mb);
+		gfx->flushBatchedDraws();
+		sh->release(); ca->release(); cb->release();
+	});
+
+	// target-0 (left, 51,102,153), target-1 (right, 204,51,51), background below.
+	const int sx[3] = { 4, 12, 4 };
+	const int sy[3] = { 4,  4, 12 };
+	return pushSamples(L, H, sx, sy, 3);
+}
+
 extern "C" void pump_open_extensions(lua_State *L)
 {
 	love::luax_preload(L, luaopen_love, "love");
+	lua_register(L, "__wasi_gfx_draw_mrt", w_draw_mrt);
 	lua_register(L, "__wasi_gfx_draw_transform", w_draw_transform);
 	lua_register(L, "__wasi_gfx_draw_particles", w_draw_particles);
 	lua_register(L, "__wasi_gfx_clear_read", w_clear_read);

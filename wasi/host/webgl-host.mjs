@@ -6,12 +6,14 @@
 // Self-contained by contract (no imports, no outer-scope refs), so it can be
 // stringified and serialized into a page like the other browser hosts.
 //
-// Coverage: the context-bringup + clear/readback path (what the step-4 witness
-// exercises) is implemented for real; entry points WebGL2 lacks or the witness
-// never calls (compute, indirect draw, buffer mapping, debug groups, MSAA
-// resolve) are present as no-ops/throwers so instantiation succeeds. Host-
-// reported limits: glGetString/glGetIntegerv/glGetFloatv answer from the real
-// context (gl.getParameter), never a static assumption.
+// Coverage: everything the step-4 witnesses (4.1c..4.11 — clear, draws, the 2D
+// primitive set, textures, user shaders, canvases, text, blend/scissor/stencil,
+// mesh, spritebatch, particles) exercise is implemented for real; entry points
+// WebGL2 lacks or no witness calls (compute, indirect draw, buffer mapping,
+// debug groups, MSAA resolve) are present as loud-warning stubs so
+// instantiation succeeds. Host-reported limits: glGetString/glGetIntegerv/
+// glGetFloatv answer from the real context (gl.getParameter), never a static
+// assumption.
 export function makeWebGLHost() {
   // The system backbuffer LÖVE renders to when no MSAA internal backbuffer is
   // requested (the witness case). Sized generously so a witness can setMode to
@@ -230,7 +232,7 @@ export function makeWebGLHost() {
     glDeleteSync: (id) => { const o = get(id); if (o) { gl.deleteSync(o); objs.delete(id); } },
   };
 
-  // Present but not driven by the clear witness (WebGL2 lacks them, or they are
+  // Present but not driven by any step-4 witness (WebGL2 lacks them, or they are
   // desktop-GL / debug / compute paths the backend feature-gates off). Provided
   // so instantiation succeeds; a call that slips through logs loudly.
   const STUBS = [

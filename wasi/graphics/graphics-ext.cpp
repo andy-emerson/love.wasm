@@ -1,5 +1,5 @@
-// Step-4 (4.1c + 4.2 .. 4.10) pump extension
-// for the graphics build: preload love (pump-ext.cpp) and register the bridges.
+// Step-4 (4.1c + 4.2 .. 4.11) pump extension for the graphics build: preload
+// love (pump-ext.cpp) and register the witness bridges.
 //
 // Why a bridge: on desktop, love.window creates the GL context and calls
 // Graphics::setMode; that window backend is step-6 work, deliberately not built

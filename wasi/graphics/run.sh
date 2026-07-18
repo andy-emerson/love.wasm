@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-# One-command graphics witness (build-order step 4). Three witnesses:
+# One-command graphics witness (build-order step 4). Two kinds of leg:
 #
 #   4.1a — raw-GL readback: a command module (witness-gl.cpp) proving the
 #          WebGL2 import plumbing + glReadPixels round-trip, on node (a mock
-#          love_gl host) and real Chromium WebGL2.
-#   4.1c — love.graphics: the real LÖVE core + love.graphics on the opengl
-#          backend, reseamed to a real WebGL2 context, clearing a framebuffer
-#          and recovering the pixel through the graphics-ext bridge. Chromium
-#          only — driving the real backend hits ~100+ GL entry points a node
-#          mock cannot fake, so the node leg stays at 4.1a.
-#   4.2  — first primitive draw: the same real backend now draws a filled
-#          rectangle (shader compile + vertex stream + glDrawArrays) and reads
-#          the drawn pixel back. Same wasm as 4.1c, Chromium only.
+#          love_gl host) and real Chromium WebGL2. The only node leg — driving
+#          the real backend below hits ~100+ GL entry points a node mock cannot
+#          fake, so those legs are Chromium-only.
+#   4.1c .. 4.11 — the real LÖVE core + love.graphics on the reused opengl
+#          backend, reseamed to a real WebGL2 context, driven through the
+#          graphics-ext bridges to draw and read pixels back: clear (4.1c),
+#          first primitive (4.2), the primitive set (4.3), textures (4.4), a
+#          user shader (4.5), a canvas (4.6), text (4.7), blend/scissor/stencil
+#          (4.8), and the drawables — Mesh (4.9), SpriteBatch+Quad (4.10),
+#          ParticleSystem (4.11). One wasm build, one witness lua per leg.
 #
 #   PREFIX=/path/to/wasi-eh wasi/graphics/run.sh
 #

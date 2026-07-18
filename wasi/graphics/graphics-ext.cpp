@@ -64,6 +64,32 @@ extern "C" int luaopen_love(lua_State *L);
 using namespace love;
 using namespace glad;
 
+// Fetch the graphics instance for a witness bridge, erroring cleanly if
+// love.graphics has not been required yet. luaL_error longjmps out, so on the
+// normal path the returned pointer is always non-null.
+static graphics::Graphics *witnessGfx(lua_State *L)
+{
+	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
+	if (gfx == nullptr)
+		luaL_error(L, "love.graphics is not registered (require it first)");
+	return gfx;
+}
+
+// Read `count` LÖVE-space sample points from the bound backbuffer and push each
+// as four 0..255 ints. LÖVE space is top-left origin; glReadPixels is bottom-up,
+// so y is flipped as H-1-y. Returns count*4 — the number of Lua return values.
+static int pushSamples(lua_State *L, int H, const int *sx, const int *sy, int count)
+{
+	for (int i = 0; i < count; i++)
+	{
+		unsigned char px[4] = {0, 0, 0, 0};
+		glReadPixels(sx[i], H - 1 - sy[i], 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+		for (int j = 0; j < 4; j++)
+			lua_pushinteger(L, px[j]);
+	}
+	return count * 4;
+}
+
 // __wasi_gfx_clear_read(r, g, b) -> (R, G, B, A) as 0..255 ints.
 // Brings the opengl backend up against the current host WebGL2 context, clears
 // the backbuffer to (r,g,b,1), presents, and reads pixel (0,0) back.
@@ -73,9 +99,7 @@ static int w_clear_read(lua_State *L)
 	double g = luaL_checknumber(L, 2);
 	double b = luaL_checknumber(L, 3);
 
-	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
-	if (gfx == nullptr)
-		return luaL_error(L, "love.graphics is not registered (require it first)");
+	auto *gfx = witnessGfx(L);
 
 	graphics::Graphics::BackbufferSettings bb;
 	bb.width = bb.pixelWidth = 4;
@@ -120,9 +144,7 @@ static int w_draw_read(lua_State *L)
 	double cg = luaL_checknumber(L, 5);
 	double cb = luaL_checknumber(L, 6);
 
-	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
-	if (gfx == nullptr)
-		return luaL_error(L, "love.graphics is not registered (require it first)");
+	auto *gfx = witnessGfx(L);
 
 	graphics::Graphics::BackbufferSettings bb;
 	bb.width = bb.pixelWidth = 4;
@@ -190,9 +212,7 @@ static int w_draw_prims(lua_State *L)
 	double cg = luaL_checknumber(L, 5);
 	double cb = luaL_checknumber(L, 6);
 
-	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
-	if (gfx == nullptr)
-		return luaL_error(L, "love.graphics is not registered (require it first)");
+	auto *gfx = witnessGfx(L);
 
 	const int W = 16, H = 16;
 	graphics::Graphics::BackbufferSettings bb;
@@ -223,14 +243,7 @@ static int w_draw_prims(lua_State *L)
 	// Seven LÖVE-space sample points; y flipped for glReadPixels (bottom-up).
 	const int sx[7] = { 4,  9, 12,  3,  3, 11,  8 };
 	const int sy[7] = { 4,  3,  4,  9, 11, 11,  8 };
-	for (int i = 0; i < 7; i++)
-	{
-		unsigned char px[4] = {0, 0, 0, 0};
-		glReadPixels(sx[i], H - 1 - sy[i], 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
-		for (int j = 0; j < 4; j++)
-			lua_pushinteger(L, px[j]);
-	}
-	return 28;
+	return pushSamples(L, H, sx, sy, 7);
 }
 
 // __wasi_gfx_draw_texture() -> 20 ints: five (R,G,B,A) samples, in this order —
@@ -248,9 +261,7 @@ static int w_draw_prims(lua_State *L)
 // The four texel colours are fixed here and mirrored in witness-texture.lua.
 static int w_draw_texture(lua_State *L)
 {
-	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
-	if (gfx == nullptr)
-		return luaL_error(L, "love.graphics is not registered (require it first)");
+	auto *gfx = witnessGfx(L);
 
 	const int W = 16, H = 16;
 	graphics::Graphics::BackbufferSettings bb;
@@ -289,14 +300,7 @@ static int w_draw_texture(lua_State *L)
 	// Centre of each 4x4 texel block (LÖVE space), plus a background corner.
 	const int sx[5] = { 6, 10,  6, 10,  1 };
 	const int sy[5] = { 6,  6, 10, 10,  1 };
-	for (int i = 0; i < 5; i++)
-	{
-		unsigned char px[4] = {0, 0, 0, 0};
-		glReadPixels(sx[i], H - 1 - sy[i], 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
-		for (int j = 0; j < 4; j++)
-			lua_pushinteger(L, px[j]);
-	}
-	return 20;
+	return pushSamples(L, H, sx, sy, 5);
 }
 
 // __wasi_gfx_draw_shader() -> (Rin, Gin, Bin, Ain,  Rout, Gout, Bout, Aout).
@@ -311,9 +315,7 @@ static int w_draw_texture(lua_State *L)
 // would be (0.8,0.6,0.4). The full-height left half sidesteps the Y-flip.
 static int w_draw_shader(lua_State *L)
 {
-	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
-	if (gfx == nullptr)
-		return luaL_error(L, "love.graphics is not registered (require it first)");
+	auto *gfx = witnessGfx(L);
 
 	const int W = 16, H = 16;
 	graphics::Graphics::BackbufferSettings bb;
@@ -366,9 +368,7 @@ static int w_draw_shader(lua_State *L)
 // and the background clear survives outside it.
 static int w_draw_canvas(lua_State *L)
 {
-	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
-	if (gfx == nullptr)
-		return luaL_error(L, "love.graphics is not registered (require it first)");
+	auto *gfx = witnessGfx(L);
 
 	const int W = 16, H = 16;
 	graphics::Graphics::BackbufferSettings bb;
@@ -402,14 +402,7 @@ static int w_draw_canvas(lua_State *L)
 	// LÖVE-space samples; the canvas covers (4,4)-(12,12), B its top-left quad.
 	const int sx[4] = { 5, 10,  6,  1 };
 	const int sy[4] = { 5,  5, 10,  1 };
-	for (int i = 0; i < 4; i++)
-	{
-		unsigned char px[4] = {0, 0, 0, 0};
-		glReadPixels(sx[i], H - 1 - sy[i], 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
-		for (int j = 0; j < 4; j++)
-			lua_pushinteger(L, px[j]);
-	}
-	return 16;
+	return pushSamples(L, H, sx, sy, 4);
 }
 
 // __wasi_gfx_draw_text() -> (inkLeft, inkRight,  Rbg, Gbg, Bbg, Abg).
@@ -431,9 +424,7 @@ static int w_draw_canvas(lua_State *L)
 // atlas falls back to RGBA8 here.)
 static int w_draw_text(lua_State *L)
 {
-	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
-	if (gfx == nullptr)
-		return luaL_error(L, "love.graphics is not registered (require it first)");
+	auto *gfx = witnessGfx(L);
 
 	const int W = 32, H = 16;
 	graphics::Graphics::BackbufferSettings bb;
@@ -491,9 +482,7 @@ static int w_draw_text(lua_State *L)
 // backbuffer (host context depth+stencil; BackbufferSettings.stencil).
 static int w_draw_state(lua_State *L)
 {
-	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
-	if (gfx == nullptr)
-		return luaL_error(L, "love.graphics is not registered (require it first)");
+	auto *gfx = witnessGfx(L);
 
 	const int W = 16, H = 16;
 	graphics::Graphics::BackbufferSettings bb;
@@ -533,14 +522,7 @@ static int w_draw_state(lua_State *L)
 	// stencil-in, stencil-out (above its rect).
 	const int sx[5] = { 3, 11, 11,  3,  3 };
 	const int sy[5] = { 3,  3, 10, 11,  7 };
-	for (int i = 0; i < 5; i++)
-	{
-		unsigned char px[4] = {0, 0, 0, 0};
-		glReadPixels(sx[i], H - 1 - sy[i], 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
-		for (int j = 0; j < 4; j++)
-			lua_pushinteger(L, px[j]);
-	}
-	return 20;
+	return pushSamples(L, H, sx, sy, 5);
 }
 
 // __wasi_gfx_draw_mesh() -> (Rin, Gin, Bin, Ain,  Rout, Gout, Bout, Aout).
@@ -553,9 +535,7 @@ static int w_draw_state(lua_State *L)
 // proves mesh creation, the custom-format vertex upload, and the mesh draw path.
 static int w_draw_mesh(lua_State *L)
 {
-	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
-	if (gfx == nullptr)
-		return luaL_error(L, "love.graphics is not registered (require it first)");
+	auto *gfx = witnessGfx(L);
 
 	const int W = 16, H = 16;
 	graphics::Graphics::BackbufferSettings bb;
@@ -623,9 +603,7 @@ static graphics::Texture *makeQuadTexture(graphics::Graphics *gfx)
 // sampling (the quad sprite is pure TR colour, not the whole texture).
 static int w_draw_spritebatch(lua_State *L)
 {
-	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
-	if (gfx == nullptr)
-		return luaL_error(L, "love.graphics is not registered (require it first)");
+	auto *gfx = witnessGfx(L);
 
 	const int W = 16, H = 16;
 	graphics::Graphics::BackbufferSettings bb;
@@ -656,14 +634,7 @@ static int w_draw_spritebatch(lua_State *L)
 
 	const int sx[4] = { 3,  7, 11, 14 };
 	const int sy[4] = { 3,  7, 11,  2 };
-	for (int i = 0; i < 4; i++)
-	{
-		unsigned char px[4] = {0, 0, 0, 0};
-		glReadPixels(sx[i], H - 1 - sy[i], 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
-		for (int j = 0; j < 4; j++)
-			lua_pushinteger(L, px[j]);
-	}
-	return 16;
+	return pushSamples(L, H, sx, sy, 4);
 }
 
 // __wasi_gfx_draw_particles() -> (Rin, Gin, Bin, Ain,  Rout, Gout, Bout, Aout).
@@ -676,9 +647,7 @@ static int w_draw_spritebatch(lua_State *L)
 // particles as textured quads. Chromium only.
 static int w_draw_particles(lua_State *L)
 {
-	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
-	if (gfx == nullptr)
-		return luaL_error(L, "love.graphics is not registered (require it first)");
+	auto *gfx = witnessGfx(L);
 
 	const int W = 16, H = 16;
 	graphics::Graphics::BackbufferSettings bb;

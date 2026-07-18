@@ -224,3 +224,15 @@ echo "### readback witness (4.15) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-readback.lua"
 echo "readback witness (4.15): Chromium PASS"
+
+# ── 4.16: an explicit GraphicsBuffer as a Mesh vertex source ──────────────────
+# love.graphics.newBuffer — a user-owned GPU buffer, not the implicit one 4.9's
+# Mesh made. The bridge creates the Buffer directly, attaches it to a Mesh via
+# BufferAttributes, and draws; the triangle recovers its colour. Binds the buffer
+# as a vertex source (no glMapBufferRange, which WebGL2 forbids — map-based
+# readbackBuffer is a #36 divergence). Same wasm as 4.1c-4.15.
+echo
+echo "### buffer witness (4.16) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-buffer.lua"
+echo "buffer witness (4.16): Chromium PASS"

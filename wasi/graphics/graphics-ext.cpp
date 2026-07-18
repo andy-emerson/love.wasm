@@ -896,9 +896,73 @@ static int w_draw_readback(lua_State *L)
 	return 8;
 }
 
+// __wasi_gfx_draw_buffer() -> 8 ints: two (R,G,B,A) samples — inside/outside a
+//   triangle drawn from an explicit GraphicsBuffer.
+// The step-4 (4.16) witness: love.graphics.newBuffer — an explicit, user-owned
+// GPU buffer as a Mesh vertex source. 4.9's Mesh created its vertex buffer
+// implicitly; this creates the Buffer directly with newBuffer (the game-facing
+// GraphicsBuffer), attaches it to a Mesh through BufferAttributes (the buffer-
+// backed Mesh constructor), and draws. Reading the triangle colour inside and
+// the clear outside proves an explicit GraphicsBuffer drives a real WebGL2 draw.
+// (The draw path binds the buffer as a vertex source — no glMapBufferRange, which
+// WebGL2 forbids; the buffer *readback* API that needs mapping is a #36
+// divergence, not exercised here.) Chromium only.
+static int w_draw_buffer(lua_State *L)
+{
+	auto *gfx = witnessGfx(L);
+
+	const int W = 16, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	graphics::OptionalColorD clear(ColorD(0.6, 0.4, 0.2, 1.0)); // (153,102,51)
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+		gfx->clear(clear, OptionalInt(), OptionalDouble());
+		gfx->setColor(Colorf(1, 1, 1, 1)); // white: buffer vertex colour passes through
+
+		Color32 c(51, 102, 153, 255);
+		graphics::Vertex verts[3] = {
+			{  2.0f,  2.0f, 0.0f, 0.0f, c },
+			{ 14.0f,  2.0f, 0.0f, 0.0f, c },
+			{  8.0f, 14.0f, 0.0f, 0.0f, c },
+		};
+
+		// The explicit GraphicsBuffer: newBuffer with vertex usage and the default
+		// vertex format, filled from CPU data (glBufferData — no mapping).
+		auto fmt = graphics::Mesh::getDefaultVertexFormat();
+		graphics::Buffer::Settings bs(graphics::BUFFERUSAGEFLAG_VERTEX, graphics::BUFFERDATAUSAGE_STATIC);
+		graphics::Buffer *vbuf = gfx->newBuffer(bs, fmt, verts, sizeof(verts), 0);
+
+		// Attach every format member as a Mesh vertex attribute pointing at the
+		// buffer, then build the buffer-backed Mesh and draw it.
+		std::vector<graphics::Mesh::BufferAttribute> attrs;
+		for (const auto &decl : fmt)
+		{
+			graphics::Mesh::BufferAttribute a;
+			a.name = decl.name;
+			a.buffer.set(vbuf);
+			a.nameInBuffer = decl.name;
+			a.step = graphics::STEP_PER_VERTEX;
+			a.enabled = true;
+			attrs.push_back(a);
+		}
+		graphics::Mesh *mesh = gfx->newMesh(attrs, graphics::PRIMITIVE_TRIANGLES);
+
+		gfx->draw(mesh, Matrix4());
+		gfx->flushBatchedDraws();
+		mesh->release();
+		vbuf->release();
+	});
+
+	const int sx[2] = {8, 1}, sy[2] = {6, 13}; // inside the triangle, then outside it
+	return pushSamples(L, H, sx, sy, 2);
+}
+
 extern "C" void pump_open_extensions(lua_State *L)
 {
 	love::luax_preload(L, luaopen_love, "love");
+	lua_register(L, "__wasi_gfx_draw_buffer", w_draw_buffer);
 	lua_register(L, "__wasi_gfx_readback", w_draw_readback);
 	lua_register(L, "__wasi_gfx_draw_msaa", w_draw_msaa);
 	lua_register(L, "__wasi_gfx_draw_mrt", w_draw_mrt);

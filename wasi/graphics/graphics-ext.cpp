@@ -1,4 +1,4 @@
-// Step-4 (4.1c + 4.2 .. 4.11) pump extension for the graphics build: preload
+// Step-4 (4.1c + 4.2 .. 4.20) pump extension for the graphics build: preload
 // love (pump-ext.cpp) and register the witness bridges.
 //
 // Why a bridge: on desktop, love.window creates the GL context and calls
@@ -27,7 +27,12 @@
 // __wasi_gfx_draw_mesh (4.9) draws a custom-vertex Mesh through a user-owned VBO;
 // __wasi_gfx_draw_spritebatch (4.10) batches textured quads (+ a Quad sub-region)
 // into one draw; __wasi_gfx_draw_particles (4.11) emits, simulates, and draws a
-// ParticleSystem.
+// ParticleSystem. The compose-only API tail and extended tail follow the same
+// pattern (each bridge documented at its definition): __wasi_gfx_draw_transform
+// (4.12), _draw_mrt (4.13), _draw_msaa (4.14), _readback (4.15, the engine's own
+// texture readback), _draw_buffer (4.16, explicit GraphicsBuffer), _ceiling
+// (4.17, the WebGL2 ceiling reported gracefully absent), _draw_instanced (4.18),
+// _draw_depth (4.19), and _draw_imagefont (4.20).
 //
 // One windowless subtlety the draw path exposed: present() guards on isActive(),
 // which requires a window, so windowless it early-returns without flushing the

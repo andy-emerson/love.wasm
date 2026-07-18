@@ -166,3 +166,13 @@ echo "### spritebatch witness (4.10) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-spritebatch.lua"
 echo "spritebatch witness (4.10): Chromium PASS"
+
+# ── 4.11: ParticleSystem ─────────────────────────────────────────────────────
+# The last higher-level drawable, and the first with a real per-frame simulation:
+# emit long-lived particles at a point (zero speed -> deterministic blob), advance
+# the sim with update(), draw, read the blob back. Same wasm as 4.1c-4.10.
+echo
+echo "### particlesystem witness (4.11) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-particles.lua"
+echo "particlesystem witness (4.11): Chromium PASS"

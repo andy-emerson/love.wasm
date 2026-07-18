@@ -26,7 +26,8 @@
 // clipping, stencil masking — in one frame, proving each composites/clips draws;
 // __wasi_gfx_draw_mesh (4.9) draws a custom-vertex Mesh through a user-owned VBO;
 // __wasi_gfx_draw_spritebatch (4.10) batches textured quads (+ a Quad sub-region)
-// into one draw.
+// into one draw; __wasi_gfx_draw_particles (4.11) emits, simulates, and draws a
+// ParticleSystem.
 //
 // One windowless subtlety the draw path exposed: present() guards on isActive(),
 // which requires a window, so windowless it early-returns without flushing the
@@ -50,6 +51,7 @@
 #include "graphics/Font.h"
 #include "graphics/Mesh.h"
 #include "graphics/SpriteBatch.h"
+#include "graphics/ParticleSystem.h"
 #include "graphics/Quad.h"
 #include "graphics/vertex.h"
 #include "font/TextShaper.h"
@@ -664,9 +666,65 @@ static int w_draw_spritebatch(lua_State *L)
 	return 16;
 }
 
+// __wasi_gfx_draw_particles() -> (Rin, Gin, Bin, Ain,  Rout, Gout, Bout, Aout).
+// The step-4 (4.11) witness: ParticleSystem — emit, simulate, draw. It builds a
+// solid (51,102,153) particle texture, creates a ParticleSystem, emits 8
+// long-lived particles at the centre with zero speed/spread (so they stack into a
+// deterministic blob instead of scattering), advances the sim one frame with
+// update(), and draws it. Reading the blob centre (particle colour) and a corner
+// (clear colour) proves the particle system emits, updates, and renders its
+// particles as textured quads. Chromium only.
+static int w_draw_particles(lua_State *L)
+{
+	auto *gfx = Module::getInstance<graphics::Graphics>(Module::M_GRAPHICS);
+	if (gfx == nullptr)
+		return luaL_error(L, "love.graphics is not registered (require it first)");
+
+	const int W = 16, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	graphics::OptionalColorD clear(ColorD(0.3, 0.3, 0.3, 1.0)); // (76,76,76)
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+		gfx->clear(clear, OptionalInt(), OptionalDouble());
+		gfx->setColor(Colorf(1, 1, 1, 1));
+
+		auto *img = new image::ImageData(2, 2, PIXELFORMAT_RGBA8_UNORM);
+		for (int y = 0; y < 2; y++) for (int x = 0; x < 2; x++)
+			img->setPixel(x, y, Colorf(0.2f, 0.4f, 0.6f, 1.0f)); // solid (51,102,153)
+		graphics::Texture::Slices slices(graphics::TEXTURE_2D);
+		slices.set(0, 0, img); img->release();
+		graphics::Texture::Settings st; st.width = 2; st.height = 2;
+		graphics::Texture *tex = gfx->newTexture(st, &slices);
+
+		graphics::ParticleSystem *ps = gfx->newParticleSystem(tex, 64);
+		ps->setParticleLifetime(100.0f, 100.0f);   // long-lived
+		ps->setPosition(8.0f, 8.0f);               // emit at centre
+		ps->setSpeed(0.0f);                         // no movement -> deterministic blob
+		ps->setSpread(0.0f);
+		ps->setSizes(std::vector<float>{ 2.0f });   // 2x2 texture * 2 = ~4x4 blob
+		ps->emit(8);
+		ps->update(0.016f);                         // advance the simulation one frame
+		gfx->draw(ps, Matrix4());
+		gfx->flushBatchedDraws();
+		ps->release();
+		tex->release();
+	});
+
+	unsigned char in[4] = {0, 0, 0, 0};
+	unsigned char out[4] = {0, 0, 0, 0};
+	glReadPixels(7, H - 1 - 7, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, in);   // inside the particle blob
+	glReadPixels(2, H - 1 - 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, out);  // corner background
+	for (int i = 0; i < 4; i++) lua_pushinteger(L, in[i]);
+	for (int i = 0; i < 4; i++) lua_pushinteger(L, out[i]);
+	return 8;
+}
+
 extern "C" void pump_open_extensions(lua_State *L)
 {
 	love::luax_preload(L, luaopen_love, "love");
+	lua_register(L, "__wasi_gfx_draw_particles", w_draw_particles);
 	lua_register(L, "__wasi_gfx_clear_read", w_clear_read);
 	lua_register(L, "__wasi_gfx_draw_read", w_draw_read);
 	lua_register(L, "__wasi_gfx_draw_prims", w_draw_prims);

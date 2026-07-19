@@ -9,9 +9,11 @@ live-edited development — the decisions the downstream **live-edit / agent**
 consumer forces, which are surfaced here **while still open** (AGENTS.md: never
 hand the architect a result built on choices they never saw).
 
-Where a passage reads as a plan, the code has not landed it yet — only 6.1 is
-built (`wasi/platform/`, the `love_fs` read round-trip). The rest is the shape
-we are planning against.
+Where a passage reads as a plan, the code has not landed it yet. **6.1, 6.2, and
+6.3 are built** (the `love_fs` read seam; the real `love.filesystem` replacing
+PhysFS; the real `love.window` replacing SDL — see the ledger below), and issue
+#27's warning mechanism + `love.sensor` warned stub have landed. 6.4/6.5 and the
+reserved live-edit items remain the shape we are planning against.
 
 ## The fidelity standard (project-wide): browser-native correctness first
 

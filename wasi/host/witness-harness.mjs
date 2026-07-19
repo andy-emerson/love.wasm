@@ -1,9 +1,10 @@
-// The node-side witness harness shared by all three browser witness runners
-// (step-0 command, step-2 pump, step-3 boot). #8 consolidated the in-page WASI
-// shim into wasi/host/wasi-shim.mjs; this consolidates the runner scaffolding
-// that surrounds it — the Playwright launch, the in-page instantiate/drive
-// bodies, and the node:wasi reactor leg — so those stopped being copy-pasted
-// three ways.
+// The node-side witness harness shared by every browser witness runner —
+// step-0 command, step-2 pump, step-3 boot, step-5 audio, and the step-6/#27
+// platform witnesses (reactorPageFn carries audioHostSrc/micHostSrc and, added
+// for the filesystem seam, fsHostSrc). #8 consolidated the in-page WASI shim
+// into wasi/host/wasi-shim.mjs; this consolidates the runner scaffolding that
+// surrounds it — the Playwright launch, the in-page instantiate/drive bodies,
+// and the node:wasi reactor leg — so those stopped being copy-pasted per witness.
 //
 // Two kinds of export:
 //   - runInChromium / runReactorNode run in NODE (they launch the browser or

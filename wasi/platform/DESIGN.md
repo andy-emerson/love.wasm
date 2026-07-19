@@ -74,11 +74,18 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
   + `<filesystem>`; `wrap_Filesystem.cpp` factory + SDL `extloader`), byte-clean
   for desktop. The `extloader` native-C `require` searcher is dropped on wasm (no
   `dlopen`) — a declared divergence.
-- **6.3 — `love.window`.** `setMode` creates the real `<canvas>` + WebGL2 context
-  (folding in the step-4 `LOVE_GRAPHICS_GL_STATIC_IMPORTS` seam), replacing the
-  fake `setMode` that `graphics-ext.cpp` plays for the step-4 witness. Unblocks
-  `captureScreenshot`/`present()` (the one step-4 item that genuinely needs the
-  window). Needs **D3**.
+- **6.3 — `love.window`. Done** (scripted; real Chromium; CI step added). D3=A: a
+  real `love::window::wasm` backend (`wasi/platform/window-backend.{h,cpp}`) on a
+  `love_win` host seam (`window_setmode`/`window_get_pixel_dimensions`/
+  `window_present`). `setMode` drives the host to create the real `<canvas>` +
+  WebGL2 context and make it current for the `love_gl` imports **before**
+  `graphics->setMode(nullptr,…)` runs — retiring the fake `setMode`
+  `graphics-ext.cpp` plays. With a registered, open window, `Graphics::isActive()`
+  is true, so `present()` runs for real — which **completed step 4**:
+  `captureScreenshot` reads the presented backbuffer (FBO 0) back through
+  `newImageData`, drawn + clear pixels recovered exactly. One guarded seam
+  (`wrap_Window.cpp` factory), byte-clean for desktop; the window-irrelevant
+  surface (fullscreen, displays, dialogs, …) is honest no-ops.
 - **6.4 — `love.event` + input.** DOM keyboard/mouse/pointer events forwarded
   into LÖVE's real event queue; `love.keyboard`/`love.mouse` state.
 - **6.5 — `love.timer` + `love.system` + conf.lua-driven canvas.** The first full

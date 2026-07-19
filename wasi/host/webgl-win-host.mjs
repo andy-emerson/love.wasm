@@ -1,8 +1,16 @@
 // Combined love_gl + love_win host for the step-6.3 window witness (Chromium
 // leg). It serves BOTH import modules over ONE WebGL2 context:
 //
-//   love_gl  — the 161-entry GL surface the opengl backend calls (identical to
+//   love_gl  — the GL surface the opengl backend calls (identical to
 //              wasi/host/webgl-host.mjs).
+//
+// SYNC NOTE (drift risk — code-sweep deferral): the love_gl half below is a
+// near-verbatim copy of wasi/host/webgl-host.mjs's GL surface (memory helpers +
+// the full glImports map + string interning + stubs). It is duplicated rather
+// than shared because both hosts are stringified whole into a Playwright page
+// (self-contained by contract — no cross-module refs), and folding them needs a
+// rework of that stringification mechanism, deferred as a separate refactor.
+// Until then: any GL entry point added to webgl-host.mjs MUST be mirrored here.
 //   love_win — window_setmode / window_get_pixel_dimensions / window_present,
 //              the seam love::window::wasm::Window drives.
 //

@@ -14,7 +14,7 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { WASI } from 'node:wasi';
-import { driveSensor } from './driver-sensor.mjs';
+import { driveWitness } from './driver.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const bootSrc = readFileSync(join(here, 'witness-sensor.lua'), 'utf8');
@@ -29,7 +29,7 @@ try {
   const wasi = new WASI({ version: 'preview1', stderr: errFd });
   const { instance } = await WebAssembly.instantiate(bytes, wasi.getImportObject());
   wasi.initialize(instance); // reactor: runs ctors, no _start
-  luaOk = await driveSensor(
+  luaOk = await driveWitness(
     instance.exports, bootSrc, (cb) => setTimeout(cb, 0), (line) => console.log(line)
   );
 } finally {

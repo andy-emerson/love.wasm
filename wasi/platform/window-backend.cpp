@@ -120,8 +120,9 @@ bool Window::setWindow(int width, int height, WindowSettings *settings)
 		throw love::Exception("Could not create window: the host could not create a WebGL2 context.");
 
 	// (2) Read the canvas's real backing dimensions from the host. DPI scale is
-	// 1.0 on the canvas, so window units and pixels coincide.
-	int32_t pw = width, ph = height;
+	// 1.0 on the canvas, so window units and pixels coincide. The host writes
+	// both out-params unconditionally, so there is no fallback to seed.
+	int32_t pw = 0, ph = 0;
 	wwin_get_pixel_dimensions(&pw, &ph);
 	pixelWidth = pw;
 	pixelHeight = ph;
@@ -374,6 +375,10 @@ int Window::getPixelHeight() const
 
 void Window::clampPositionInWindow(double *wx, double *wy) const
 {
+	// No window open (dimensions 0): nothing to clamp against — leave unchanged
+	// rather than clamp every coordinate to -1.
+	if (getWidth() <= 0 || getHeight() <= 0)
+		return;
 	if (wx != nullptr)
 		*wx = std::min(std::max(0.0, *wx), (double) getWidth() - 1);
 	if (wy != nullptr)
@@ -382,6 +387,8 @@ void Window::clampPositionInWindow(double *wx, double *wy) const
 
 void Window::windowToPixelCoords(double *x, double *y) const
 {
+	if (windowWidth <= 0 || windowHeight <= 0)  // no window: avoid x/0 -> inf/NaN
+		return;
 	if (x != nullptr)
 		*x = (*x) * ((double) pixelWidth / (double) windowWidth);
 	if (y != nullptr)
@@ -390,6 +397,8 @@ void Window::windowToPixelCoords(double *x, double *y) const
 
 void Window::pixelToWindowCoords(double *x, double *y) const
 {
+	if (pixelWidth <= 0 || pixelHeight <= 0)  // no window: avoid x/0 -> inf/NaN
+		return;
 	if (x != nullptr)
 		*x = (*x) * ((double) windowWidth / (double) pixelWidth);
 	if (y != nullptr)

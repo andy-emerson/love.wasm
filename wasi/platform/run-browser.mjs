@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { driveFs } from './driver.mjs';
+import { driveWitness } from './driver.mjs';
 import { makeWasiShim } from '../host/wasi-shim.mjs';
 import { makeFsHost } from '../host/fs-host.mjs';
 import { runInChromium, reactorPageFn } from '../host/witness-harness.mjs';
@@ -18,7 +18,7 @@ const wasmB64 = readFileSync(process.argv[2] ?? 'love-fs.wasm').toString('base64
 
 const result = await runInChromium(reactorPageFn, {
   b64: wasmB64, boot: bootSrc,
-  driverSrc: driveFs.toString(), shimSrc: makeWasiShim.toString(),
+  driverSrc: driveWitness.toString(), shimSrc: makeWasiShim.toString(),
   fsHostSrc: makeFsHost.toString(),
   withNow: false,
 });

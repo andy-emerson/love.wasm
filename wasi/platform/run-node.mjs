@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { driveFs } from './driver.mjs';
+import { driveWitness } from './driver.mjs';
 import { makeFsHost } from '../host/fs-host.mjs';
 import { runReactorNode } from '../host/witness-harness.mjs';
 
@@ -15,7 +15,7 @@ const bootSrc = readFileSync(join(here, 'witness-fs.lua'), 'utf8');
 const bytes = readFileSync(process.argv[2] ?? 'love-fs.wasm');
 
 const fs = makeFsHost();
-const ok = await runReactorNode(bytes, driveFs, bootSrc, {
+const ok = await runReactorNode(bytes, driveWitness, bootSrc, {
   extraImports: { love_fs: fs.imports },
   onInstance: (instance) => fs.bind(instance.exports.memory),
 });

@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { driveWin } from './driver-win.mjs';
+import { driveWitness } from './driver.mjs';
 import { makeWasiShim } from '../host/wasi-shim.mjs';
 import { makeWebGLWinHost } from '../host/webgl-win-host.mjs';
 import { runInChromium } from '../host/witness-harness.mjs';
@@ -54,7 +54,7 @@ const result = await runInChromium(loveWinPageFn, {
   b64, boot,
   shimSrc: makeWasiShim.toString(),
   hostSrc: makeWebGLWinHost.toString(),
-  driverSrc: driveWin.toString(),
+  driverSrc: driveWitness.toString(),
 });
 
 console.log('--- browser transcript ---');

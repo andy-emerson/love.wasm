@@ -1,8 +1,15 @@
-// Step-6.1 filesystem-seam witness driver, shared by both legs (same contract
-// as wasi/boot/driver.mjs: self-contained, stringifiable into a page). The
-// assertions live in witness-fs.lua; this pumps the resident coroutine until it
-// finishes and requires the PASS verdict, echoing each yielded check line.
-export async function driveFs(x, bootSrc, schedule, log) {
+// Generic platform-witness driver, shared by every step-6 / issue-#27 platform
+// witness and both legs (self-contained + stringifiable into a page, same
+// contract as wasi/boot/driver.mjs). It pumps the resident coroutine until it
+// finishes and requires a "...: PASS" verdict, echoing each yielded check line.
+//
+// The witness-specific verdict string (STEP6-FS-WITNESS, STEP6-FS2-WITNESS,
+// STEP6-WIN-WITNESS, STEP27-WARN-WITNESS, …) is informational — the driver only
+// distinguishes PASS from FAIL — so ONE driver serves witness-fs.lua /
+// witness-fs2.lua / witness-win.lua / witness-sensor.lua alike (each leg passes
+// its own witness source as bootSrc). This replaced four byte-identical copies
+// that differed only in the verdict literal.
+export async function driveWitness(x, bootSrc, schedule, log) {
   const te = new TextEncoder(), td = new TextDecoder();
   const mem = () => new Uint8Array(x.memory.buffer);
   const put = (s) => {
@@ -24,7 +31,7 @@ export async function driveFs(x, bootSrc, schedule, log) {
   if (st === -1) {
     const verdict = out();
     log('final: ' + verdict);
-    return verdict === 'STEP6-FS-WITNESS: PASS';
+    return /:\s*PASS$/.test(verdict);
   }
   log('pump status ' + st + ': ' + out());
   return false;

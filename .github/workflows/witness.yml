@@ -157,6 +157,15 @@ jobs:
         # keeps 4.1a raw-GL beside the real backend.
         run: PREFIX="$PWD/wasi-eh" wasi/platform/run-fs2.sh
 
+      - name: preview-limitation warning witness — love.sensor warned stub (issue #27, node + real Chromium)
+        # Issue #27's mechanism: preview_warn_once emits a one-time
+        # [love-wasi preview] notice to the host tap when a preview-limited
+        # feature is used, non-fatally, returning a safe default. The love.sensor
+        # warned stub is the witnessed example (motion sensors -> zeros); the
+        # witness asserts non-fatal + safe-default + the one-time dedup (count 1
+        # after two calls). Keeping love.sensor enabled also moots upstream #23.
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-sensor.sh
+
       - name: audio witness (love.audio playback + mic, node + Chromium + fake-device capture)
         run: PREFIX="$PWD/wasi-eh" wasi/audio/run.sh
 

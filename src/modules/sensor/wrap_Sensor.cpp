@@ -20,7 +20,17 @@
 
  // LOVE
 #include "wrap_Sensor.h"
+
+#ifdef LOVE_WASI
+// wasm32-wasi swaps the SDL sensor backend for a preview-limited warned stub
+// (issue #27): a browser has no accelerometer/gyroscope, so love::sensor::wasm's
+// methods warn-once on attempted use and return safe defaults instead of driving
+// SDL. The backend lives out-of-tree in wasi/platform/ so the src tree stays
+// upstream-shaped.
+#include "sensor-backend.h"  // -I wasi/platform (see wasi/platform/build-sensor.sh)
+#else
 #include "sdl/Sensor.h"
+#endif
 
 namespace love
 {
@@ -102,7 +112,11 @@ extern "C" int luaopen_love_sensor(lua_State * L)
 {
 	Sensor *instance = instance();
 	if (instance == nullptr)
+#ifdef LOVE_WASI
+		luax_catchexcept(L, [&]() { instance = new love::sensor::wasm::Sensor(); });
+#else
 		luax_catchexcept(L, [&]() { instance = new love::sensor::sdl::Sensor(); });
+#endif
 	else
 		instance->retain();
 

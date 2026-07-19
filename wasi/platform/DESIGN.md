@@ -61,9 +61,19 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
   embedded NULs recovered byte-exact through the seam under node:wasi + Chromium
   — before the real module rides on it. No LÖVE core linked; the analogue of
   graphics' 4.1a raw-GL leg.
-- **6.2 — real `love.filesystem` on the seam.** Boot proceeds *past* the step-3
-  stop-line into a real `conf.lua`/`main.lua`; `love.filesystem.read`/`load`/
-  `getInfo`/`getDirectoryItems` work over the seam. Needs **D1**.
+- **6.2 — real `love.filesystem` on the seam. Done** (scripted; node:wasi + real
+  Chromium; CI step added). D1=A: a real `love::filesystem::wasi_fs` backend
+  (`wasi/platform/fs-backend.{h,cpp}`) replaces the PhysFS module and the boot
+  stub. `require("love.filesystem")` now succeeds (the step-3 stop-line is gone)
+  and `read`/`getInfo`/`openFile`/`File:read`/`load`/`require` recover host files
+  byte-exact (incl. binary/NUL) through the real module. Driven directly from a
+  witness coroutine (not full `boot.lua`, which needs `love.system`/window/event
+  — those are 6.3–6.5). Read-only: `write`/`mount`/enumerate throw/false loudly,
+  not faked; the write/save-dir path (D2's OPFS) is a later sub-step. Shared
+  engine touched only through guarded seams (`Filesystem.cpp` `getExecutablePath`
+  + `<filesystem>`; `wrap_Filesystem.cpp` factory + SDL `extloader`), byte-clean
+  for desktop. The `extloader` native-C `require` searcher is dropped on wasm (no
+  `dlopen`) — a declared divergence.
 - **6.3 — `love.window`.** `setMode` creates the real `<canvas>` + WebGL2 context
   (folding in the step-4 `LOVE_GRAPHICS_GL_STATIC_IMPORTS` seam), replacing the
   fake `setMode` that `graphics-ext.cpp` plays for the step-4 witness. Unblocks

@@ -141,6 +141,13 @@ jobs:
       - name: boot witness (LÖVE core under the pump, node + real Chromium)
         run: PREFIX="$PWD/wasi-eh" wasi/boot/run.sh
 
+      - name: platform witness — love_fs VFS seam, read round-trip (step 6.1, node + real Chromium)
+        # Build-order step 6, sub-step 6.1: the host<->wasm file-bytes plumbing
+        # (love_fs.fs_size/fs_read) isolated before the real love.filesystem
+        # module rides on it — a binary asset with embedded NULs recovered
+        # byte-exact through the seam under both node:wasi and Chromium.
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run.sh
+
       - name: audio witness (love.audio playback + mic, node + Chromium + fake-device capture)
         run: PREFIX="$PWD/wasi-eh" wasi/audio/run.sh
 

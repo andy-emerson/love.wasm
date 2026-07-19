@@ -148,6 +148,15 @@ jobs:
         # byte-exact through the seam under both node:wasi and Chromium.
         run: PREFIX="$PWD/wasi-eh" wasi/platform/run.sh
 
+      - name: platform witness — real love.filesystem on the seam (step 6.2, node + real Chromium)
+        # Build-order step 6, sub-step 6.2: the real love.filesystem module
+        # (D1=A, replacing PhysFS) on the love_fs seam — require("love.filesystem")
+        # now succeeds (the step-3 stop-line is gone) and read/getInfo/openFile/
+        # load/require recover host-provided files byte-exact through the real
+        # module. Keeps 6.1 (raw seam) as the isolated diagnostic, as graphics
+        # keeps 4.1a raw-GL beside the real backend.
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-fs2.sh
+
       - name: audio witness (love.audio playback + mic, node + Chromium + fake-device capture)
         run: PREFIX="$PWD/wasi-eh" wasi/audio/run.sh
 

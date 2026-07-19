@@ -1,8 +1,8 @@
-// love_fs host — the browser/node fulfiller for the step-6.1 filesystem seam.
-// It stands in for the IDE's project storage: a small in-memory project whose
-// files the wasm side reads back through the love_fs import surface. The real
-// host (LoveIDE) will swap this canned store for its live project model; the
-// import contract (fs_size / fs_read) stays the same.
+// love_fs host — the browser/node fulfiller for the step-6.1/6.2 filesystem
+// seam. It stands in for the IDE's project storage: a small in-memory project
+// whose files the wasm side reads back through the love_fs import surface. The
+// real host (LoveIDE) will swap this canned store for its live project model;
+// the import contract (fs_size / fs_read / fs_stat) stays the same.
 //
 // Self-contained BY CONTRACT, exactly like wasi-shim.mjs and the driver.mjs
 // files: no imports, no outer-scope references, so makeFsHost.toString() can be
@@ -35,6 +35,14 @@ export function makeFsHost() {
     // 0xAA): a C-string protocol would report length 0 and read nothing; a
     // length-accurate one recovers all 8 exactly.
     'bin.dat': new Uint8Array([0x00, 0x01, 0x02, 0xFF, 0x00, 0x80, 0x7F, 0xAA]),
+    // A Lua module file, so the 6.2 witness can prove `require("lib")` resolves
+    // through the real love.filesystem `loader` searcher (requirePath "?.lua")
+    // to host-provided bytes and returns the module's table.
+    'lib.lua': te.encode(
+      'local lib = {}\n' +
+      'function lib.greet() return "hello from lib" end\n' +
+      'lib.answer = 42\n' +
+      'return lib\n'),
   };
 
   const readPath = (ptr, len) =>
@@ -53,6 +61,21 @@ export function makeFsHost() {
       const n = Math.min(cap, f.length);
       new Uint8Array(memory.buffer, bufPtr, n).set(f.subarray(0, n));
       return n;
+    },
+    // fs_stat(path, path_len, outType, outSize, outMtime) -> 0 ok / -1 absent.
+    // The out-params are written into wasm linear memory (little-endian, same
+    // convention fs_read's buf uses). outType is the FileType enum order the
+    // 6.2 backend maps from: 0=file 1=dir 2=symlink 3=other. The canned store
+    // is all regular files, so type is always 0; mtime is a fixed stand-in
+    // (the IDE host will report real project timestamps).
+    fs_stat(pathPtr, pathLen, outType, outSize, outMtime) {
+      const f = files[readPath(pathPtr, pathLen)];
+      if (!f) return -1;
+      const dv = new DataView(memory.buffer);
+      dv.setInt32(outType, 0, true);              // FILETYPE_FILE
+      dv.setBigInt64(outSize, BigInt(f.length), true);
+      dv.setBigInt64(outMtime, 0n, true);
+      return 0;
     },
   };
 

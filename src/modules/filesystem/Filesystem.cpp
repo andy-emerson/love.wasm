@@ -40,7 +40,12 @@
 #endif
 
 // C++17 std::filesystem
+#ifndef LOVE_WASI
+// wasm32-wasi's libc++ ships no <filesystem> library support (weakly_canonical
+// is absent), so the seam below routes canonicalizeRealPath around it. The
+// browser VFS backend (wasi/platform/fs-backend.cpp) overrides the method too.
 #include <filesystem>
+#endif
 
 namespace love
 {
@@ -193,6 +198,12 @@ bool Filesystem::createRealDirectory(const std::string &path)
 
 std::string Filesystem::canonicalizeRealPath(const std::string &p) const
 {
+#ifdef LOVE_WASI
+	// No <filesystem> on wasm32-wasi (see the guarded include above). There is
+	// no real OS path to canonicalize here anyway — the VFS backend overrides
+	// this — so the base returns the path unchanged.
+	return p;
+#else
 	try
 	{
 		return std::filesystem::weakly_canonical(p).string();
@@ -201,6 +212,7 @@ std::string Filesystem::canonicalizeRealPath(const std::string &p) const
 	{
 		return p;
 	}
+#endif
 }
 
 std::string Filesystem::getExecutablePath() const
@@ -225,6 +237,13 @@ std::string Filesystem::getExecutablePath() const
 		return "";
 
 	return std::string(buffer, len);
+
+#elif defined(LOVE_WASI)
+
+	// wasm32-wasi has no executable path. love.boot falls back to arg0 (the
+	// value passed to Filesystem::init), which is the correct source anchor
+	// for the browser VFS backend.
+	return "";
 
 #else
 #error Missing implementation for Filesystem::getExecutablePath!

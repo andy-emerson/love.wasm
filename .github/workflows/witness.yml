@@ -209,6 +209,15 @@ jobs:
       - name: graphics witness (love.graphics on real WebGL2, node + real Chromium)
         # build.sh bootstraps vendored FreeType + HarfBuzz into gfxlibs on first
         # run; glslang, glad and zlib compile from in-tree source. run.sh then
-        # drives 4.1a (raw-GL, node + Chromium) and 4.1c..4.17 (real backend,
+        # drives 4.1a (raw-GL, node + Chromium) and 4.1c..4.20 (real backend,
         # Chromium) off one wasm build.
         run: PREFIX="$PWD/wasi-eh" wasi/graphics/run.sh
+
+      - name: window witness — real love.window + captureScreenshot (step 6.3 + step-4 close, real Chromium)
+        # Build-order step 6.3: love.window.setMode drives the host to create the
+        # real canvas + WebGL2 context (love_win seam), retiring the fake setMode
+        # graphics-ext plays; present() then runs for real, which also lands step
+        # 4's last item — captureScreenshot reads the presented backbuffer back
+        # (drawn + clear pixels recovered exactly). Reuses the graphics job's warm
+        # gfxlibs. Chromium-only (real WebGL2).
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-win.sh

@@ -1,9 +1,10 @@
-// The node-side witness harness shared by all three browser witness runners
-// (step-0 command, step-2 pump, step-3 boot). #8 consolidated the in-page WASI
-// shim into wasi/host/wasi-shim.mjs; this consolidates the runner scaffolding
-// that surrounds it — the Playwright launch, the in-page instantiate/drive
-// bodies, and the node:wasi reactor leg — so those stopped being copy-pasted
-// three ways.
+// The node-side witness harness shared by every browser witness runner —
+// step-0 command, step-2 pump, step-3 boot, step-5 audio, and the step-6/#27
+// platform witnesses (reactorPageFn carries audioHostSrc/micHostSrc and, added
+// for the filesystem seam, fsHostSrc). #8 consolidated the in-page WASI shim
+// into wasi/host/wasi-shim.mjs; this consolidates the runner scaffolding that
+// surrounds it — the Playwright launch, the in-page instantiate/drive bodies,
+// and the node:wasi reactor leg — so those stopped being copy-pasted per witness.
 //
 // Two kinds of export:
 //   - runInChromium / runReactorNode run in NODE (they launch the browser or
@@ -114,12 +115,12 @@ export async function commandPageFn({ b64, shimSrc }) {
 // host's, so the RecordingDevice seam is driven by real browser capture while
 // playback keeps the deterministic tap. Requires a secure-context page (the
 // caller serves localhost) and a fake audio device (launch flags).
-export async function reactorPageFn({ b64, boot, driverSrc, shimSrc, audioHostSrc, micHostSrc, toneHz, withNow }) {
+export async function reactorPageFn({ b64, boot, driverSrc, shimSrc, audioHostSrc, micHostSrc, fsHostSrc, toneHz, withNow }) {
   const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   const makeWasiShim = new Function('return ' + shimSrc)();
   const shim = makeWasiShim();
   const lines = [];
-  let audio = null, mic = null;
+  let audio = null, mic = null, fs = null;
   const extra = {};
   if (audioHostSrc) {
     const makeAudioHost = new Function('return ' + audioHostSrc)();
@@ -131,6 +132,11 @@ export async function reactorPageFn({ b64, boot, driverSrc, shimSrc, audioHostSr
     mic = makeBrowserMicHost();
     extra.love_audio = { ...(extra.love_audio || {}), ...mic.imports };
   }
+  if (fsHostSrc) {
+    const makeFsHost = new Function('return ' + fsHostSrc)();
+    fs = makeFsHost();
+    extra.love_fs = fs.imports;
+  }
   try {
     const module = await WebAssembly.compile(bytes);
     shim.autostub(module);
@@ -138,6 +144,7 @@ export async function reactorPageFn({ b64, boot, driverSrc, shimSrc, audioHostSr
     shim.bind(instance.exports.memory);
     if (audio) audio.bind(instance.exports.memory);
     if (mic) mic.bind(instance.exports.memory);
+    if (fs) fs.bind(instance.exports.memory);
     instance.exports._initialize();  // reactor ctors
     const drive = new Function('return ' + driverSrc)();
     const args = [instance.exports, boot, (cb) => requestAnimationFrame(cb)];

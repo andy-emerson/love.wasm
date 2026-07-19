@@ -1,6 +1,6 @@
 # love-wasi
 
-**Real LÖVE, compiled to wasm32-wasi, as the in-browser preview engine**
+**Real LÖVE, compiled to wasm32-wasi — a browser-native runtime for LÖVE games, and a high-fidelity desktop preview**
 
 This is a fork of [love2d/love](https://github.com/love2d/love) (the `main` / 12.0-development branch), altered for a WebAssembly/WASI target. Per the zlib license: this is an altered version, plainly marked, and not the original software — LÖVE itself lives upstream (docs at the [LÖVE wiki](https://love2d.org/wiki)), and this fork defers to upstream for everything except its platform target.
 
@@ -16,8 +16,18 @@ Compile LÖVE's actual C++ engine — real bindings, real Box2D, real decoders, 
 
 - **Run real LÖVE source.** Not a JS reimplementation of the `love.*` API. A reimplementation was considered and rejected: multi-year effort, and never bit-exact. The fidelity bar is concrete — e.g. every Lua-facing engine call funnels through `luax_catchexcept`'s typed C++ exception handling (145 call sites); imitations get details like this subtly wrong forever.
 - **Need no Emscripten, no pthreads, no SharedArrayBuffer, no COOP/COEP headers.** The IDE must be able to run its preview on any static host. (love.js requires cross-origin isolation because its engine build bakes in `-pthread`; that is unremovable by swapping the Lua VM — it's why this project exists.)
-- **Keep the project tree `.love`-compatible.** The same game source runs unmodified on desktop LÖVE. This build powers the browser *preview only*; it has zero involvement in export. (Web *shipping* — a fused per-game web artifact — is deferred, not precluded: deliberate descope.)
+- **Keep the project tree `.love`-compatible.** The same game source runs unmodified on desktop LÖVE — a game made in the browser can go to desktop and back. The **primary target is a LÖVE game that runs natively in the browser**; a high-fidelity **desktop preview** is the second, valued use of the same engine. (The fused per-game web artifact for standalone *shipping/distribution* is a later packaging step, not yet built — but browser-native games are a **first-class target**, no longer a deferred descope.)
 - **Prefer faithful primitives over emulation** where the browser has the real thing (real Web Workers for `love.thread`, not coroutines pretending to be threads).
+
+## The fidelity standard — browser-native correctness first
+
+Two use-cases share this one engine, and they set the priority order every seam decision is measured against:
+
+1. **A correct browser game — the must-hit bar.** As a *browser* game, the engine must be complete and correct; this is achievable and held to 100%.
+2. **`.love` source-compatibility — a pillar.** The same source runs unmodified on desktop LÖVE.
+3. **Desktop *behavioral* parity — aspirational, the reference, not the pass/fail line.** The browser genuinely cannot match desktop 100% (async-storage durability, HRTF, mic rates, threading), and nobody expects it to; every gap is **declared, never faked**.
+
+So each decision is judged by *"what does a correct browser game do?"*, not *"does it byte-match desktop?"* — desktop is the reference, browser-native correctness is the standard. This generalizes the audio seam's principle (`wasi/audio/DESIGN.md`, Decision 3: *"the bar is device-agnostic fidelity, not desktop parity"*) to the whole engine.
 
 ## What stays real, what gets touched — the honest claim
 

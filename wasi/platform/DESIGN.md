@@ -13,15 +13,37 @@ Where a passage reads as a plan, the code has not landed it yet — only 6.1 is
 built (`wasi/platform/`, the `love_fs` read round-trip). The rest is the shape
 we are planning against.
 
-## The one principle: the game stays pure LÖVE; the host holds the powers
+## The fidelity standard (project-wide): browser-native correctness first
 
-love-wasi balances two standards — **fidelity with LÖVE 12 first, wanted
-features second** — and they need not conflict, because the feature surface is
-**host-side, never a game-facing API**. The shipped `.love` is a normal LÖVE 12
-game: run it on desktop LÖVE and it behaves identically, because none of the
-live-edit / console / reload machinery is baked into the artifact or visible to
-Lua. The IDE mutates the project *out of band* through host imports; the game
-never references any of it.
+Two use-cases share this one engine: a **LÖVE game that actually runs in the
+browser** (the priority), and a **desktop-fidelity preview** of a game bound for
+desktop. They imply two different bars, and the priority order is:
+
+1. **100% correct browser game — the must-hit bar.** As a *browser* game, the
+   engine must be complete and correct. This is achievable and non-negotiable.
+2. **`.love` source-compatibility — a pillar.** The same source runs unmodified
+   on desktop LÖVE; a game made here can go to desktop and back.
+3. **Desktop *behavioral* parity — aspirational, the reference not the pass/fail
+   line.** The browser genuinely cannot match desktop 100% (async storage
+   durability, HRTF, mic rates, threading), and nobody expects it to. Where it
+   can't be met, the divergence is *declared*, never faked.
+
+The consequence for every seam decision: measure it against **"what does a
+correct browser game do?"**, not "does it byte-match desktop?" Desktop is the
+reference; browser-native correctness is the standard we hold to 100%. This
+generalizes the principle already stated for audio (`wasi/audio/DESIGN.md`,
+Decision 3: *"the bar is device-agnostic fidelity, not desktop parity"*) to the
+whole engine, and it is why "browser preview only" is no longer the framing —
+browser-native games are a first-class target (readme.md, Mission).
+
+## The other principle: the game stays pure LÖVE; the host holds the powers
+
+Features (live-edit, console, reload) and fidelity need not conflict, because the
+feature surface is **host-side, never a game-facing API**. The shipped `.love` is
+a normal LÖVE 12 game: run it on desktop LÖVE and it behaves identically, because
+none of the live-edit / console / reload machinery is baked into the artifact or
+visible to Lua. The IDE mutates the project *out of band* through host imports;
+the game never references any of it.
 
 The single place this tempts a fidelity violation is the console-control idea
 (below, D6): if "control what's in the console" became a `love.log()` the game
@@ -57,11 +79,20 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
   **reload/eval primitive** (D4/D5). Step 6 must not *foreclose* these; it must
   not *build* them.
 
-## Open decisions
+## Decisions
 
-Each is stated with options, trade-offs, and a recommendation. 6.1 depends on
+Each is stated with options, trade-offs, and a recommendation. 6.1 depended on
 none of them (the raw seam is shared by every option), so building it did not
-front-run any choice below.
+front-run any choice. Resolution status (architect-ratified):
+
+| # | Topic | Resolution |
+|---|---|---|
+| D1 | Filesystem seam | **A — replace the module.** Gates 6.2. |
+| D2 | Save-dir backing | **Closed — OPFS, separate untracked namespace, eager-flush (eventual durability, declared).** See below. |
+| D3 | Window/context | **A — `setMode` drives the real canvas/context.** Gates 6.3. |
+| D4 | Reload granularity | **Open** — not C; between A and B; post-step-6, blocks nothing here. |
+| D5 | Supported-edit class | **A — minimal & explicit**, restart fallback. |
+| D6 | Console channel | **A — pure stdio now**, architected so B (host structured tap) can layer on without engine changes. |
 
 ### D1 — Filesystem seam: replace the module, or keep PhysFS and reseam its IO
 
@@ -96,24 +127,45 @@ back it with the host:
   gives the host the clean control the live-edit write/invalidate path needs, and
   avoids dragging PhysFS's OS-dependent write/scan machinery onto wasm. The cost
   (reimplementing the interface) is bounded and directly checkable against the
-  `testing/` filesystem suite. **This is the load-bearing step-6 decision and
-  gates 6.2 — flagging it for the architect before building 6.2.**
+  `testing/` filesystem suite. **DECIDED — Option A.** Gates 6.2.
 
-### D2 — Save directory (writable) backing
+### D2 — Save directory (writable) backing — CLOSED
 
-Where `love.filesystem.write` / save data lives.
+Where `love.filesystem.write` / save data lives. Mechanism, store, layout, and
+durability are all settled:
 
-- **Option A — host-backed writable namespace** (`love_fs` write imports) stored
-  in IDE / browser storage (IndexedDB, or memory for the preview).
-  - **Pros:** consistent with the read seam; `t.identity` is a host prefix;
-    persists across reloads if the host uses IndexedDB.
-  - **Cons:** IndexedDB is async but `love.filesystem.write` is sync — needs a
-    memory cache + async flush **sync-façade**, the same async-across-frames
-    pattern the mic seam already uses.
-- **Option B — a WASI preopened writable dir.** Rejected for the same reason the
-  read path isn't WASI: the browser has no fd layer.
-- **Recommendation: Option A**, with a memory cache + async flush façade.
-  Deferred past 6.2's read path; the write path is its own sub-step.
+- **Mechanism — host-backed writable namespace** via `love_fs` write imports (not
+  a WASI preopen; the browser has no fd layer). Same seam as the read path.
+- **Store — OPFS (Origin Private File System).** Chosen over localStorage
+  (~5 MB, strings, sync-but-janky — a hard cap desktop doesn't impose, so it
+  breaks the tail of games that write user content/replays/worlds) and over
+  IndexedDB (would model a filesystem on a key-value store). OPFS *is* a
+  per-origin filesystem: large, binary-native, hierarchical — a direct fit for
+  `love.filesystem`'s tree + `t.identity`. No permission prompt; needs only a
+  secure context (HTTPS/localhost), already met. Requires **no** Emscripten, **no**
+  COOP/COEP, **no** SharedArrayBuffer — it lives in the JS host behind the seam,
+  exactly like the WebGL2 and WebAudio hosts, so it changes nothing on the wasm
+  side.
+- **Layout — a separate, untracked namespace,** keyed by `t.identity`, beside (not
+  inside) any git-wasm working tree. Save data must never dirty the source repo or
+  pollute history; keeping save-dir ≠ source is also the desktop-faithful shape.
+  (git-wasm is the *source* axis; the save dir is the *runtime* axis — different
+  problems, possibly sharing OPFS as substrate in separate directories.)
+- **Durability — eager-flush, eventual durability, declared.** OPFS on the main
+  thread is async under a sync `write()`, so the host serves `write`/`read` from
+  an in-memory cache and flushes to OPFS asynchronously (flush after each write +
+  on `pagehide`/`visibilitychange`; request `navigator.storage.persist()` against
+  eviction). Under the project standard this is not a compromise but **the correct
+  browser-game behavior held to 100%** — it is exactly how shipped browser games
+  persist (Unity WebGL's IDBFS is the same async-flush model). In-session
+  read-after-write / `getInfo` / listing behave identically to desktop; the only
+  residual is a force-kill within the last-write window, a declared cross-platform
+  timing note, shared by every browser game. **True sync durability** (desktop-
+  exact) is available *only* via the engine-in-Worker + OPFS-sync-access-handle
+  pivot — a deployment-architecture upgrade (not COOP/COEP, not SAB), parked for a
+  shipping variant that genuinely needs it; not required here.
+- **Scope:** the read/boot path (6.2) needs none of the write path; the save-dir
+  write path is its own sub-step, now fully specced by the above.
 
 ### D3 — Window / GL-context creation
 
@@ -128,8 +180,8 @@ Where `love.filesystem.write` / save data lives.
 - **Option B — keep context creation in the harness**, `love.window` a thin stub
   reporting size. Lower effort, but leaves a permanent fake in the graphics path
   and never witnesses the real create.
-- **Recommendation: Option A** at 6.3 — the point of step 6 is to *build* the
-  seam graphics faked.
+- **DECIDED — Option A**, at 6.3 — the point of step 6 is to *build* the seam
+  graphics faked.
 
 ### D4 — Reload granularity (live-edit): whole-chunk re-eval vs. function-body hotswap
 
@@ -157,11 +209,9 @@ are written, and Lua can't tell them apart syntactically.
   - **Pros:** simpler than full hotswap; predictable; teachable.
   - **Cons:** imposes a game convention; non-conformant games fall back to
     restart.
-- **Recommendation: Option B (hotswap) as the target**, with **restart as the
-  honest fallback** for edits it can't apply cleanly (the architect has blessed
-  restart). The supported-edit class (D5) defines exactly what hotswap
-  guarantees; everything else restarts. Not needed until the reload sub-step
-  (post-step-6).
+- **OPEN — not C; between A and B; needs more discussion.** Restart is the blessed
+  fallback for whatever the chosen mechanism can't apply. Post-step-6; blocks
+  nothing in step 6.
 
 ### D5 — Supported-edit class (live-edit): what is guaranteed live
 
@@ -177,8 +227,8 @@ are written, and Lua can't tell them apart syntactically.
   - **Pros:** fewer explicit restarts.
   - **Cons:** silently keeps stale state on edits that *appear* to apply but
     shouldn't — the failure mode the invariant exists to forbid.
-- **Recommendation: Option A** — the invariant wants a *classifier*, not
-  best-effort. Restart is the correct answer for anything outside the class.
+- **DECIDED — Option A** — the invariant wants a *classifier*, not best-effort.
+  Restart is the correct answer for anything outside the class.
 
 ### D6 — Console / diagnostic channel shape
 
@@ -199,9 +249,11 @@ control over what's included — kept faithful.
   - **Cons:** the callback tap needs a hook in the pump; more host code.
 - **Option C — a game-facing `love.log()` API.** **Rejected:** a divergence that
   breaks on other engines unless it degrades to `print`.
-- **Recommendation: Option B** — `print` stays `print`; structure, verbosity, and
-  callback/error taps live host-side. The stdio half is present already (the
-  witnesses read fd 1); the structured taps are a later sub-step.
+- **DECIDED — Option A now, architected toward B.** Ship pure stdio (`print` stays
+  `print`, host taps fd 1/2); keep that tap a single clean seam so B's structured/
+  verbosity/callback layer can be added **host-side** later with no engine change,
+  if A proves insufficient. The stdio half exists already (the witnesses read
+  fd 1).
 
 ## Resolved by the reload invariant (recorded as decided, not open)
 

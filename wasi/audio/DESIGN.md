@@ -68,7 +68,13 @@ regardless; the probe only records the mic's rate *faithfulness* per engine.
 
 ## Decision 3 — Device-agnostic fidelity draws the wasm/host line
 
-The preview's bar is **device-agnostic fidelity** (same correct behavior across
+> This decision is now the **project-wide** fidelity standard, not just audio's:
+> the bar is browser-native correctness held to 100%, with desktop parity as the
+> reference, not the pass/fail line (readme.md, "The fidelity standard";
+> `wasi/platform/DESIGN.md`). What follows is where that principle was first
+> drawn.
+
+The bar is **device-agnostic fidelity** (same correct behavior across
 browsers), not desktop parity. "Browser-native" is not automatically
 device-agnostic: most of WebAudio is spec-deterministic (summation, linear
 gain, equal-power `StereoPannerNode`, device output → identical everywhere), but

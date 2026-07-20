@@ -24,13 +24,49 @@ export function makeFsHost() {
   const te = new TextEncoder(), td = new TextDecoder();
 
   // path -> Uint8Array. Text files are UTF-8; bin.dat is raw bytes.
+  //
+  // main.lua / conf.lua are a REAL, runnable LÖVE 12 game — the canned project
+  // LÖVE's boot.lua reads and runs for the step-6.6b first-frame witness
+  // (conf -> canvas -> load -> draw -> present). They are ALSO the fixtures the
+  // 6.1/6.2 filesystem witnesses read back (which only require: main.lua is a
+  // loadable chunk containing "love.draw", conf.lua contains "love.conf",
+  // main.lua >= 8 bytes). love.load prints a UNIQUE MARKER (host tap / fd 1) so
+  // the frame witness can prove love.load ran through the real boot; love.draw
+  // clears BLACK then fills the whole canvas RED — a known, unambiguous colour the
+  // frame witness reads back from the presented backbuffer.
   const files = {
     'main.lua': te.encode(
-      'function love.load() end\n' +
-      'function love.update(dt) end\n' +
-      'function love.draw() love.graphics.print("hi", 10, 10) end\n'),
+      'function love.load()\n' +
+      '  print("STEP66B-LOVE-LOAD-MARKER-7F3A9C")\n' +
+      '  io.write("STEP66B-IO-WRITE-MARKER\\n")\n' +
+      'end\n' +
+      'local frame = 0\n' +
+      'function love.update(dt)\n' +
+      '  frame = frame + 1\n' +
+      '  if frame == 1 then print("STEP66B-FIRST-UPDATE dt=" .. tostring(dt)) end\n' +
+      'end\n' +
+      'function love.draw()\n' +
+      '  love.graphics.clear(0, 0, 0, 1)\n' +
+      '  love.graphics.setColor(1, 0, 0, 1)\n' +
+      '  love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())\n' +
+      'end\n'),
     'conf.lua': te.encode(
-      'function love.conf(t)\n  t.window.title = "step 6.1"\n  t.window.width = 320\nend\n'),
+      'function love.conf(t)\n' +
+      '  t.identity = "step66frame"\n' +
+      '  t.window.width = 64\n' +
+      '  t.window.height = 64\n' +
+      '  t.window.title = "step 6.6b frame"\n' +
+      '  -- Enable ONLY the modules the frame build links; boot.lua requires each\n' +
+      '  -- enabled module, so anything not linked must be turned off here.\n' +
+      '  t.modules.audio = false\n' +
+      '  t.modules.video = false\n' +
+      '  t.modules.sound = false\n' +
+      '  t.modules.physics = false\n' +
+      '  t.modules.joystick = false\n' +
+      '  t.modules.touch = false\n' +
+      '  t.modules.sensor = false\n' +
+      '  t.modules.thread = false\n' +
+      'end\n'),
     // 8 bytes, two embedded NULs (indices 0 and 4) and high bytes (0xFF, 0x80,
     // 0xAA): a C-string protocol would report length 0 and read nothing; a
     // length-accurate one recovers all 8 exactly.

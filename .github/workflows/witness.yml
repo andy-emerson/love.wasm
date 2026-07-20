@@ -191,6 +191,17 @@ jobs:
         # after two calls). Keeping love.sensor enabled also moots upstream #23.
         run: PREFIX="$PWD/wasi-eh" wasi/platform/run-sensor.sh
 
+      - name: platform witness — real love.timer/love.system (step 6.6a, node + real Chromium)
+        # Build-order step 6.6a: love.timer (a concrete class — Timer.cpp routes
+        # through clock_gettime(CLOCK_MONOTONIC)/gettimeofday under the LOVE_WASI arm
+        # of its POSIX guard; love::sleep is the honest browser no-op) + love.system
+        # (the wasm backend on the love_system seam for the genuine browser
+        # capabilities — processor count, clipboard, openURL, locales; getOS "Web"
+        # via the guarded seam). The witness asserts getTime advances, step() dt,
+        # getOS "Web", processor count, the clipboard round-trip and the locale
+        # shape. Windowless, so it runs on node + Chromium both.
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-timer-system.sh
+
       - name: audio witness (love.audio playback + mic, node + Chromium + fake-device capture)
         run: PREFIX="$PWD/wasi-eh" wasi/audio/run.sh
 
@@ -255,3 +266,16 @@ jobs:
         # (drawn + clear pixels recovered exactly). Reuses the graphics job's warm
         # gfxlibs. Chromium-only (real WebGL2).
         run: PREFIX="$PWD/wasi-eh" wasi/platform/run-win.sh
+
+      - name: first full main.lua frame — conf -> canvas -> load -> draw -> present (step 6.6b, real Chromium)
+        # Build-order step 6.6b — THE MILESTONE. The union artifact (real
+        # filesystem + window + graphics/WebGL2 + image + font + event/keyboard/
+        # mouse + timer + system) boots LÖVE's real boot.lua and runs the canned
+        # game (fs-host's conf.lua + main.lua) to a drawn pixel: conf sizes/titles
+        # the canvas, love.window.setMode opens the WebGL2 context, love.load prints
+        # a unique marker to the host tap, love.run's loop runs update/draw/present
+        # once per pumped frame, and love.draw fills the canvas RED. The driver
+        # asserts the marker reached fd 1 AND the presented backbuffer centre pixel
+        # is RED (read back through the WebGL2 context). Reuses the graphics job's
+        # warm gfxlibs. Chromium-only (real WebGL2); no node leg (expected).
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-frame.sh

@@ -9,14 +9,16 @@ live-edited development — the decisions the downstream **live-edit / agent**
 consumer forces, which are surfaced here **while still open** (AGENTS.md: never
 hand the architect a result built on choices they never saw).
 
-Where a passage reads as a plan, the code has not landed it yet. **6.1–6.5 are
+Where a passage reads as a plan, the code has not landed it yet. **6.1–6.6 are
 built** (the `love_fs` read seam; the real `love.filesystem` replacing PhysFS; the
 real `love.window` replacing SDL; the real `love.event`/`keyboard`/`mouse` on the
 `love_input` push seam; the real `love.joystick`/`gamepad` on the `love_gamepad`
-poll seam — see the ledger below), and issue #27's warning mechanism +
-`love.sensor` warned stub have landed. 6.6–6.7 (timer/system + first frame, and
-the embedding contract that was "step 8a") remain the shape we are planning
-against; the former "step 8" IDE work is dropped from this repo's scope.
+poll seam; the real `love.timer`/`love.system` and — the headline — the **first
+full `main.lua` frame** (`conf` → canvas → `love.load` → `love.draw` → present,
+pixel recovered) — see the ledger below), and issue #27's warning mechanism +
+`love.sensor` warned stub have landed. 6.7 (the embedding contract that was
+"step 8a") remains the shape we are planning against; the former "step 8" IDE work
+is dropped from this repo's scope.
 
 ## The fidelity standard (project-wide): browser-native correctness first
 
@@ -155,10 +157,51 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
   / `setGamepadMapping` / `loadGamepadMappings` are empty/no-op), and **gamepad
   motion sensors** (no gamepad sensor stream). The input path itself is real.
   Witnessed windowlessly on node **and** Chromium.
-- **6.6 — `love.timer` + `love.system` + conf.lua-driven canvas.** The first full
-  `main.lua` frame: `love.conf` honored → canvas sized/titled → `love.load` →
-  `love.update`/`love.draw` on the pump. Small in code (`love.timer` rides the
-  existing `now` seam); the milestone is the integration — step 6's payoff frame.
+- **6.6 — `love.timer` + `love.system` + the first full `main.lua` frame. DONE**
+  (6.6a windowless on node:wasi + real Chromium; 6.6b Chromium-only; CI steps
+  added). Two phases:
+  - **6.6a — `love.timer` + `love.system`.** `love.timer` is a concrete class (no
+    backend split): `Timer.cpp` routes through
+    `clock_gettime(CLOCK_MONOTONIC)`/`gettimeofday` under a guarded `LOVE_WASI` arm
+    of its POSIX `#if` (wasi-libc provides both; the WASI host fulfils
+    `clock_time_get`), and `love::sleep` is an **honest browser no-op**
+    (`wasi/platform/delay-wasi.cpp`) — a browser must not block its main thread;
+    frame cadence is the host's `requestAnimationFrame`, not a guest spin — in
+    place of the SDL `SDL_DelayNS` `common/delay.cpp` (excluded from every wasm
+    build). `love.system` is backend-split: a real `love::system::wasm::System`
+    backend (`wasi/platform/system-backend.{h,cpp}`) on a new `love_system` host
+    seam carries the **genuine browser capabilities** — processor count
+    (`navigator.hardwareConcurrency`), the text clipboard (a host cell fronting the
+    async Clipboard API), `openURL` (`window.open`), preferred locales
+    (`navigator.languages`) — and reports honest defaults for the rest (memory size
+    0; power `unknown` — the Battery Status API is gated across engines);
+    `getOS()` returns `"Web"` via a guarded seam in `System.cpp`. Three guarded
+    seams (`Timer.cpp` POSIX arm, `System.cpp` `getOS`, `wrap_System.cpp` factory),
+    byte-clean for desktop.
+  - **6.6b — the first full `main.lua` frame (THE MILESTONE).** The **union** build
+    (`build-frame.sh`: real filesystem 6.2 + window 6.3 + graphics/opengl-on-WebGL2
+    step 4 + image + font + event/keyboard/mouse 6.4 + timer + system 6.6a + data +
+    math) boots LÖVE's **real `boot.lua`** under the pump and runs an actual game
+    end to end: `conf.lua` (read through the real `love.filesystem`) sizes/titles
+    the canvas, `love.window.setMode` opens the real WebGL2 context at the conf
+    dimensions, `love.load` runs (a unique marker to the host tap proves it), and
+    `love.run`'s loop yields once per pumped frame running
+    `event.pump`/`timer.step`/`update`/`clear`/`draw`/`present`. `love.draw` fills
+    the canvas RED; the driver reads the presented backbuffer's centre pixel back
+    through the WebGL2 context and recovers `(255,0,0,255)` — proving
+    conf → canvas → load → draw → present ran a real frame. `frame-deps-stub.cpp`
+    replaces the windowless graphics build's `graphics-deps-stub.cpp` (the union
+    compiles the real filesystem + timer, so only the genuinely-absent
+    audio/video/thread module symbols love.graphics links against are stubbed —
+    reusing the graphics stub would duplicate `File::type`/`luax_getdata`/
+    `Timer::getTime`). `love.joystick` is deliberately not linked (the event module
+    needs only the joystick HEADER; `input-backend.cpp`'s `wasi_poll_gamepad_events`
+    weak hook stays null, so `pump()` skips it). Chromium-only — a real WebGL2
+    context, node has none — exactly like the 6.3 window witness and the step-4
+    graphics witnesses; no node leg (expected). The one integration subtlety: the
+    canned `conf.lua` disables every module the union does NOT link
+    (thread/joystick/touch/sound/sensor/audio/video/physics), because `boot.lua`'s
+    module loop `require`s each enabled module unconditionally.
 - **6.7 — the embedding contract** (was "step 8a"; the runtime's capstone). What
   makes the runtime *consumable* by a live-edit host, and the boundary of this
   repo's responsibility: the filesystem **write path + invalidate hook** (D2,

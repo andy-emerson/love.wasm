@@ -14,7 +14,11 @@ export async function driveWitness(x, bootSrc, schedule, log) {
   const mem = () => new Uint8Array(x.memory.buffer);
   const put = (s) => {
     const b = te.encode(s);
-    mem().set(b, x.pump_in(b.length));
+    // pump_in may grow (and detach) linear memory, so take the destination
+    // pointer FIRST, then a fresh memory view — evaluating mem() before pump_in
+    // would set() on a detached ArrayBuffer when the write triggers a grow.
+    const p = x.pump_in(b.length);
+    mem().set(b, p);
     return b.length;
   };
   const out = () => { const p = x.pump_out(); return td.decode(mem().slice(p, p + x.pump_out_len())); };

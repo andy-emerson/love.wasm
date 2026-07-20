@@ -12,8 +12,10 @@ hand the architect a result built on choices they never saw).
 Where a passage reads as a plan, the code has not landed it yet. **6.1, 6.2, and
 6.3 are built** (the `love_fs` read seam; the real `love.filesystem` replacing
 PhysFS; the real `love.window` replacing SDL — see the ledger below), and issue
-#27's warning mechanism + `love.sensor` warned stub have landed. 6.4/6.5 and the
-reserved live-edit items remain the shape we are planning against.
+#27's warning mechanism + `love.sensor` warned stub have landed. 6.4–6.7 (event/
+input, joystick, timer/system + first frame, and the embedding contract that was
+"step 8a") remain the shape we are planning against; the former "step 8" IDE work
+is dropped from this repo's scope.
 
 ## The fidelity standard (project-wide): browser-native correctness first
 
@@ -70,8 +72,8 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
   and `read`/`getInfo`/`openFile`/`File:read`/`load`/`require` recover host files
   byte-exact (incl. binary/NUL) through the real module. Driven directly from a
   witness coroutine (not full `boot.lua`, which needs `love.system`/window/event
-  — those are 6.3–6.5). Read-only: `write`/`mount`/enumerate throw/false loudly,
-  not faked; the write/save-dir path (D2's OPFS) is a later sub-step. Shared
+  — those are 6.3–6.6). Read-only: `write`/`mount`/enumerate throw/false loudly,
+  not faked; the write/save-dir path (D2's OPFS) is the 6.7 sub-step. Shared
   engine touched only through guarded seams (`Filesystem.cpp` `getExecutablePath`
   + `<filesystem>`; `wrap_Filesystem.cpp` factory + SDL `extloader`), byte-clean
   for desktop. The `extloader` native-C `require` searcher is dropped on wasm (no
@@ -88,15 +90,40 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
   `newImageData`, drawn + clear pixels recovered exactly. One guarded seam
   (`wrap_Window.cpp` factory), byte-clean for desktop; the window-irrelevant
   surface (fullscreen, displays, dialogs, …) is honest no-ops.
-- **6.4 — `love.event` + input.** DOM keyboard/mouse/pointer events forwarded
-  into LÖVE's real event queue; `love.keyboard`/`love.mouse` state.
-- **6.5 — `love.timer` + `love.system` + conf.lua-driven canvas.** The first full
+- **6.4 — `love.event` + keyboard/mouse.** DOM keyboard/mouse/pointer events
+  forwarded into LÖVE's real event queue; `love.keyboard`/`love.mouse` state.
+  This is the first **host→guest push** seam — every prior seam was guest→host
+  pull (guest asks, host answers synchronously); DOM events fire on the browser
+  event loop and must be queued for the pump to drain on its next frame (a small
+  ring-buffer across the seam).
+- **6.5 — `love.joystick` + `love.gamepad`.** The browser **Gamepad API** —
+  a distinct, poll-based host surface (its own witness), but **required for
+  fidelity, not optional**: gamepads are a capability the browser genuinely
+  *has*, so warned-stubbing them (as we did `love.sensor`, a genuinely-absent
+  capability) would violate the "correct browser game held to 100%" bar. LÖVE's
+  `love.gamepad` is SDL's standard-controller mapping, which is ~1:1 with the
+  W3C "standard gamepad" mapping; the poll-and-diff to synthesize
+  `joystickpressed`/`axis`/`added`/`removed` reuses 6.4's push mechanism.
+  Rumble (`setVibration` → `vibrationActuator`, partial support) and raw-HID
+  exotica are the honest warn-once edges — the input path itself is real.
+- **6.6 — `love.timer` + `love.system` + conf.lua-driven canvas.** The first full
   `main.lua` frame: `love.conf` honored → canvas sized/titled → `love.load` →
-  `love.update`/`love.draw` on the pump.
-- **Reserved for the live-edit consumer (post-step-6, not step-6 scope):** the
-  filesystem **write path + invalidate hook** (D2), and the host-callable
-  **reload/eval primitive** (D4/D5). Step 6 must not *foreclose* these; it must
-  not *build* them.
+  `love.update`/`love.draw` on the pump. Small in code (`love.timer` rides the
+  existing `now` seam); the milestone is the integration — step 6's payoff frame.
+- **6.7 — the embedding contract** (was "step 8a"; the runtime's capstone). What
+  makes the runtime *consumable* by a live-edit host, and the boundary of this
+  repo's responsibility: the filesystem **write path + invalidate hook** (D2,
+  closed — OPFS), and a host-callable **reload/eval primitive** (D5=A: minimal
+  explicit edits, restart fallback = whole-chunk re-eval). Buildable now without
+  resolving **D4** (hotswap vs whole-chunk) — the D4=B refinement layers on later
+  without foreclosure. 6.7 ships **and documents the seam** (the host-import
+  surface a consumer fulfills, the reload call, the supported-edit class); it does
+  **not** build or document the downstream IDE. The IDE (LoveIDE: editor,
+  git-wasm save flow, agent live-edit UX) is a separate repo that consumes this
+  contract — out of scope here, and (per project decision) not detailed enough to
+  document anywhere yet. The former "step 8" is dropped; "step 7" (`love.thread`
+  via Workers) remains a large, separate, design-doc-first, demand-driven step
+  after 6.7.
 
 ## Decisions
 

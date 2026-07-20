@@ -149,6 +149,12 @@ bool domCodeToName(const char *code, const char *&name)
 
 // ── love.event backend ────────────────────────────────────────────────────────
 
+// The step-6.5 gamepad poll, wired in as a WEAK hook so this 6.4 event backend
+// never depends on the joystick module. joystick-backend.cpp (step 6.5) defines
+// it STRONG; when that TU is not linked (the 6.4 build), the symbol stays null
+// and pump() skips the call — a guarded addition, not a 6.4 behavior change.
+extern "C" __attribute__((weak)) void wasi_poll_gamepad_events();
+
 namespace love
 {
 namespace event
@@ -173,6 +179,12 @@ static inline int32_t recInt(const uint8_t *rec, int off) { int32_t v; std::memc
 
 void Event::pump(float /*waitTimeout*/)
 {
+	// Poll the browser Gamepad API first (step 6.5), so the synthesized joystick/
+	// gamepad Messages land in the same queue this drain feeds. Weak: null (skipped)
+	// when the joystick backend is not linked (the 6.4 build).
+	if (wasi_poll_gamepad_events)
+		wasi_poll_gamepad_events();
+
 	// The rAF-driven browser loop never blocks here: waitTimeout is a desktop
 	// busy-wait hint with no browser analog, so we always drain non-blocking.
 	auto &st = love::wasi_input::state();

@@ -9,13 +9,14 @@ live-edited development — the decisions the downstream **live-edit / agent**
 consumer forces, which are surfaced here **while still open** (AGENTS.md: never
 hand the architect a result built on choices they never saw).
 
-Where a passage reads as a plan, the code has not landed it yet. **6.1, 6.2, and
-6.3 are built** (the `love_fs` read seam; the real `love.filesystem` replacing
-PhysFS; the real `love.window` replacing SDL — see the ledger below), and issue
-#27's warning mechanism + `love.sensor` warned stub have landed. 6.4–6.7 (event/
-input, joystick, timer/system + first frame, and the embedding contract that was
-"step 8a") remain the shape we are planning against; the former "step 8" IDE work
-is dropped from this repo's scope.
+Where a passage reads as a plan, the code has not landed it yet. **6.1–6.5 are
+built** (the `love_fs` read seam; the real `love.filesystem` replacing PhysFS; the
+real `love.window` replacing SDL; the real `love.event`/`keyboard`/`mouse` on the
+`love_input` push seam; the real `love.joystick`/`gamepad` on the `love_gamepad`
+poll seam — see the ledger below), and issue #27's warning mechanism +
+`love.sensor` warned stub have landed. 6.6–6.7 (timer/system + first frame, and
+the embedding contract that was "step 8a") remain the shape we are planning
+against; the former "step 8" IDE work is dropped from this repo's scope.
 
 ## The fidelity standard (project-wide): browser-native correctness first
 
@@ -114,16 +115,46 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
   witnessed windowlessly, so it runs on node **and** Chromium (no WebGL2).
   `isModifierActive` (lock latch), custom image cursors, and pointer confinement
   are the honest warn-once edges.
-- **6.5 — `love.joystick` + `love.gamepad`.** The browser **Gamepad API** —
-  a distinct, poll-based host surface (its own witness), but **required for
-  fidelity, not optional**: gamepads are a capability the browser genuinely
-  *has*, so warned-stubbing them (as we did `love.sensor`, a genuinely-absent
-  capability) would violate the "correct browser game held to 100%" bar. LÖVE's
-  `love.gamepad` is SDL's standard-controller mapping, which is ~1:1 with the
-  W3C "standard gamepad" mapping; the poll-and-diff to synthesize
-  `joystickpressed`/`axis`/`added`/`removed` reuses 6.4's push mechanism.
-  Rumble (`setVibration` → `vibrationActuator`, partial support) and raw-HID
-  exotica are the honest warn-once edges — the input path itself is real.
+- **6.5 — `love.joystick` + `love.gamepad`. DONE** (node:wasi + real Chromium; CI
+  step added). The real `love.joystick`/`love.gamepad` on a new `love_gamepad`
+  host seam (`wasi/platform/joystick-backend.{h,cpp}`) over the browser **Gamepad
+  API** — **required for fidelity, not optional**: gamepads are a capability the
+  browser genuinely *has*, so warned-stubbing them (as we did `love.sensor`, a
+  genuinely-absent capability) would violate the "correct browser game held to
+  100%" bar. Unlike 6.4's host→guest *push* queue, the Gamepad API is
+  **poll-based** (no event stream, only a per-frame snapshot array) — so the seam
+  is guest→host *pull* (`gamepad_count`/`gamepad_read`, mirroring
+  `navigator.getGamepads()`): once per frame the guest reads the current gamepad
+  slots and **diffs** them against the previous poll to *synthesize* the
+  `joystickadded`/`joystickremoved`, `joystick{pressed,released,axis}` and
+  `gamepad{pressed,released,axis}` events SDL would have delivered, emitting BOTH
+  the raw-joystick and the mapped-gamepad event for one physical change exactly as
+  SDL sends both families. That synthesis **reuses 6.4's push mechanism**: the
+  diffed events are `love::event::Message`s pushed onto the same `love.event`
+  queue. The poll is wired into 6.4's `pump()` by a **weak hook**
+  (`wasi_poll_gamepad_events`, declared null in `input-backend.cpp`, defined
+  strong in `joystick-backend.cpp`), so the 6.4 build — which does not link the
+  joystick module — is unaffected (the symbol is null and the call skipped; the
+  6.4 witness re-runs green with the hook in place). LÖVE's `love.gamepad` is
+  SDL's standard-controller mapping, ~1:1 with the **W3C "standard gamepad"**
+  mapping, so it rides it directly; the W3C-index↔LÖVE-button and axis translation
+  lives in C++ next to LÖVE's enums (host forwards browser truth, the backend owns
+  LÖVE semantics — the same split the input backend has). W3C buttons 6/7 (the
+  analog triggers) map to LÖVE trigger **axes**, not buttons, so a trigger emits
+  `gamepadaxis`, matching SDL. One guarded factory seam (`wrap_JoystickModule.cpp`,
+  byte-clean for desktop under `#else`). Enabling `love.sensor` (the #27 warned
+  stub) is **required** here, not incidental: `wrap_Joystick.cpp` registers
+  `Joystick:getDevicePowerInfo`/`:getDeviceConnectionState` unconditionally but
+  only *defines* them under `LOVE_ENABLE_SENSOR` (upstream bug #23), so joystick
+  won't link with sensor off — enabling it moots #23 by config. The honest
+  warn-once edges: **vibration** (the browser gamepad *has* a `vibrationActuator`,
+  but it is a host effect the windowless witness cannot observe, so 6.5 reports it
+  unsupported and `setVibration` is a no-op returning false rather than faking an
+  unwitnessable rumble), the **gamepad-mapping string** (no SDL controller DB in
+  the browser — the W3C standard mapping is implicit, so `getGamepadMappingString`
+  / `setGamepadMapping` / `loadGamepadMappings` are empty/no-op), and **gamepad
+  motion sensors** (no gamepad sensor stream). The input path itself is real.
+  Witnessed windowlessly on node **and** Chromium.
 - **6.6 — `love.timer` + `love.system` + conf.lua-driven canvas.** The first full
   `main.lua` frame: `love.conf` honored → canvas sized/titled → `love.load` →
   `love.update`/`love.draw` on the pump. Small in code (`love.timer` rides the

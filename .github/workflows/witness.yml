@@ -167,6 +167,21 @@ jobs:
         # isDown/getPosition state. Windowless, so it runs on node + Chromium both.
         run: PREFIX="$PWD/wasi-eh" wasi/platform/run-input.sh
 
+      - name: platform witness — real love.joystick/gamepad on the love_gamepad seam (step 6.5, node + real Chromium)
+        # Build-order step 6.5: the real love.joystick/love.gamepad over the browser
+        # Gamepad API on the love_gamepad seam. Unlike 6.4's push queue, the Gamepad
+        # API is POLL-based: love.event's pump() calls a gamepad poll (a weak hook,
+        # null in the 6.4 build) that reads navigator.getGamepads()-shaped records
+        # ONCE per frame and DIFFS them against the previous poll to synthesize the
+        # joystickadded/removed, joystick(pressed/released/axis) and
+        # gamepad(pressed/released/axis) events SDL would push — reusing 6.4's push
+        # mechanism. The witness advances three scripted frames (connect+press,
+        # release+press, disconnect) and asserts the synthesized events + the
+        # love.joystick reader state (isGamepad/isGamepadDown/getGamepadAxis/getName).
+        # W3C-standard <-> LÖVE mapping in C++; vibration/mapping-string/gamepad
+        # sensors are honest warn-once edges. Windowless: node + Chromium both.
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-joystick.sh
+
       - name: preview-limitation warning witness — love.sensor warned stub (issue #27, node + real Chromium)
         # Issue #27's mechanism: preview_warn_once emits a one-time
         # [love-wasi preview] notice to the host tap when a preview-limited

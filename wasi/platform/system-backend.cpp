@@ -26,7 +26,6 @@
 #include "system-backend.h"
 
 #include <cstdint>
-#include <cstring>
 
 // ── The love_system host seam ─────────────────────────────────────────────────
 //

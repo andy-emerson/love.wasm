@@ -78,7 +78,7 @@ computes `getSaveDirectory()` as `save:<identity>` and routes
 `write`/`append`/`File:open("w"/"a")`/`remove`/`createDirectory` through these
 imports; `read`/`getInfo`/`exists`/`require` ride the read imports.
 
-### `love_win` — window + GL context (6.3) — `wasi/host/win-host.mjs`
+### `love_win` — window + GL context (6.3) — `wasi/host/webgl-win-host.mjs`
 
 `love.window.setMode` drives the host to size the `<canvas>` and create the real
 WebGL2 context (D3); `present()` swaps; `captureScreenshot` reads the presented

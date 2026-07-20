@@ -458,7 +458,10 @@ bool Filesystem::getInfo(const char *filepath, Info &info) const
 
 	info.size = (int64) size;
 	info.modtime = (int64) mtime;
-	info.readonly = true;  // the host VFS is read-only
+	// Reports the read-only project posture: fs_stat carries no per-file readonly
+	// out-param, so the writable save layer (6.7) is not surfaced here (declared
+	// deferral, EMBEDDING.md §5).
+	info.readonly = true;
 
 	switch (type)
 	{

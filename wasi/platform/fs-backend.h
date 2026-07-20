@@ -53,11 +53,13 @@ namespace filesystem
 namespace wasi_fs
 {
 
-// A read-only File backed by the love_fs host import surface. open(MODE_READ)
-// pulls the whole file's bytes across the seam once (size-then-read, NUL-safe,
-// exactly the 6.1 contract); reads/seeks/tell then serve from that buffer. This
-// mirrors physfs::File's shape (open-throws-on-failure ctor; getSize() works
-// even while closed) so the inherited File::read(int64) driver works unchanged.
+// A File backed by the love_fs host import surface. open(MODE_READ) pulls the
+// whole file's bytes across the seam once (size-then-read, NUL-safe, exactly the
+// 6.1 contract); reads/seeks/tell then serve from that buffer. Write/append modes
+// (6.7) buffer in memory and eager-flush the whole file to the host save
+// namespace via flushToHost(). This mirrors physfs::File's shape
+// (open-throws-on-failure ctor; getSize() works even while closed) so the
+// inherited File::read(int64) driver works unchanged.
 class File final : public love::filesystem::File
 {
 public:

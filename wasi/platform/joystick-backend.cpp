@@ -28,7 +28,6 @@
 
 #include "common/Module.h"
 #include "common/Object.h"
-#include "common/StringMap.h"
 #include "event/Event.h"
 
 #include <cmath>

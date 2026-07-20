@@ -1,7 +1,9 @@
 // The node-side witness harness shared by every browser witness runner —
 // step-0 command, step-2 pump, step-3 boot, step-5 audio, and the step-6/#27
 // platform witnesses (reactorPageFn carries audioHostSrc/micHostSrc, fsHostSrc
-// for the filesystem seam, and inputHostSrc for the 6.4 love_input event seam). #8 consolidated the in-page WASI shim
+// for the filesystem seam, inputHostSrc for the 6.4 love_input event seam,
+// gamepadHostSrc for the 6.5 love_gamepad poll seam, and systemHostSrc for the
+// 6.6 love_system seam). #8 consolidated the in-page WASI shim
 // into wasi/host/wasi-shim.mjs; this consolidates the runner scaffolding that
 // surrounds it — the Playwright launch, the in-page instantiate/drive bodies,
 // and the node:wasi reactor leg — so those stopped being copy-pasted per witness.

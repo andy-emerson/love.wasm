@@ -26,7 +26,6 @@
 #include "input-backend.h"
 #include "preview-warn.h"
 
-#include "common/Exception.h"
 #include "common/Object.h"
 
 #include <cstdint>

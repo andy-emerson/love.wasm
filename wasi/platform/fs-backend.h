@@ -23,10 +23,14 @@
 // layer the browser lacks) with the host-import VFS seam proven in 6.1: every
 // read routes through the love_fs imports (fs_size / fs_read / fs_stat), which
 // the host (LoveIDE, or the canned wasi/host/fs-host.mjs) fulfils from project
-// storage. The backend is read-only and flat: the host store IS the source,
-// keyed by the same relative names love.filesystem asks for. Write, mounting,
-// and directory enumeration are deliberately unimplemented (loud, not faked) —
-// see fs-backend.cpp for exactly which surfaces stop and why.
+// storage. Step 6.7 adds the WRITE path (fs_write / fs_remove / fs_mkdir): a
+// separate, writable SAVE namespace keyed by t.identity, beside the read-only
+// project. Writes land in the save namespace; reads resolve save-first then
+// project (physfs mount order), so a written file shadows a project file of the
+// same name and removing the save copy reveals the pristine project file
+// beneath — the project itself is never mutated. Real archive/.love mounting
+// and directory enumeration remain deliberately unimplemented (loud, not
+// faked) — see fs-backend.cpp for exactly which surfaces stop and why.
 //
 // This header lives out-of-tree (readme.md: the src tree stays upstream-shaped;
 // the wasi build compiles the subset). wrap_Filesystem.cpp includes it under
@@ -85,6 +89,9 @@ public:
 private:
 
 	File(const File &other);
+
+	// Push the in-memory buffer to the host save namespace (write/append modes).
+	bool flushToHost();
 
 	std::string filename;
 

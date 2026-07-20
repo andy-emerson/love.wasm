@@ -9,16 +9,19 @@ live-edited development — the decisions the downstream **live-edit / agent**
 consumer forces, which are surfaced here **while still open** (AGENTS.md: never
 hand the architect a result built on choices they never saw).
 
-Where a passage reads as a plan, the code has not landed it yet. **6.1–6.6 are
-built** (the `love_fs` read seam; the real `love.filesystem` replacing PhysFS; the
-real `love.window` replacing SDL; the real `love.event`/`keyboard`/`mouse` on the
-`love_input` push seam; the real `love.joystick`/`gamepad` on the `love_gamepad`
-poll seam; the real `love.timer`/`love.system` and — the headline — the **first
-full `main.lua` frame** (`conf` → canvas → `love.load` → `love.draw` → present,
-pixel recovered) — see the ledger below), and issue #27's warning mechanism +
-`love.sensor` warned stub have landed. 6.7 (the embedding contract that was
-"step 8a") remains the shape we are planning against; the former "step 8" IDE work
-is dropped from this repo's scope.
+Where a passage reads as a plan, the code has not landed it yet. **Step 6 is
+COMPLETE — 6.1–6.7 are all built** (the `love_fs` read seam; the real
+`love.filesystem` replacing PhysFS; the real `love.window` replacing SDL; the real
+`love.event`/`keyboard`/`mouse` on the `love_input` push seam; the real
+`love.joystick`/`gamepad` on the `love_gamepad` poll seam; the real
+`love.timer`/`love.system`; the **first full `main.lua` frame** (`conf` → canvas →
+`love.load` → `love.draw` → present, pixel recovered); and — the capstone — **the
+embedding contract** (6.7): the `love.filesystem` write path + save dir on new
+`love_fs` write imports, the host-callable `pump_invalidate()` reload primitive
+(write → invalidate → re-require = live-edit), and the documented host-import seam
+(`EMBEDDING.md`) — see the ledger below), and issue #27's warning mechanism +
+`love.sensor` warned stub have landed. The former "step 8" IDE work is dropped
+from this repo's scope; the IDE is a downstream consumer of the 6.7 contract.
 
 ## The fidelity standard (project-wide): browser-native correctness first
 
@@ -202,20 +205,40 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
     canned `conf.lua` disables every module the union does NOT link
     (thread/joystick/touch/sound/sensor/audio/video/physics), because `boot.lua`'s
     module loop `require`s each enabled module unconditionally.
-- **6.7 — the embedding contract** (was "step 8a"; the runtime's capstone). What
-  makes the runtime *consumable* by a live-edit host, and the boundary of this
-  repo's responsibility: the filesystem **write path + invalidate hook** (D2,
-  closed — OPFS), and a host-callable **reload/eval primitive** (D5=A: minimal
-  explicit edits, restart fallback = whole-chunk re-eval). Buildable now without
-  resolving **D4** (hotswap vs whole-chunk) — the D4=B refinement layers on later
-  without foreclosure. 6.7 ships **and documents the seam** (the host-import
-  surface a consumer fulfills, the reload call, the supported-edit class); it does
-  **not** build or document the downstream IDE. The IDE (LoveIDE: editor,
-  git-wasm save flow, agent live-edit UX) is a separate repo that consumes this
-  contract — out of scope here, and (per project decision) not detailed enough to
-  document anywhere yet. The former "step 8" is dropped; "step 7" (`love.thread`
-  via Workers) remains a large, separate, design-doc-first, demand-driven step
-  after 6.7.
+- **6.7 — the embedding contract. DONE** (scripted; node:wasi + real Chromium; CI
+  step added) — the runtime's capstone, and the boundary of this repo's
+  responsibility. What makes the runtime *consumable* by a live-edit host:
+  - **The filesystem write path** — the real `love.filesystem`
+    `write`/`append`/`remove`/`createDirectory`/`File:open("w"/"a")` and the save
+    dir, over three new `love_fs` write imports (`fs_write`/`fs_remove`/`fs_mkdir`,
+    entirely in the out-of-tree `fs-backend.cpp` + host — **no new `src/` seam**).
+    The host holds a **separate writable save namespace** (D2, OPFS-backed in the
+    browser) beside the read-only project; reads resolve **save-first then
+    project** (physfs mount order), so a written file shadows a project file and
+    removing the save copy reveals the pristine project beneath — the witness
+    proves, by transcript alone, that writes never mutate the project.
+    `getSaveDirectory()` = `save:<t.identity>`. Writes are NUL-safe.
+  - **The reload / invalidate primitive** (D5=A: minimal & explicit, whole-chunk
+    re-eval) — a host-callable `pump_invalidate()` export (+ a Lua twin
+    `__pump_invalidate()` for in-script driving) that drops **game** Lua modules
+    from `package.loaded` while preserving `love`/`love.*` and the standard libs.
+    `g_L` persists across `pump_boot`, so caches survive a reboot — this clears
+    them. The **reload invariant** is witnessed: `require("mod").v==1` → host-edit
+    the source via the write path (`return {v=2}`) → `pump_invalidate()` →
+    `require("mod").v==2` — write + invalidate + re-eval compose into live-edit,
+    and `love.load` does **not** re-run (edits change the future, not the past).
+  - **The seam documented** — `wasi/platform/EMBEDDING.md` (referenced here): the
+    full host-import surface a consumer fulfills (`love_fs` read+write, `love_win`,
+    `love_gl`, `love_input`, `love_gamepad`, `love_system`, `love_audio`, the WASI
+    shim), the pump ABI + reload entry points and how to drive them, and the
+    supported-edit class. It documents the **seam**, not the downstream IDE.
+
+  Built without resolving **D4** (hotswap vs whole-chunk) — the D4=B refinement
+  layers onto step 3 of the reload handshake later without foreclosure. The IDE
+  (LoveIDE: editor, git-wasm save flow, agent live-edit UX) is a separate repo
+  that consumes this contract — out of scope here. **With 6.7 landed, Step 6 is
+  COMPLETE.** The former "step 8" is dropped; "step 7" (`love.thread` via Workers)
+  remains a large, separate, design-doc-first, demand-driven step after 6.7.
 
 ## Decisions
 

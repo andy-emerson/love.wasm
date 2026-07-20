@@ -202,6 +202,24 @@ jobs:
         # shape. Windowless, so it runs on node + Chromium both.
         run: PREFIX="$PWD/wasi-eh" wasi/platform/run-timer-system.sh
 
+      - name: platform witness — the embedding contract (step 6.7, node + real Chromium)
+        # Build-order step 6.7 — THE CAPSTONE (Step 6 complete). What makes the
+        # runtime consumable by a live-edit host: (1) the real love.filesystem
+        # WRITE path — write/append/remove/createDirectory/File:open("w"/"a") and
+        # the save dir over three new love_fs write imports (fs_write/fs_remove/
+        # fs_mkdir), all in the out-of-tree fs-backend.cpp + host, no new src/ seam;
+        # the host holds a SEPARATE writable save namespace beside the read-only
+        # project, reads resolve save-first (physfs mount order), so a written file
+        # shadows a project file and removing the save copy reveals the pristine
+        # project beneath — the witness proves, by transcript alone, that writes
+        # never mutate the project (NUL-safe). (2) the reload/invalidate primitive
+        # (D5=A: whole-chunk re-eval) — a host-callable pump_invalidate() that drops
+        # game Lua modules from package.loaded (love.* + std libs preserved); the
+        # reload invariant witnessed: require("mod").v==1 -> host-edit via the write
+        # path -> pump_invalidate() -> require("mod").v==2 = live-edit. Windowless,
+        # so it runs on node + Chromium both.
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-embed.sh
+
       - name: audio witness (love.audio playback + mic, node + Chromium + fake-device capture)
         run: PREFIX="$PWD/wasi-eh" wasi/audio/run.sh
 

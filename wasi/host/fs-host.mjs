@@ -2,7 +2,11 @@
 // seam. It stands in for the IDE's project storage: a small in-memory project
 // whose files the wasm side reads back through the love_fs import surface. The
 // real host (LoveIDE) will swap this canned store for its live project model;
-// the import contract (fs_size / fs_read / fs_stat) stays the same.
+// the import contract stays the same. Read: fs_size / fs_read / fs_stat. Write
+// (6.7): fs_write / fs_remove / fs_mkdir, targeting a SEPARATE writable save
+// namespace (`saves`) beside the read-only project (`files`); reads resolve
+// save-first then project, so the witness can prove writes never touch the
+// project. The real browser host backs `saves` with OPFS (D2, eager-flush).
 //
 // Self-contained BY CONTRACT, exactly like wasi-shim.mjs and the driver.mjs
 // files: no imports, no outer-scope references, so makeFsHost.toString() can be
@@ -79,38 +83,92 @@ export function makeFsHost() {
       'function lib.greet() return "hello from lib" end\n' +
       'lib.answer = 42\n' +
       'return lib\n'),
+    // 6.7 reload fixture: a game Lua module returning {v=1}. The embed witness
+    // requires it (sees v=1), writes a NEW version (return {v=2}) through the
+    // write path — which lands in the save namespace and shadows this file —
+    // invalidates package.loaded, and re-requires (sees v=2). Live-edit proven.
+    'mod.lua': te.encode('return {v=1}\n'),
+    // 6.7 namespace-separation fixture: a project file the witness overwrites in
+    // the save namespace, then removes — revealing THIS pristine value beneath,
+    // proving the write never touched the read-only project.
+    'greeting.txt': te.encode('project data'),
   };
+
+  // The writable SAVE namespace (build-order 6.7). Separate from the read-only
+  // project `files` so the witness can prove writes never touch the project.
+  // This in-memory map stands in for D2's OPFS store keyed by t.identity; the
+  // real browser host swaps it for OPFS (eager-flush durability) behind the same
+  // three write imports. Keys are plain relative paths; values are Uint8Array
+  // (a file) or the DIR sentinel (a directory made by fs_mkdir).
+  const DIR = { dir: true };
+  const saves = Object.create(null);
 
   const readPath = (ptr, len) =>
     td.decode(new Uint8Array(memory.buffer, ptr, len));
 
+  const has = (obj, k) => Object.prototype.hasOwnProperty.call(obj, k);
+
+  // Resolve a path SAVE-FIRST, then the read-only project (physfs mount order:
+  // the save dir shadows the game source on read). Returns { dir, bytes } or null.
+  const resolve = (p) => {
+    if (has(saves, p)) {
+      const v = saves[p];
+      return v === DIR ? { dir: true } : { dir: false, bytes: v };
+    }
+    if (has(files, p)) return { dir: false, bytes: files[p] };
+    return null;
+  };
+
   const imports = {
-    // fs_size(path, path_len) -> byte length, or -1 if the file is absent.
+    // fs_size(path, path_len) -> byte length, or -1 if absent (dir -> 0).
     fs_size(pathPtr, pathLen) {
-      const f = files[readPath(pathPtr, pathLen)];
-      return f ? f.length : -1;
+      const r = resolve(readPath(pathPtr, pathLen));
+      if (!r) return -1;
+      return r.dir ? 0 : r.bytes.length;
     },
     // fs_read(path, path_len, buf, cap) -> bytes copied (<= cap), or -1 absent.
     fs_read(pathPtr, pathLen, bufPtr, cap) {
-      const f = files[readPath(pathPtr, pathLen)];
-      if (!f) return -1;
-      const n = Math.min(cap, f.length);
-      new Uint8Array(memory.buffer, bufPtr, n).set(f.subarray(0, n));
+      const r = resolve(readPath(pathPtr, pathLen));
+      if (!r || r.dir) return -1;
+      const n = Math.min(cap, r.bytes.length);
+      new Uint8Array(memory.buffer, bufPtr, n).set(r.bytes.subarray(0, n));
       return n;
     },
     // fs_stat(path, path_len, outType, outSize, outMtime) -> 0 ok / -1 absent.
     // The out-params are written into wasm linear memory (little-endian, same
     // convention fs_read's buf uses). outType is the FileType enum order the
-    // 6.2 backend maps from: 0=file 1=dir 2=symlink 3=other. The canned store
-    // is all regular files, so type is always 0; mtime is a fixed stand-in
-    // (the IDE host will report real project timestamps).
+    // 6.2 backend maps from: 0=file 1=dir 2=symlink 3=other. mtime is a fixed
+    // stand-in (the IDE host will report real project timestamps).
     fs_stat(pathPtr, pathLen, outType, outSize, outMtime) {
-      const f = files[readPath(pathPtr, pathLen)];
-      if (!f) return -1;
+      const r = resolve(readPath(pathPtr, pathLen));
+      if (!r) return -1;
       const dv = new DataView(memory.buffer);
-      dv.setInt32(outType, 0, true);              // FILETYPE_FILE
-      dv.setBigInt64(outSize, BigInt(f.length), true);
+      dv.setInt32(outType, r.dir ? 1 : 0, true);   // 1=DIRECTORY, 0=FILE
+      dv.setBigInt64(outSize, BigInt(r.dir ? 0 : r.bytes.length), true);
       dv.setBigInt64(outMtime, 0n, true);
+      return 0;
+    },
+    // ── write path (6.7): every write targets the SAVE namespace ──
+    // fs_write(path, path_len, buf, len) -> bytes written (== len). Copies out
+    // of linear memory immediately (no aliasing); replaces the whole file.
+    fs_write(pathPtr, pathLen, bufPtr, len) {
+      const p = readPath(pathPtr, pathLen);
+      const bytes = new Uint8Array(len);
+      if (len > 0) bytes.set(new Uint8Array(memory.buffer, bufPtr, len));
+      saves[p] = bytes;
+      return len;
+    },
+    // fs_remove(path, path_len) -> 0 removed / -1 if not present in the save
+    // namespace (the read-only project cannot be deleted).
+    fs_remove(pathPtr, pathLen) {
+      const p = readPath(pathPtr, pathLen);
+      if (!has(saves, p)) return -1;
+      delete saves[p];
+      return 0;
+    },
+    // fs_mkdir(path, path_len) -> 0. Records a directory in the save namespace.
+    fs_mkdir(pathPtr, pathLen) {
+      saves[readPath(pathPtr, pathLen)] = DIR;
       return 0;
     },
   };
@@ -118,7 +176,9 @@ export function makeFsHost() {
   return {
     imports,
     bind(m) { memory = m; },
-    // Exposed so a node leg can assert against the exact source bytes.
+    // Exposed so a node leg can assert against the exact source bytes, and can
+    // confirm the project map was never mutated by the write path.
     files,
+    saves,
   };
 }

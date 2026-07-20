@@ -90,12 +90,30 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
   `newImageData`, drawn + clear pixels recovered exactly. One guarded seam
   (`wrap_Window.cpp` factory), byte-clean for desktop; the window-irrelevant
   surface (fullscreen, displays, dialogs, …) is honest no-ops.
-- **6.4 — `love.event` + keyboard/mouse.** DOM keyboard/mouse/pointer events
-  forwarded into LÖVE's real event queue; `love.keyboard`/`love.mouse` state.
-  This is the first **host→guest push** seam — every prior seam was guest→host
-  pull (guest asks, host answers synchronously); DOM events fire on the browser
-  event loop and must be queued for the pump to drain on its next frame (a small
-  ring-buffer across the seam).
+- **6.4 — `love.event` + keyboard/mouse. DONE** (node:wasi + real Chromium; CI
+  step added). The real `love.event`/`love.keyboard`/`love.mouse` on the
+  `love_input` host seam (`wasi/platform/input-backend.{h,cpp}`), replacing the
+  three SDL backends. This is the first **host→guest push** seam — every prior
+  seam was guest→host pull (guest asks, host answers synchronously); DOM events
+  fire on the browser event loop, the host queues them, and
+  `event::wasm::Event::pump()` drains that queue once per frame, translating each
+  record into a `love::event::Message` (the exact job `event/sdl/Event.cpp
+  ::convert` does for SDL) that the unchanged Lua dispatch in `callbacks.lua`
+  fires as `love.keypressed` / `love.mousepressed` / … . One shared `InputState`:
+  `pump()` is the single writer (pressed-key/scancode sets, mouse position,
+  button mask), keyboard/mouse are pure readers — the same split SDL has
+  (`SDL_PumpEvents` updates what `SDL_GetKeyboardState`/`GetMouseState` read). The
+  DOM↔LÖVE name/button mapping lives in C++ next to LÖVE's Key/Scancode enums;
+  the physical-`code`→US-key translation is a declared, documented divergence
+  from SDL's live-layout mapping (the typed character still rides through as the
+  `textinput` payload). Three guarded factory seams (`wrap_Event`/`wrap_Keyboard`/
+  `wrap_Mouse`), byte-clean for desktop, plus one generic version-guarded
+  `lua_cpcall`→`lua_pcall` shim (Lua 5.2 removed `lua_cpcall`; `love.event`'s
+  modal-draw path is the only caller — offered upstream). `love.image` +
+  `love.filesystem` link because `love.mouse`'s Cursor is image/file-backed;
+  witnessed windowlessly, so it runs on node **and** Chromium (no WebGL2).
+  `isModifierActive` (lock latch), custom image cursors, and pointer confinement
+  are the honest warn-once edges.
 - **6.5 — `love.joystick` + `love.gamepad`.** The browser **Gamepad API** —
   a distinct, poll-based host surface (its own witness), but **required for
   fidelity, not optional**: gamepads are a capability the browser genuinely

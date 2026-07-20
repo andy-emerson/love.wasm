@@ -157,6 +157,16 @@ jobs:
         # keeps 4.1a raw-GL beside the real backend.
         run: PREFIX="$PWD/wasi-eh" wasi/platform/run-fs2.sh
 
+      - name: platform witness — real love.event/keyboard/mouse on the love_input seam (step 6.4, node + real Chromium)
+        # Build-order step 6.4: the first host->guest PUSH seam. The host queues
+        # DOM events; love.event::wasm::Event::pump() drains them into
+        # love::event::Message objects (the job event/sdl/Event.cpp::convert does
+        # for SDL) and updates the shared input snapshot love.keyboard/mouse read.
+        # The witness asserts the full translated message sequence (key/text/mouse/
+        # wheel/resize/quit, incl. the DOM->LÖVE button remap) AND the resulting
+        # isDown/getPosition state. Windowless, so it runs on node + Chromium both.
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-input.sh
+
       - name: preview-limitation warning witness — love.sensor warned stub (issue #27, node + real Chromium)
         # Issue #27's mechanism: preview_warn_once emits a one-time
         # [love-wasi preview] notice to the host tap when a preview-limited

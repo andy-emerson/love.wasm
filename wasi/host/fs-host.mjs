@@ -119,6 +119,30 @@ export function makeFsHost() {
     return null;
   };
 
+  // Immediate children of a directory, merged across the save namespace and the
+  // read-only project and de-duped (a name present in both appears once — the
+  // physfs mount-order semantics on the enumerate side). dir "" / "/" / "." is
+  // the root. Returns the child SEGMENT names (files and subdirectories alike).
+  const listChildren = (dir) => {
+    let d = dir;
+    if (d === "/" || d === ".") d = "";
+    d = d.replace(/\/+$/, "");            // strip trailing slash(es)
+    const prefix = d === "" ? "" : d + "/";
+    const set = new Set();
+    for (const store of [files, saves]) {
+      for (const key of Object.keys(store)) {
+        if (key === "" || key === d) continue;         // skip the dir entry itself
+        if (prefix !== "" && !key.startsWith(prefix)) continue;
+        const rest = prefix === "" ? key : key.slice(prefix.length);
+        if (rest.length === 0) continue;
+        const slash = rest.indexOf("/");
+        const seg = slash === -1 ? rest : rest.slice(0, slash);
+        if (seg.length > 0) set.add(seg);
+      }
+    }
+    return [...set];
+  };
+
   const imports = {
     // fs_size(path, path_len) -> byte length, or -1 if absent (dir -> 0).
     fs_size(pathPtr, pathLen) {
@@ -170,6 +194,22 @@ export function makeFsHost() {
     fs_mkdir(pathPtr, pathLen) {
       saves[readPath(pathPtr, pathLen)] = DIR;
       return 0;
+    },
+    // fs_list(path, path_len, buf, cap) -> total bytes of the NUL-separated child
+    // names (immediate children only, save + project merged and de-duped), or -1
+    // if the path is a file. Size-then-fill like fs_read: call with cap 0 for the
+    // size, then again with a buffer >= that size. An empty or absent directory
+    // returns 0. Filenames cannot contain NUL, so NUL is an unambiguous separator.
+    fs_list(pathPtr, pathLen, bufPtr, cap) {
+      const p = readPath(pathPtr, pathLen);
+      const r = resolve(p);
+      if (r && !r.dir) return -1;           // it is a file, not a directory
+      const enc = te.encode(listChildren(p).join("\0"));
+      if (cap > 0 && bufPtr) {
+        const n = Math.min(cap, enc.length);
+        new Uint8Array(memory.buffer, bufPtr, n).set(enc.subarray(0, n));
+      }
+      return enc.length;
     },
   };
 

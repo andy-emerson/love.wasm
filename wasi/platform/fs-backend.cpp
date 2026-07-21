@@ -56,6 +56,12 @@ FS_IMPORT("fs_stat") int32_t wfs_stat(const char *path, int32_t path_len,
 FS_IMPORT("fs_write") int32_t wfs_write(const char *path, int32_t path_len, const uint8_t *buf, int32_t len);
 FS_IMPORT("fs_remove") int32_t wfs_remove(const char *path, int32_t path_len);
 FS_IMPORT("fs_mkdir") int32_t wfs_mkdir(const char *path, int32_t path_len);
+// Directory enumeration (getDirectoryItems). Size-then-fill, mirroring fs_read:
+//   fs_list(path,len, buf,cap) -> total bytes needed (the child names, immediate
+//   children only, NUL-separated), or -1 if the path is a file (not a directory).
+// Consults BOTH namespaces and de-dupes, so a save file shadows a project file of
+// the same name exactly once.
+FS_IMPORT("fs_list") int32_t wfs_list(const char *path, int32_t path_len, uint8_t *buf, int32_t cap);
 }
 
 namespace love
@@ -518,11 +524,42 @@ void Filesystem::append(const char *filename, const void *data, int64 size) cons
 		throw love::Exception("Data could not be written.");
 }
 
-bool Filesystem::getDirectoryItems(const char *, std::vector<std::string> &)
+bool Filesystem::getDirectoryItems(const char *dir, std::vector<std::string> &items)
 {
-	// Directory enumeration (the fs_list seam) is deferred; report nothing
-	// rather than fake entries.
-	return false;
+	// Enumerate a directory over the fs_list seam (size-then-fill, as read does).
+	// The host merges the read-only project and the writable save namespace and
+	// de-dupes, so a save file shadows a project file of the same name exactly
+	// once — the merged listing physfs gave across a mounted search path.
+	const char *d = dir != nullptr ? dir : "";
+	int32_t len = (int32_t) strlen(d);
+
+	int32_t need = wfs_list(d, len, nullptr, 0);
+	if (need < 0)
+		return false; // the path is a file (or otherwise not enumerable)
+	if (need == 0)
+		return true;  // an empty directory: no items, but a valid enumeration
+
+	std::vector<char> buf((size_t) need);
+	int32_t got = wfs_list(d, len, (uint8_t *) buf.data(), need);
+	if (got < 0)
+		return false;
+	if (got > need)
+		got = need;
+
+	// The names are NUL-separated (filenames cannot contain NUL); split them.
+	size_t start = 0;
+	for (size_t i = 0; i < (size_t) got; i++)
+	{
+		if (buf[i] == '\0')
+		{
+			items.emplace_back(buf.data() + start, i - start);
+			start = i + 1;
+		}
+	}
+	if (start < (size_t) got)
+		items.emplace_back(buf.data() + start, (size_t) got - start);
+
+	return true;
 }
 
 void Filesystem::setSymlinksEnabled(bool) {}

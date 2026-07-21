@@ -47,6 +47,15 @@ FS_IMPORT("fs_size") int32_t wfs_size(const char *path, int32_t path_len);
 FS_IMPORT("fs_read") int32_t wfs_read(const char *path, int32_t path_len, uint8_t *buf, int32_t cap);
 FS_IMPORT("fs_stat") int32_t wfs_stat(const char *path, int32_t path_len,
 	int32_t *out_type, int64_t *out_size, int64_t *out_mtime);
+// 6.7 write path. Every write targets the host's SEPARATE save namespace (never
+// the read-only project); the read imports above consult BOTH, save-dir first,
+// so a written file shadows a project file of the same name and reads it back.
+//   fs_write(path,len, buf,n) -> bytes written (== n), or -1 on failure
+//   fs_remove(path,len)       -> 0 removed / -1 absent
+//   fs_mkdir(path,len)        -> 0 created / -1 failure
+FS_IMPORT("fs_write") int32_t wfs_write(const char *path, int32_t path_len, const uint8_t *buf, int32_t len);
+FS_IMPORT("fs_remove") int32_t wfs_remove(const char *path, int32_t path_len);
+FS_IMPORT("fs_mkdir") int32_t wfs_mkdir(const char *path, int32_t path_len);
 }
 
 namespace love
@@ -93,6 +102,16 @@ File *File::clone()
 	return new File(*this);
 }
 
+// Push the in-memory buffer to the host save namespace. Eager-flush (D2): the
+// whole file is rewritten on each flush, so in-session read-after-write /
+// getInfo see the bytes immediately; durability to the backing store (OPFS in
+// the browser) is the host's async concern behind the seam.
+bool File::flushToHost()
+{
+	int32_t n = wfs_write(filename.c_str(), (int32_t) filename.size(), data.data(), (int32_t) data.size());
+	return n == (int32_t) data.size();
+}
+
 bool File::open(Mode mode)
 {
 	if (mode == MODE_CLOSED)
@@ -101,14 +120,45 @@ bool File::open(Mode mode)
 		return true;
 	}
 
-	// The host VFS is read-only: the project store the browser fulfils is not
-	// writable from the wasm side (write lands at step 6's save-dir sub-step).
-	if (mode == MODE_WRITE || mode == MODE_APPEND)
-		throw love::Exception("Could not open file %s for writing: the wasm32-wasi filesystem is read-only.", filename.c_str());
-
 	// Already open?
 	if (this->mode != MODE_CLOSED)
 		return false;
+
+	if (mode == MODE_WRITE)
+	{
+		// 'w' creates/truncates: start empty and materialize a 0-byte file in the
+		// save namespace immediately (physfs 'w' semantics), so an opened-but-not-
+		// yet-written file already exists.
+		data.clear();
+		pos = 0;
+		this->mode = mode;
+		if (!flushToHost())
+			throw love::Exception("Could not open file %s for writing.", filename.c_str());
+		return true;
+	}
+
+	if (mode == MODE_APPEND)
+	{
+		// Seed from the currently-resolved file (save shadows project) so appends
+		// extend it; an absent file starts empty. The rewritten file lands in the
+		// save namespace.
+		int32_t size = wfs_size(filename.c_str(), (int32_t) filename.size());
+		data.clear();
+		if (size > 0)
+		{
+			data.resize((size_t) size);
+			int32_t n = wfs_read(filename.c_str(), (int32_t) filename.size(), data.data(), size);
+			if (n < 0)
+			{
+				data.clear();
+				throw love::Exception("Could not open file %s for append.", filename.c_str());
+			}
+			data.resize((size_t) n);
+		}
+		pos = (int64) data.size();
+		this->mode = mode;
+		return true;
+	}
 
 	int32_t size = wfs_size(filename.c_str(), (int32_t) filename.size());
 	if (size < 0)
@@ -135,6 +185,9 @@ bool File::close()
 {
 	if (mode == MODE_CLOSED)
 		return false;
+
+	if (mode == MODE_WRITE || mode == MODE_APPEND)
+		flushToHost();
 
 	data.clear();
 	data.shrink_to_fit();
@@ -183,14 +236,32 @@ int64 File::read(void *dst, int64 size)
 	return n;
 }
 
-bool File::write(const void *, int64)
+bool File::write(const void *src, int64 size)
 {
-	throw love::Exception("File is not opened for writing.");
+	if (mode != MODE_WRITE && mode != MODE_APPEND)
+		throw love::Exception("File is not opened for writing.");
+
+	if (size < 0)
+		throw love::Exception("Invalid write size.");
+
+	if (size > 0)
+	{
+		if ((int64) data.size() < pos + size)
+			data.resize((size_t) (pos + size));
+		memcpy(data.data() + pos, src, (size_t) size);
+		pos += size;
+	}
+
+	// Eager flush: keep the host copy current after every write.
+	return flushToHost();
 }
 
 bool File::flush()
 {
-	throw love::Exception("File is not opened for writing.");
+	if (mode != MODE_WRITE && mode != MODE_APPEND)
+		throw love::Exception("File is not opened for writing.");
+
+	return flushToHost();
 }
 
 bool File::isEOF()
@@ -290,15 +361,16 @@ bool Filesystem::isFused() const
 
 bool Filesystem::setupWriteDirectory()
 {
-	// No write directory exists yet; report success so the unguarded boot path
-	// (which calls this) proceeds. Actual writes still stop in File::open.
+	// The save namespace is implicit in the host (the writable map keyed by the
+	// current identity); there is no directory hierarchy to create up front.
 	return true;
 }
 
 bool Filesystem::setIdentity(const char *ident, bool /*appendToPath*/)
 {
-	// MUST return true: love.boot sets the identity unguarded and treats false
-	// as fatal. There is no save directory to (re)mount on this backend yet.
+	// Record the identity; getSaveDirectory()/getFullCommonPath(APP_SAVEDIR)
+	// derive the host-namespaced save path from it. love.boot sets the identity
+	// unguarded and treats false as fatal, so this must return true.
 	if (ident != nullptr)
 		identity = ident;
 	return true;
@@ -339,11 +411,28 @@ love::filesystem::File *Filesystem::openFile(const char *filename, File::Mode mo
 	return new File(filename, mode);
 }
 
-std::string Filesystem::getFullCommonPath(CommonPath) { return ""; }
+std::string Filesystem::getSaveDirectory()
+{
+	// A host-namespaced save path keyed by the identity (e.g. "save:step67game").
+	// The host maps this namespace onto its writable store (OPFS in the browser);
+	// the string is what love.filesystem.getSaveDirectory() reports.
+	if (identity.empty())
+		return "";
+	return std::string("save:") + identity;
+}
+
+std::string Filesystem::getFullCommonPath(CommonPath path)
+{
+	if (path == COMMONPATH_APP_SAVEDIR)
+		return getSaveDirectory();
+	// The other common paths (user home/appdata/documents/desktop) have no
+	// meaning behind a host-VFS; the host owns any such notion.
+	return "";
+}
+
 const char *Filesystem::getWorkingDirectory() { return ""; }
 std::string Filesystem::getUserDirectory() { return ""; }
 std::string Filesystem::getAppdataDirectory() { return ""; }
-std::string Filesystem::getSaveDirectory() { return ""; }
 std::string Filesystem::getSourceBaseDirectory() const { return ""; }
 
 std::string Filesystem::getRealDirectory(const char *) const
@@ -369,7 +458,10 @@ bool Filesystem::getInfo(const char *filepath, Info &info) const
 
 	info.size = (int64) size;
 	info.modtime = (int64) mtime;
-	info.readonly = true;  // the host VFS is read-only
+	// Reports the read-only project posture: fs_stat carries no per-file readonly
+	// out-param, so the writable save layer (6.7) is not surfaced here (declared
+	// deferral, EMBEDDING.md §5).
+	info.readonly = true;
 
 	switch (type)
 	{
@@ -382,8 +474,22 @@ bool Filesystem::getInfo(const char *filepath, Info &info) const
 	return true;
 }
 
-bool Filesystem::createDirectory(const char *) { return false; }
-bool Filesystem::remove(const char *) { return false; }
+bool Filesystem::createDirectory(const char *dir)
+{
+	if (dir == nullptr)
+		return false;
+	// Directories live in the save namespace only (the project is read-only).
+	return wfs_mkdir(dir, (int32_t) strlen(dir)) == 0;
+}
+
+bool Filesystem::remove(const char *file)
+{
+	if (file == nullptr)
+		return false;
+	// Only save-namespace entries can be removed; a project file cannot be
+	// deleted (removing a save shadow reveals the pristine project file beneath).
+	return wfs_remove(file, (int32_t) strlen(file)) == 0;
+}
 
 FileData *Filesystem::read(const char *filename, int64 size) const
 {
@@ -397,14 +503,19 @@ FileData *Filesystem::read(const char *filename) const
 	return file.read();
 }
 
-void Filesystem::write(const char *, const void *, int64) const
+void Filesystem::write(const char *filename, const void *data, int64 size) const
 {
-	throw love::Exception("The wasm32-wasi filesystem is read-only: write is not supported.");
+	// Mirrors physfs::Filesystem::write: open 'w' (truncate), write, close flushes.
+	File file(filename, File::MODE_WRITE);
+	if (!file.write(data, size))
+		throw love::Exception("Data could not be written.");
 }
 
-void Filesystem::append(const char *, const void *, int64) const
+void Filesystem::append(const char *filename, const void *data, int64 size) const
 {
-	throw love::Exception("The wasm32-wasi filesystem is read-only: append is not supported.");
+	File file(filename, File::MODE_APPEND);
+	if (!file.write(data, size))
+		throw love::Exception("Data could not be written.");
 }
 
 bool Filesystem::getDirectoryItems(const char *, std::vector<std::string> &)

@@ -17,6 +17,21 @@
 //   pump_out()       -> ptr   \  the yielded / returned / error value,
 //   pump_out_len()   -> u32   /  valid until the next pump call
 //
+// The live-edit reload primitive (build-order 6.7, decision D5=A — minimal &
+// explicit, whole-chunk re-eval):
+//
+//   pump_invalidate() -> int  count of GAME Lua modules dropped from
+//                             package.loaded (or PUMP_NOBOOT before boot).
+//
+// The host embeds live-edit like this: edit a game module's source in the VFS
+// (the love_fs write path), call pump_invalidate() to drop the stale cached
+// module, and the next `require` re-reads and re-evaluates the edited source.
+// g_L PERSISTS across pump_boot, so package.loaded caches survive a reboot —
+// this is the seam that clears them. love's own C++ modules (`love`, `love.*`)
+// and the standard Lua libraries are preserved; only the GAME's Lua modules are
+// invalidated. A twin Lua hook `__pump_invalidate()` is registered on the state
+// so a witness can drive the full write→invalidate→re-require sequence in-script.
+//
 // status: >= 0   coroutine yielded; value of pump_out_len() (frame lives on)
 //   PUMP_DONE    coroutine returned; out-slot = final value
 //   PUMP_ERROR   Lua error; out-slot = message + traceback. The lua_State
@@ -33,8 +48,10 @@
 #include "lua.hpp"
 
 #include <cstdint>
+#include <cstring>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #define PUMP_EXPORT(name) \
   extern "C" __attribute__((export_name(name), visibility("default")))
@@ -103,11 +120,74 @@ static int32_t settle(int status, int nres) {
   return PUMP_ERROR;
 }
 
+// ── live-edit reload primitive (build-order 6.7, D5=A) ──────────────────────
+
+// A module name is PRESERVED (never invalidated) if it is love or a love.*
+// submodule (the engine's real C++ modules) or one of the standard Lua
+// libraries opened by luaL_openlibs. Everything else is a GAME Lua module.
+static bool pump_is_preserved_module(const char *name, size_t len) {
+  if (len >= 4 && name[0] == 'l' && name[1] == 'o' && name[2] == 'v' && name[3] == 'e'
+      && (len == 4 || name[4] == '.'))
+    return true;
+  static const char *std_libs[] = {
+    "_G", "package", "coroutine", "table", "io", "os",
+    "string", "math", "utf8", "debug", nullptr };
+  for (int i = 0; std_libs[i] != nullptr; ++i)
+    if (std::strcmp(name, std_libs[i]) == 0)
+      return true;
+  return false;
+}
+
+// Drop every game (non-love, non-standard) module from package.loaded so the
+// next require re-reads and re-evaluates its (now host-edited) source. Operates
+// on L's registry LOADED table, shared by every thread of L. Returns the count
+// cleared.
+static int pump_invalidate_modules(lua_State *L) {
+  lua_getfield(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);  // "_LOADED"
+  if (!lua_istable(L, -1)) { lua_pop(L, 1); return 0; }
+
+  // Collect victim keys first — mutating a table mid-traversal (setting a key to
+  // nil under lua_next) is undefined. String keys only; reading a string key
+  // with lua_tolstring is safe (no in-place number->string conversion).
+  std::vector<std::string> victims;
+  lua_pushnil(L);
+  while (lua_next(L, -2) != 0) {
+    if (lua_type(L, -2) == LUA_TSTRING) {
+      size_t klen = 0;
+      const char *k = lua_tolstring(L, -2, &klen);
+      if (!pump_is_preserved_module(k, klen))
+        victims.emplace_back(k, klen);
+    }
+    lua_pop(L, 1);  // pop value, keep key for the next lua_next
+  }
+
+  for (const std::string &v : victims) {
+    lua_pushnil(L);
+    lua_setfield(L, -2, v.c_str());
+  }
+  lua_pop(L, 1);  // pop _LOADED
+  return static_cast<int>(victims.size());
+}
+
+// Lua-callable twin: __pump_invalidate() -> number of modules cleared. Lets a
+// witness drive write→invalidate→re-require deterministically in one coroutine
+// run (identical on node:wasi and Chromium), no host frame coordination needed.
+static int pump_l_invalidate(lua_State *L) {
+  lua_pushinteger(L, pump_invalidate_modules(L));
+  return 1;
+}
+
+PUMP_EXPORT("pump_invalidate") int32_t pump_invalidate(void) {
+  if (!g_L) return PUMP_NOBOOT;
+  return static_cast<int32_t>(pump_invalidate_modules(g_L));
+}
+
 PUMP_EXPORT("pump_boot") int32_t pump_boot(uint32_t len) {
   if (!g_L) {
     g_L = luaL_newstate();
     if (!g_L) { g_out.assign("pump: luaL_newstate failed"); return PUMP_ERROR; }
     luaL_openlibs(g_L);
+    lua_register(g_L, "__pump_invalidate", pump_l_invalidate);
     if (pump_open_extensions)
       pump_open_extensions(g_L);
   }

@@ -9,11 +9,19 @@ live-edited development — the decisions the downstream **live-edit / agent**
 consumer forces, which are surfaced here **while still open** (AGENTS.md: never
 hand the architect a result built on choices they never saw).
 
-Where a passage reads as a plan, the code has not landed it yet. **6.1, 6.2, and
-6.3 are built** (the `love_fs` read seam; the real `love.filesystem` replacing
-PhysFS; the real `love.window` replacing SDL — see the ledger below), and issue
-#27's warning mechanism + `love.sensor` warned stub have landed. 6.4/6.5 and the
-reserved live-edit items remain the shape we are planning against.
+Where a passage reads as a plan, the code has not landed it yet. **Step 6 is
+COMPLETE — 6.1–6.7 are all built** (the `love_fs` read seam; the real
+`love.filesystem` replacing PhysFS; the real `love.window` replacing SDL; the real
+`love.event`/`keyboard`/`mouse` on the `love_input` push seam; the real
+`love.joystick`/`gamepad` on the `love_gamepad` poll seam; the real
+`love.timer`/`love.system`; the **first full `main.lua` frame** (`conf` → canvas →
+`love.load` → `love.draw` → present, pixel recovered); and — the capstone — **the
+embedding contract** (6.7): the `love.filesystem` write path + save dir on new
+`love_fs` write imports, the host-callable `pump_invalidate()` reload primitive
+(write → invalidate → re-require = live-edit), and the documented host-import seam
+(`EMBEDDING.md`) — see the ledger below), and issue #27's warning mechanism +
+`love.sensor` warned stub have landed. The former "step 8" IDE work is dropped
+from this repo's scope; the IDE is a downstream consumer of the 6.7 contract.
 
 ## The fidelity standard (project-wide): browser-native correctness first
 
@@ -70,8 +78,8 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
   and `read`/`getInfo`/`openFile`/`File:read`/`load`/`require` recover host files
   byte-exact (incl. binary/NUL) through the real module. Driven directly from a
   witness coroutine (not full `boot.lua`, which needs `love.system`/window/event
-  — those are 6.3–6.5). Read-only: `write`/`mount`/enumerate throw/false loudly,
-  not faked; the write/save-dir path (D2's OPFS) is a later sub-step. Shared
+  — those are 6.3–6.6). Read-only: `write`/`mount`/enumerate throw/false loudly,
+  not faked; the write/save-dir path (D2's OPFS) is the 6.7 sub-step. Shared
   engine touched only through guarded seams (`Filesystem.cpp` `getExecutablePath`
   + `<filesystem>`; `wrap_Filesystem.cpp` factory + SDL `extloader`), byte-clean
   for desktop. The `extloader` native-C `require` searcher is dropped on wasm (no
@@ -88,15 +96,149 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
   `newImageData`, drawn + clear pixels recovered exactly. One guarded seam
   (`wrap_Window.cpp` factory), byte-clean for desktop; the window-irrelevant
   surface (fullscreen, displays, dialogs, …) is honest no-ops.
-- **6.4 — `love.event` + input.** DOM keyboard/mouse/pointer events forwarded
-  into LÖVE's real event queue; `love.keyboard`/`love.mouse` state.
-- **6.5 — `love.timer` + `love.system` + conf.lua-driven canvas.** The first full
-  `main.lua` frame: `love.conf` honored → canvas sized/titled → `love.load` →
-  `love.update`/`love.draw` on the pump.
-- **Reserved for the live-edit consumer (post-step-6, not step-6 scope):** the
-  filesystem **write path + invalidate hook** (D2), and the host-callable
-  **reload/eval primitive** (D4/D5). Step 6 must not *foreclose* these; it must
-  not *build* them.
+- **6.4 — `love.event` + keyboard/mouse. DONE** (node:wasi + real Chromium; CI
+  step added). The real `love.event`/`love.keyboard`/`love.mouse` on the
+  `love_input` host seam (`wasi/platform/input-backend.{h,cpp}`), replacing the
+  three SDL backends. This is the first **host→guest push** seam — every prior
+  seam was guest→host pull (guest asks, host answers synchronously); DOM events
+  fire on the browser event loop, the host queues them, and
+  `event::wasm::Event::pump()` drains that queue once per frame, translating each
+  record into a `love::event::Message` (the exact job `event/sdl/Event.cpp
+  ::convert` does for SDL) that the unchanged Lua dispatch in `callbacks.lua`
+  fires as `love.keypressed` / `love.mousepressed` / … . One shared `InputState`:
+  `pump()` is the single writer (pressed-key/scancode sets, mouse position,
+  button mask), keyboard/mouse are pure readers — the same split SDL has
+  (`SDL_PumpEvents` updates what `SDL_GetKeyboardState`/`GetMouseState` read). The
+  DOM↔LÖVE name/button mapping lives in C++ next to LÖVE's Key/Scancode enums;
+  the physical-`code`→US-key translation is a declared, documented divergence
+  from SDL's live-layout mapping (the typed character still rides through as the
+  `textinput` payload). Three guarded factory seams (`wrap_Event`/`wrap_Keyboard`/
+  `wrap_Mouse`), byte-clean for desktop, plus one generic version-guarded
+  `lua_cpcall`→`lua_pcall` shim (Lua 5.2 removed `lua_cpcall`; `love.event`'s
+  modal-draw path is the only caller — offered upstream). `love.image` +
+  `love.filesystem` link because `love.mouse`'s Cursor is image/file-backed;
+  witnessed windowlessly, so it runs on node **and** Chromium (no WebGL2).
+  `isModifierActive` (lock latch), custom image cursors, and pointer confinement
+  are the honest warn-once edges.
+- **6.5 — `love.joystick` + `love.gamepad`. DONE** (node:wasi + real Chromium; CI
+  step added). The real `love.joystick`/`love.gamepad` on a new `love_gamepad`
+  host seam (`wasi/platform/joystick-backend.{h,cpp}`) over the browser **Gamepad
+  API** — **required for fidelity, not optional**: gamepads are a capability the
+  browser genuinely *has*, so warned-stubbing them (as we did `love.sensor`, a
+  genuinely-absent capability) would violate the "correct browser game held to
+  100%" bar. Unlike 6.4's host→guest *push* queue, the Gamepad API is
+  **poll-based** (no event stream, only a per-frame snapshot array) — so the seam
+  is guest→host *pull* (`gamepad_count`/`gamepad_read`, mirroring
+  `navigator.getGamepads()`): once per frame the guest reads the current gamepad
+  slots and **diffs** them against the previous poll to *synthesize* the
+  `joystickadded`/`joystickremoved`, `joystick{pressed,released,axis}` and
+  `gamepad{pressed,released,axis}` events SDL would have delivered, emitting BOTH
+  the raw-joystick and the mapped-gamepad event for one physical change exactly as
+  SDL sends both families. That synthesis **reuses 6.4's push mechanism**: the
+  diffed events are `love::event::Message`s pushed onto the same `love.event`
+  queue. The poll is wired into 6.4's `pump()` by a **weak hook**
+  (`wasi_poll_gamepad_events`, declared null in `input-backend.cpp`, defined
+  strong in `joystick-backend.cpp`), so the 6.4 build — which does not link the
+  joystick module — is unaffected (the symbol is null and the call skipped; the
+  6.4 witness re-runs green with the hook in place). LÖVE's `love.gamepad` is
+  SDL's standard-controller mapping, ~1:1 with the **W3C "standard gamepad"**
+  mapping, so it rides it directly; the W3C-index↔LÖVE-button and axis translation
+  lives in C++ next to LÖVE's enums (host forwards browser truth, the backend owns
+  LÖVE semantics — the same split the input backend has). W3C buttons 6/7 (the
+  analog triggers) map to LÖVE trigger **axes**, not buttons, so a trigger emits
+  `gamepadaxis`, matching SDL. One guarded factory seam (`wrap_JoystickModule.cpp`,
+  byte-clean for desktop under `#else`). Enabling `love.sensor` (the #27 warned
+  stub) is **required** here, not incidental: `wrap_Joystick.cpp` registers
+  `Joystick:getDevicePowerInfo`/`:getDeviceConnectionState` unconditionally but
+  only *defines* them under `LOVE_ENABLE_SENSOR` (upstream bug #23), so joystick
+  won't link with sensor off — enabling it moots #23 by config. The honest
+  warn-once edges: **vibration** (the browser gamepad *has* a `vibrationActuator`,
+  but it is a host effect the windowless witness cannot observe, so 6.5 reports it
+  unsupported and `setVibration` is a no-op returning false rather than faking an
+  unwitnessable rumble), the **gamepad-mapping string** (no SDL controller DB in
+  the browser — the W3C standard mapping is implicit, so `getGamepadMappingString`
+  / `setGamepadMapping` / `loadGamepadMappings` are empty/no-op), and **gamepad
+  motion sensors** (no gamepad sensor stream). The input path itself is real.
+  Witnessed windowlessly on node **and** Chromium.
+- **6.6 — `love.timer` + `love.system` + the first full `main.lua` frame. DONE**
+  (6.6a windowless on node:wasi + real Chromium; 6.6b Chromium-only; CI steps
+  added). Two phases:
+  - **6.6a — `love.timer` + `love.system`.** `love.timer` is a concrete class (no
+    backend split): `Timer.cpp` routes through
+    `clock_gettime(CLOCK_MONOTONIC)`/`gettimeofday` under a guarded `LOVE_WASI` arm
+    of its POSIX `#if` (wasi-libc provides both; the WASI host fulfils
+    `clock_time_get`), and `love::sleep` is an **honest browser no-op**
+    (`wasi/platform/delay-wasi.cpp`) — a browser must not block its main thread;
+    frame cadence is the host's `requestAnimationFrame`, not a guest spin — in
+    place of the SDL `SDL_DelayNS` `common/delay.cpp` (excluded from every wasm
+    build). `love.system` is backend-split: a real `love::system::wasm::System`
+    backend (`wasi/platform/system-backend.{h,cpp}`) on a new `love_system` host
+    seam carries the **genuine browser capabilities** — processor count
+    (`navigator.hardwareConcurrency`), the text clipboard (a host cell fronting the
+    async Clipboard API), `openURL` (`window.open`), preferred locales
+    (`navigator.languages`) — and reports honest defaults for the rest (memory size
+    0; power `unknown` — the Battery Status API is gated across engines);
+    `getOS()` returns `"Web"` via a guarded seam in `System.cpp`. Three guarded
+    seams (`Timer.cpp` POSIX arm, `System.cpp` `getOS`, `wrap_System.cpp` factory),
+    byte-clean for desktop.
+  - **6.6b — the first full `main.lua` frame (THE MILESTONE).** The **union** build
+    (`build-frame.sh`: real filesystem 6.2 + window 6.3 + graphics/opengl-on-WebGL2
+    step 4 + image + font + event/keyboard/mouse 6.4 + timer + system 6.6a + data +
+    math) boots LÖVE's **real `boot.lua`** under the pump and runs an actual game
+    end to end: `conf.lua` (read through the real `love.filesystem`) sizes/titles
+    the canvas, `love.window.setMode` opens the real WebGL2 context at the conf
+    dimensions, `love.load` runs (a unique marker to the host tap proves it), and
+    `love.run`'s loop yields once per pumped frame running
+    `event.pump`/`timer.step`/`update`/`clear`/`draw`/`present`. `love.draw` fills
+    the canvas RED; the driver reads the presented backbuffer's centre pixel back
+    through the WebGL2 context and recovers `(255,0,0,255)` — proving
+    conf → canvas → load → draw → present ran a real frame. `frame-deps-stub.cpp`
+    replaces the windowless graphics build's `graphics-deps-stub.cpp` (the union
+    compiles the real filesystem + timer, so only the genuinely-absent
+    audio/video/thread module symbols love.graphics links against are stubbed —
+    reusing the graphics stub would duplicate `File::type`/`luax_getdata`/
+    `Timer::getTime`). `love.joystick` is deliberately not linked (the event module
+    needs only the joystick HEADER; `input-backend.cpp`'s `wasi_poll_gamepad_events`
+    weak hook stays null, so `pump()` skips it). Chromium-only — a real WebGL2
+    context, node has none — exactly like the 6.3 window witness and the step-4
+    graphics witnesses; no node leg (expected). The one integration subtlety: the
+    canned `conf.lua` disables every module the union does NOT link
+    (thread/joystick/touch/sound/sensor/audio/video/physics), because `boot.lua`'s
+    module loop `require`s each enabled module unconditionally.
+- **6.7 — the embedding contract. DONE** (scripted; node:wasi + real Chromium; CI
+  step added) — the runtime's capstone, and the boundary of this repo's
+  responsibility. What makes the runtime *consumable* by a live-edit host:
+  - **The filesystem write path** — the real `love.filesystem`
+    `write`/`append`/`remove`/`createDirectory`/`File:open("w"/"a")` and the save
+    dir, over three new `love_fs` write imports (`fs_write`/`fs_remove`/`fs_mkdir`,
+    entirely in the out-of-tree `fs-backend.cpp` + host — **no new `src/` seam**).
+    The host holds a **separate writable save namespace** (D2, OPFS-backed in the
+    browser) beside the read-only project; reads resolve **save-first then
+    project** (physfs mount order), so a written file shadows a project file and
+    removing the save copy reveals the pristine project beneath — the witness
+    proves, by transcript alone, that writes never mutate the project.
+    `getSaveDirectory()` = `save:<t.identity>`. Writes are NUL-safe.
+  - **The reload / invalidate primitive** (D5=A: minimal & explicit, whole-chunk
+    re-eval) — a host-callable `pump_invalidate()` export (+ a Lua twin
+    `__pump_invalidate()` for in-script driving) that drops **game** Lua modules
+    from `package.loaded` while preserving `love`/`love.*` and the standard libs.
+    `g_L` persists across `pump_boot`, so caches survive a reboot — this clears
+    them. The **reload invariant** is witnessed: `require("mod").v==1` → host-edit
+    the source via the write path (`return {v=2}`) → `pump_invalidate()` →
+    `require("mod").v==2` — write + invalidate + re-eval compose into live-edit,
+    and `love.load` does **not** re-run (edits change the future, not the past).
+  - **The seam documented** — `wasi/platform/EMBEDDING.md` (referenced here): the
+    full host-import surface a consumer fulfills (`love_fs` read+write, `love_win`,
+    `love_gl`, `love_input`, `love_gamepad`, `love_system`, `love_audio`, the WASI
+    shim), the pump ABI + reload entry points and how to drive them, and the
+    supported-edit class. It documents the **seam**, not the downstream IDE.
+
+  Built without resolving **D4** (hotswap vs whole-chunk) — the D4=B refinement
+  layers onto step 3 of the reload handshake later without foreclosure. The IDE
+  (LoveIDE: editor, git-wasm save flow, agent live-edit UX) is a separate repo
+  that consumes this contract — out of scope here. **With 6.7 landed, Step 6 is
+  COMPLETE.** The former "step 8" is dropped; "step 7" (`love.thread` via Workers)
+  remains a large, separate, design-doc-first, demand-driven step after 6.7.
 
 ## Decisions
 

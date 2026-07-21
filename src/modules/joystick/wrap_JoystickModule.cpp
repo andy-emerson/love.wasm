@@ -24,7 +24,14 @@
 #include "filesystem/Filesystem.h"
 #include "filesystem/wrap_Filesystem.h"
 
+#ifdef LOVE_WASI
+// love-wasi (build-order step 6.5): the browser joystick/gamepad backend polling
+// the Gamepad API on the love_gamepad seam, in place of SDL's native controller
+// subsystem. See wasi/platform/joystick-backend.h.
+#include "joystick-backend.h"
+#else
 #include "sdl/JoystickModule.h"
+#endif
 
 namespace love
 {
@@ -208,7 +215,11 @@ extern "C" int luaopen_love_joystick(lua_State *L)
 	JoystickModule *instance = instance();
 	if (instance == nullptr)
 	{
+#ifdef LOVE_WASI
+		luax_catchexcept(L, [&](){ instance = new wasm::JoystickModule(); });
+#else
 		luax_catchexcept(L, [&](){ instance = new sdl::JoystickModule(); });
+#endif
 	}
 	else
 		instance->retain();

@@ -23,9 +23,26 @@
 // LOVE
 #include "common/runtime.h"
 #include "common/Reference.h"
+#ifdef LOVE_WASI
+// love-wasi (build-order step 6.4): the browser event backend fed by forwarded
+// DOM events, in place of the SDL native event loop. See wasi/platform/input-backend.h.
+#include "input-backend.h"
+#else
 #include "sdl/Event.h"
+#endif
 
 #include <algorithm>
+
+// lua_cpcall was removed in Lua 5.2; express it via lua_pcall (the function is
+// called with the light-userdata as its only argument — exactly what
+// drawCallbackInner reads at stack slot 1). No-op on Lua 5.1 / LuaJIT, which
+// still provide lua_cpcall, so desktop builds are byte-unchanged. Offered
+// upstream: love.event's modal-draw path is the only caller, and this is what
+// lets it build on Lua 5.2+ (e.g. lua-wasi 5.4). Generic, not wasi-specific.
+#if LUA_VERSION_NUM >= 502 && !defined(lua_cpcall)
+#define lua_cpcall(L, f, u) \
+	(lua_pushcfunction(L, (f)), lua_pushlightuserdata(L, (u)), lua_pcall(L, 1, 0, 0))
+#endif
 
 // Shove the wrap_Event.lua code directly into a raw string literal.
 static const char event_lua[] =
@@ -262,7 +279,11 @@ extern "C" int luaopen_love_event(lua_State *L)
 	Event *instance = instance();
 	if (instance == nullptr)
 	{
+#ifdef LOVE_WASI
+		luax_catchexcept(L, [&](){ instance = new love::event::wasm::Event(); });
+#else
 		luax_catchexcept(L, [&](){ instance = new love::event::sdl::Event(); });
+#endif
 	}
 	else
 		instance->retain();

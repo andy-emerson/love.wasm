@@ -293,5 +293,18 @@ export function makeWebGLWinHost() {
       try { return !!new OffscreenCanvas(1, 1).getContext('webgl2'); }
       catch { return false; }
     },
+    // Read one pixel back from the presented drawing buffer (bottom-left origin,
+    // like glReadPixels). Used by the step-6.6b frame witness to recover the
+    // colour love.draw filled the canvas with — a direct host-side readback,
+    // independent of the wasm captureScreenshot path. preserveDrawingBuffer keeps
+    // the presented pixels valid after window_present's flush.
+    readPixel(x, y) {
+      if (!gl) return null;
+      const px = new Uint8Array(4);
+      gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      return [px[0], px[1], px[2], px[3]];
+    },
+    // The canvas backing size, so the witness can sample the centre pixel.
+    canvasSize() { return canvas ? [canvas.width, canvas.height] : [0, 0]; },
   };
 }

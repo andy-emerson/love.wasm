@@ -157,6 +157,31 @@ jobs:
         # keeps 4.1a raw-GL beside the real backend.
         run: PREFIX="$PWD/wasi-eh" wasi/platform/run-fs2.sh
 
+      - name: platform witness — real love.event/keyboard/mouse on the love_input seam (step 6.4, node + real Chromium)
+        # Build-order step 6.4: the first host->guest PUSH seam. The host queues
+        # DOM events; love.event::wasm::Event::pump() drains them into
+        # love::event::Message objects (the job event/sdl/Event.cpp::convert does
+        # for SDL) and updates the shared input snapshot love.keyboard/mouse read.
+        # The witness asserts the full translated message sequence (key/text/mouse/
+        # wheel/resize/quit, incl. the DOM->LÖVE button remap) AND the resulting
+        # isDown/getPosition state. Windowless, so it runs on node + Chromium both.
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-input.sh
+
+      - name: platform witness — real love.joystick/gamepad on the love_gamepad seam (step 6.5, node + real Chromium)
+        # Build-order step 6.5: the real love.joystick/love.gamepad over the browser
+        # Gamepad API on the love_gamepad seam. Unlike 6.4's push queue, the Gamepad
+        # API is POLL-based: love.event's pump() calls a gamepad poll (a weak hook,
+        # null in the 6.4 build) that reads navigator.getGamepads()-shaped records
+        # ONCE per frame and DIFFS them against the previous poll to synthesize the
+        # joystickadded/removed, joystick(pressed/released/axis) and
+        # gamepad(pressed/released/axis) events SDL would push — reusing 6.4's push
+        # mechanism. The witness advances three scripted frames (connect+press,
+        # release+press, disconnect) and asserts the synthesized events + the
+        # love.joystick reader state (isGamepad/isGamepadDown/getGamepadAxis/getName).
+        # W3C-standard <-> LÖVE mapping in C++; vibration/mapping-string/gamepad
+        # sensors are honest warn-once edges. Windowless: node + Chromium both.
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-joystick.sh
+
       - name: preview-limitation warning witness — love.sensor warned stub (issue #27, node + real Chromium)
         # Issue #27's mechanism: preview_warn_once emits a one-time
         # [love-wasi preview] notice to the host tap when a preview-limited
@@ -165,6 +190,35 @@ jobs:
         # witness asserts non-fatal + safe-default + the one-time dedup (count 1
         # after two calls). Keeping love.sensor enabled also moots upstream #23.
         run: PREFIX="$PWD/wasi-eh" wasi/platform/run-sensor.sh
+
+      - name: platform witness — real love.timer/love.system (step 6.6a, node + real Chromium)
+        # Build-order step 6.6a: love.timer (a concrete class — Timer.cpp routes
+        # through clock_gettime(CLOCK_MONOTONIC)/gettimeofday under the LOVE_WASI arm
+        # of its POSIX guard; love::sleep is the honest browser no-op) + love.system
+        # (the wasm backend on the love_system seam for the genuine browser
+        # capabilities — processor count, clipboard, openURL, locales; getOS "Web"
+        # via the guarded seam). The witness asserts getTime advances, step() dt,
+        # getOS "Web", processor count, the clipboard round-trip and the locale
+        # shape. Windowless, so it runs on node + Chromium both.
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-timer-system.sh
+
+      - name: platform witness — the embedding contract (step 6.7, node + real Chromium)
+        # Build-order step 6.7 — THE CAPSTONE (Step 6 complete). What makes the
+        # runtime consumable by a live-edit host: (1) the real love.filesystem
+        # WRITE path — write/append/remove/createDirectory/File:open("w"/"a") and
+        # the save dir over three new love_fs write imports (fs_write/fs_remove/
+        # fs_mkdir), all in the out-of-tree fs-backend.cpp + host, no new src/ seam;
+        # the host holds a SEPARATE writable save namespace beside the read-only
+        # project, reads resolve save-first (physfs mount order), so a written file
+        # shadows a project file and removing the save copy reveals the pristine
+        # project beneath — the witness proves, by transcript alone, that writes
+        # never mutate the project (NUL-safe). (2) the reload/invalidate primitive
+        # (D5=A: whole-chunk re-eval) — a host-callable pump_invalidate() that drops
+        # game Lua modules from package.loaded (love.* + std libs preserved); the
+        # reload invariant witnessed: require("mod").v==1 -> host-edit via the write
+        # path -> pump_invalidate() -> require("mod").v==2 = live-edit. Windowless,
+        # so it runs on node + Chromium both.
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-embed.sh
 
       - name: audio witness (love.audio playback + mic, node + Chromium + fake-device capture)
         run: PREFIX="$PWD/wasi-eh" wasi/audio/run.sh
@@ -230,3 +284,16 @@ jobs:
         # (drawn + clear pixels recovered exactly). Reuses the graphics job's warm
         # gfxlibs. Chromium-only (real WebGL2).
         run: PREFIX="$PWD/wasi-eh" wasi/platform/run-win.sh
+
+      - name: first full main.lua frame — conf -> canvas -> load -> draw -> present (step 6.6b, real Chromium)
+        # Build-order step 6.6b — THE MILESTONE. The union artifact (real
+        # filesystem + window + graphics/WebGL2 + image + font + event/keyboard/
+        # mouse + timer + system) boots LÖVE's real boot.lua and runs the canned
+        # game (fs-host's conf.lua + main.lua) to a drawn pixel: conf sizes/titles
+        # the canvas, love.window.setMode opens the WebGL2 context, love.load prints
+        # a unique marker to the host tap, love.run's loop runs update/draw/present
+        # once per pumped frame, and love.draw fills the canvas RED. The driver
+        # asserts the marker reached fd 1 AND the presented backbuffer centre pixel
+        # is RED (read back through the WebGL2 context). Reuses the graphics job's
+        # warm gfxlibs. Chromium-only (real WebGL2); no node leg (expected).
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-frame.sh

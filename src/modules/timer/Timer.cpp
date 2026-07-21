@@ -31,7 +31,7 @@
 #elif defined(LOVE_MACOS) || defined(LOVE_IOS)
 #include <mach/mach_time.h>
 #include <sys/time.h>
-#elif defined(LOVE_LINUX)
+#elif defined(LOVE_LINUX) || defined(LOVE_WASI)
 #include <unistd.h>
 #include <time.h>
 #include <sys/time.h>
@@ -103,13 +103,20 @@ double Timer::getAverageDelta() const
 	return averageDelta;
 }
 
-#if defined(LOVE_LINUX)
+#if defined(LOVE_LINUX) || defined(LOVE_WASI)
 
 static inline timespec getTimeOfDay()
 {
 	timeval t;
 	gettimeofday(&t, NULL);
+#if defined(LOVE_WASI)
+	// On wasi suseconds_t is `long long`, so `t.tv_usec * 1000` narrows into
+	// timespec::tv_nsec (`long`) under brace-init — an error. Cast explicitly.
+	// Guarded so the desktop LINUX source stays byte-unchanged.
+	return timespec { t.tv_sec, static_cast<long>(t.tv_usec * 1000) };
+#else
 	return timespec { t.tv_sec, t.tv_usec * 1000 };
+#endif
 }
 
 static timespec getTimeAbsolute()

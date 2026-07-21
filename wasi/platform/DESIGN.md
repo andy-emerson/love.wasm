@@ -254,6 +254,7 @@ front-run any choice. Resolution status (architect-ratified):
 | D4 | Reload granularity | **Open** — not C; between A and B; post-step-6, blocks nothing here. |
 | D5 | Supported-edit class | **A — minimal & explicit**, restart fallback. |
 | D6 | Console channel | **A — pure stdio now**, architected so B (host structured tap) can layer on without engine changes. |
+| D7 | Archive/`.love` mounting: who unzips | **Open** — host-side JS unzip vs a guest-side zip reader over the in-tree zlib. Directory enumeration (`getDirectoryItems` over `fs_list`) landed pre-step-7; runtime zip mounting is deferred (most browser games do not mount a `.zip` at runtime). See D7 below. |
 
 ### D1 — Filesystem seam: replace the module, or keep PhysFS and reseam its IO
 
@@ -415,6 +416,37 @@ control over what's included — kept faithful.
   verbosity/callback layer can be added **host-side** later with no engine change,
   if A proves insufficient. The stdio half exists already (the witnesses read
   fd 1).
+
+### D7 — Archive / `.love`-zip mounting: who unzips (OPEN)
+
+Splitting the two features PhysFS used to provide behind `love.filesystem`:
+
+- **Directory enumeration** (`getDirectoryItems`) — **landed** (pre-step-7). A
+  new `fs_list` host import (size-then-fill, mirroring `fs_read`) returns the
+  immediate children of a directory; the host merges the read-only project and
+  the writable save namespace and de-dupes, exactly the merged listing PhysFS
+  gave across a mounted search path. Games call this routinely (asset discovery,
+  level lists), so it was the clearly-needed half. Witnessed:
+  `wasi/platform/run-fs-list.sh`.
+- **Archive / `.love`-zip mounting** (`mount*`) — **still deferred, and it forces
+  a decision**, because PhysFS's zip archiver is gone. Two use cases:
+  - *`.love`-as-source* (boot-time) — the host already presents the project
+    pre-unpacked (the `.love` pillar); no engine work needed. Low priority.
+  - *runtime `mount` of a zip asset* — a running game mounting a downloaded or
+    generated archive. This is the one that forces the choice:
+    - **Option A — host unzips in JS.** `mount` becomes a host import; the JS
+      host decodes the zip (browser `DecompressionStream` or a JS unzip) and
+      exposes the entries as a new namespace layer. No zip code in wasm (the
+      D1=A ethos); but `mount(Data*)` mounts an in-wasm-memory blob, so its bytes
+      would have to cross back out to JS to decode.
+    - **Option B — guest-side zip reader over the in-tree zlib.** `wasi/vendor/zlib`
+      is already in the tree and gives raw `inflate`; a small zip-central-directory
+      reader on top keeps mount ordering guest-side and handles `mount(Data*)`
+      without a round-trip — but partially rebuilds the archive machinery D1=A
+      shed.
+  - **OPEN.** Not resolved: most browser games don't runtime-mount a zip, so the
+    corpus is the right evidence for which use case (and thus which option) is
+    worth building. Recorded here so the choice is deliberate, not defaulted.
 
 ## Resolved by the reload invariant (recorded as decided, not open)
 

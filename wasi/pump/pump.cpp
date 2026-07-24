@@ -1,9 +1,9 @@
 // love-wasi frame pump — build-order step 2.
 //
-// The engine-side half of the browser main loop: Lua (the lua-wasi source
+// The engine-side half of the browser main loop: Lua (the lua.wasm source
 // drop) runs as a RESIDENT COROUTINE inside this artifact, and the host
 // resumes it exactly once per frame (requestAnimationFrame tick). This file
-// owns that contract; lua-wasi's luaw_* reactor glue is deliberately not
+// owns that contract; lua.wasm's luaw_* reactor glue is deliberately not
 // used or extended (readme.md, "The three seams").
 //
 // The ABI is one in-slot and one out-slot over linear memory:

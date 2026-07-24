@@ -120,4 +120,4 @@ grep -aq "libc++abi" "$OUT" || {
   exit 1
 }
 "$ROOT/wasi/toolchain/check-eh-encoding.sh" "$OUT"
-echo "built $OUT (LÖVE core + love.graphics[opengl/webgl] + image + font + real love.window on love_win seam + lua-wasi + pump)"
+echo "built $OUT (LÖVE core + love.graphics[opengl/webgl] + image + font + real love.window on love_win seam + lua.wasm + pump)"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the step-6.1 artifact: the lua-wasi source drop + the step-2 pump +
+# Build the step-6.1 artifact: the lua.wasm source drop + the step-2 pump +
 # the love_fs seam bridge (fs-ext.cpp) in one wasm32-wasi reactor. NO LÖVE core
 # — 6.1 isolates the host<->wasm file-bytes plumbing (the raw seam), the way
 # graphics/build-raw isolated the WebGL2 plumbing before the reused backend.

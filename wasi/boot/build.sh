@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the step-3 artifact: the LÖVE core (common/ + module registry +
 # love.math as the first real engine module + the embedded boot scripts)
-# linked with the lua-wasi source drop under the step-2 pump — one
+# linked with the lua.wasm source drop under the step-2 pump — one
 # wasm32-wasi reactor, same flag contract as wasi/pump/build.sh.
 #
 # Module set (build-order step 3: "graphics/audio/window/thread stubbed"):
@@ -106,4 +106,4 @@ grep -aq "libc++abi" "$OUT" || {
   exit 1
 }
 "$ROOT/wasi/toolchain/check-eh-encoding.sh" "$OUT"
-echo "built $OUT (LÖVE core + lua-wasi + pump; external EH confirmed)"
+echo "built $OUT (LÖVE core + lua.wasm + pump; external EH confirmed)"

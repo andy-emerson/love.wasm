@@ -38,7 +38,7 @@
 // drawCallbackInner reads at stack slot 1). No-op on Lua 5.1 / LuaJIT, which
 // still provide lua_cpcall, so desktop builds are byte-unchanged. Offered
 // upstream: love.event's modal-draw path is the only caller, and this is what
-// lets it build on Lua 5.2+ (e.g. lua-wasi 5.4). Generic, not wasi-specific.
+// lets it build on Lua 5.2+ (e.g. lua.wasm 5.4). Generic, not wasi-specific.
 #if LUA_VERSION_NUM >= 502 && !defined(lua_cpcall)
 #define lua_cpcall(L, f, u) \
 	(lua_pushcfunction(L, (f)), lua_pushlightuserdata(L, (u)), lua_pcall(L, 1, 0, 0))

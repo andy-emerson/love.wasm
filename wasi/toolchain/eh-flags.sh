@@ -5,7 +5,7 @@
 # can't drift between them. Do NOT inline these anywhere else.
 #
 # clang-20's bare -fwasm-exceptions defaults to the LEGACY encoding (try/catch);
-# the standardized exnref encoding (try_table/throw_ref) that lua-wasi's flag
+# the standardized exnref encoding (try_table/throw_ref) that lua.wasm's flag
 # contract requires needs the explicit -mllvm flag. One artifact, one encoding —
 # wasi/toolchain/check-eh-encoding.sh gates every output. This file is in the
 # witness workflow's sysroot cache key, so changing the flags rebuilds libc++.

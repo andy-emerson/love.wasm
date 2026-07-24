@@ -1,6 +1,6 @@
 name: witness
 # Re-run the wasi witnesses on every change to the trunk: the wasm-EH C++
-# toolchain claim (build-order step 0), the frame pump over the lua-wasi
+# toolchain claim (build-order step 0), the frame pump over the lua.wasm
 # source drop (step 2, incl. drop provenance at its PIN), the LÖVE core
 # boot (step 3), and love.graphics on the reused opengl backend reseamed to
 # WebGL2 (step 4) must never silently rot. Every artifact also passes the
@@ -47,7 +47,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           # 24.15 is the first 24.x to take the standardized exnref encoding
-          # by default; the floor is non-monotone per line (lua-wasi #27).
+          # by default; the floor is non-monotone per line (lua.wasm #27).
           node-version: '>=24.15 <25'
 
       - name: chromium + firefox (V8 + SpiderMonkey non-V8 cross-check)
@@ -86,7 +86,7 @@ jobs:
         run: PREFIX="$PWD/wasi-eh" wasi/vendor/libmodplug/run.sh
 
   pump-witness:
-    # Build-order step 2: the frame pump over the lua-wasi source drop,
+    # Build-order step 2: the frame pump over the lua.wasm source drop,
     # external EH, driven by requestAnimationFrame in real Chromium.
     runs-on: ubuntu-24.04
     steps:
@@ -96,12 +96,12 @@ jobs:
         run: |
           commit=$(awk '/^commit:/{print $2}' wasi/lua/upstream/PIN)
           echo "PIN: $commit"
-          git init "$RUNNER_TEMP/lua-wasi" -q
-          git -C "$RUNNER_TEMP/lua-wasi" remote add origin https://github.com/Lua2D/lua-wasi
-          git -C "$RUNNER_TEMP/lua-wasi" fetch -q --depth 1 origin "$commit"
-          git -C "$RUNNER_TEMP/lua-wasi" checkout -q FETCH_HEAD
-          diff -r "$RUNNER_TEMP/lua-wasi/src" wasi/lua/upstream/src
-          echo "source drop is verbatim lua-wasi src/ at the pinned commit"
+          git init "$RUNNER_TEMP/lua.wasm" -q
+          git -C "$RUNNER_TEMP/lua.wasm" remote add origin https://github.com/andy-emerson/lua.wasm
+          git -C "$RUNNER_TEMP/lua.wasm" fetch -q --depth 1 origin "$commit"
+          git -C "$RUNNER_TEMP/lua.wasm" checkout -q FETCH_HEAD
+          diff -r "$RUNNER_TEMP/lua.wasm/src" wasi/lua/upstream/src
+          echo "source drop is verbatim lua.wasm src/ at the pinned commit"
 
       - name: toolchain (clang-20 + wasm32-wasi sysroot)
         run: |

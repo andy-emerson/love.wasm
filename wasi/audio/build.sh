@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build the step-5 artifact: the step-3 LÖVE core plus love.audio, linked with
-# the lua-wasi source drop under the step-2 pump — one wasm32-wasi reactor, same
+# the lua.wasm source drop under the step-2 pump — one wasm32-wasi reactor, same
 # flag contract as wasi/boot/build.sh.
 #
 # Module set (build-order step 5): step 3's (love, love.data, love.math,
@@ -146,4 +146,4 @@ grep -aq "libc++abi" "$OUT" || {
   exit 1
 }
 "$ROOT/wasi/toolchain/check-eh-encoding.sh" "$OUT"
-echo "built $OUT (LÖVE core + love.audio[$BACKEND] + lua-wasi + pump; external EH confirmed)"
+echo "built $OUT (LÖVE core + love.audio[$BACKEND] + lua.wasm + pump; external EH confirmed)"

@@ -35,7 +35,7 @@
 #    duplicate-output problem and none of it is needed for wasm EH.
 #  - clang-20's -fwasm-exceptions default is the LEGACY encoding
 #    (try/catch); the standardized exnref encoding (try_table/throw_ref)
-#    that the lua-wasi flag contract requires needs an explicit
+#    that the lua.wasm flag contract requires needs an explicit
 #    `-mllvm -wasm-use-legacy-eh=false` (probed 2026-07-07: default emits
 #    `try`/`rethrow`, flag emits `try_table`/`throw_ref`). One artifact
 #    must not mix encodings, so the flag is baked in here.
@@ -47,7 +47,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 JOBS=${JOBS:-$(nproc)}
 
 # The one EH configuration this whole repo links under: wasm-EH with the
-# standardized exnref encoding, matching lua-wasi's WASM_EH_ENCODING=standard.
+# standardized exnref encoding, matching lua.wasm's WASM_EH_ENCODING=standard.
 # Single-sourced so the compile sites can't drift (see eh-flags.sh).
 source "$HERE/eh-flags.sh"
 

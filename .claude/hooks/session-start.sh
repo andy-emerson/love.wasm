@@ -10,7 +10,7 @@
 #     the exact LLVM the sysroot is built against) — not apt.llvm.org.
 #   - Node >= 24.15 from the nodejs.org release tarball — not deb.nodesource.com.
 #     24.15 is the first 24.x to take the standardized exnref encoding by
-#     default, which the witnesses require (lua-wasi #27).
+#     default, which the witnesses require (lua.wasm #27).
 #
 # The minutes-long libc++/libc++abi sysroot build is NOT redone per session:
 # the container is ephemeral, so a from-source rebuild every start would be

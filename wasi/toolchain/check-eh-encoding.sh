@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Encoding gate for the wasm-EH contract with lua-wasi (issue #3): the
+# Encoding gate for the wasm-EH contract with lua.wasm (issue #3): the
 # artifact must use ONLY the standardized exnref encoding
 # (try_table/throw_ref), never the legacy one (try/end_try/rethrow/
 # delegate). clang-20's bare -fwasm-exceptions default is LEGACY, so a

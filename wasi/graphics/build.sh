@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build the step-4 (4.1c) artifact: the LÖVE core + love.graphics on the opengl
-# backend reseamed to WebGL2 static imports, linked with lua-wasi under the pump
+# backend reseamed to WebGL2 static imports, linked with lua.wasm under the pump
 # — one wasm32-wasi reactor, same flag contract as wasi/audio/build.sh.
 #
 # Module set: step 3's core (love, data, math, filesystem stub) plus graphics,
@@ -112,4 +112,4 @@ grep -aq "libc++abi" "$OUT" || {
   exit 1
 }
 "$ROOT/wasi/toolchain/check-eh-encoding.sh" "$OUT"
-echo "built $OUT (LÖVE core + love.graphics[opengl/webgl] + image + font + lua-wasi + pump)"
+echo "built $OUT (LÖVE core + love.graphics[opengl/webgl] + image + font + lua.wasm + pump)"

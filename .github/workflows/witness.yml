@@ -97,7 +97,7 @@ jobs:
           commit=$(awk '/^commit:/{print $2}' wasi/lua/upstream/PIN)
           echo "PIN: $commit"
           git init "$RUNNER_TEMP/lua-wasi" -q
-          git -C "$RUNNER_TEMP/lua-wasi" remote add origin https://github.com/Lua2D/lua-wasi
+          git -C "$RUNNER_TEMP/lua-wasi" remote add origin https://github.com/andy-emerson/lua.wasm
           git -C "$RUNNER_TEMP/lua-wasi" fetch -q --depth 1 origin "$commit"
           git -C "$RUNNER_TEMP/lua-wasi" checkout -q FETCH_HEAD
           diff -r "$RUNNER_TEMP/lua-wasi/src" wasi/lua/upstream/src

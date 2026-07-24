@@ -1,13 +1,19 @@
-repo:    https://github.com/Lua2D/lua-wasi
-tag:     v0.1.0
-commit:  9d143605058f312cb1ad55c24ae367648b95eb31
-date:    2026-07-07 (v0.1.0; tag == this commit)
+repo:    https://github.com/andy-emerson/lua.wasm
+tag:     0.2.0
+commit:  4858557a424a7592c99cbddc4857dbc9e1994cc5
+date:    2026-07-24 (0.2.0; "Remove AOT: retire luaot, return the core to verbatim stock")
 scope:   src/ vendored verbatim as src/ beside this file
 contract: doc/embedding.md at the pinned commit (source-drop path)
 
+Formerly Lua2D/lua-wasi (pinned v0.1.0, 9d14360, here); the project was
+renamed to andy-emerson/lua.wasm and 0.2.0 sunset the selective-AOT path
+(luaot), returning the core to the verbatim stock Lua 5.4 interpreter.
+This build never linked AOT (-DLUA_AOT is unset; the pump speaks lua.h,
+not the luaw_* reactor glue), so the drop shed only dead code.
+
 Update procedure: pick the new commit, replace src/ wholesale with the
 pinned commit's src/, update this file. Never edit files under src/ —
-fixes go to lua-wasi and arrive by re-pinning (same rule as this repo's
+fixes go to lua.wasm and arrive by re-pinning (same rule as this repo's
 own upstream relationship; see readme.md).
 
 Provenance is CI-checked: the pump job diffs src/ against a fresh clone

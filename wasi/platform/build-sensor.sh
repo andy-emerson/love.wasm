@@ -3,7 +3,7 @@
 # PLUS the REAL love.sensor module, linked on top of the out-of-tree warned-stub
 # backend (wasi/platform/sensor-backend.cpp) and the preview-limitation warning
 # mechanism (wasi/platform/preview-warn.cpp). This is the witnessed example of
-# issue #27's one-time, non-fatal "[love-wasi preview]" warning: love.sensor
+# issue #27's one-time, non-fatal "[love.wasm preview]" warning: love.sensor
 # loads, its API is present, and USING a sensor emits one host-routed preview
 # note and returns a safe default rather than throwing or faking a reading.
 #
@@ -11,12 +11,12 @@
 # never with rm (readme.md: the tree stays upstream-shaped):
 #   - ADD the real love.sensor module TUs: Sensor.cpp (base Module + SensorType
 #     stringmap) and wrap_Sensor.cpp (the Lua wrap + luaopen_love_sensor; its
-#     LOVE_WASI factory seam constructs love::sensor::wasm::Sensor).
+#     LOVE_WASM factory seam constructs love::sensor::wasm::Sensor).
 #   - ADD the wasm warned-stub backend (sensor-backend.cpp) and the preview
 #     warning mechanism (preview-warn.cpp).
 #   - Use wasi/platform/config-sensor (LOVE_ENABLE_SENSOR=1) instead of the boot
 #     config, so love.cpp registers love.sensor and luaopen_love_sensor links.
-#   -I wasi/platform lets wrap_Sensor.cpp's LOVE_WASI factory seam include
+#   -I wasi/platform lets wrap_Sensor.cpp's LOVE_WASM factory seam include
 #   sensor-backend.h.
 #   NOT compiled: sdl/Sensor.cpp (SDL_sensor native backend).
 #

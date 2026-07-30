@@ -4,7 +4,7 @@
 --
 -- What this proves:
 --   * love.timer requires and runs: getTime() is a number that ADVANCES (real
---     CLOCK_MONOTONIC through the LOVE_WASI arm of Timer.cpp's POSIX guard,
+--     CLOCK_MONOTONIC through the LOVE_WASM arm of Timer.cpp's POSIX guard,
 --     fulfilled by the WASI host's clock_time_get), and step() returns a dt >= 0.
 --     love.timer.sleep is the honest browser no-op (returns immediately).
 --   * love.system requires and runs on the wasm backend over the love_system host
@@ -72,7 +72,7 @@ check("getProcessorCount() == 4 (host hardwareConcurrency)", pc == 4, pc)
 
 -- Clipboard round-trip through the host cell (fronting the async Clipboard API).
 local baked = love.system.getClipboardText()
-check("getClipboardText() returns the host's baked cell", baked == "love-wasi clipboard", baked)
+check("getClipboardText() returns the host's baked cell", baked == "love.wasm clipboard", baked)
 love.system.setClipboardText("round-trip 4242")
 check("setClipboardText/getClipboardText round-trips",
   love.system.getClipboardText() == "round-trip 4242", love.system.getClipboardText())

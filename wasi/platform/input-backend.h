@@ -50,10 +50,10 @@
 //
 // This header lives out-of-tree (readme.md: the src tree stays upstream-shaped);
 // wrap_Event.cpp / wrap_Keyboard.cpp / wrap_Mouse.cpp each include it under
-// LOVE_WASI via -I wasi/platform and construct the wasm:: type in place of the
+// LOVE_WASM via -I wasi/platform and construct the wasm:: type in place of the
 // sdl:: one at their one guarded factory.
-#ifndef LOVE_WASI_PLATFORM_INPUT_BACKEND_H
-#define LOVE_WASI_PLATFORM_INPUT_BACKEND_H
+#ifndef LOVE_WASM_PLATFORM_INPUT_BACKEND_H
+#define LOVE_WASM_PLATFORM_INPUT_BACKEND_H
 
 #include "common/config.h"
 #include "event/Event.h"
@@ -216,4 +216,4 @@ private:
 } // mouse
 } // love
 
-#endif // LOVE_WASI_PLATFORM_INPUT_BACKEND_H
+#endif // LOVE_WASM_PLATFORM_INPUT_BACKEND_H

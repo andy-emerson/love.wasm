@@ -45,10 +45,10 @@
 //                              battery reporting).
 //
 // This header lives out-of-tree (readme.md: the src tree stays upstream-shaped);
-// wrap_System.cpp includes it under LOVE_WASI via -I wasi/platform and constructs
+// wrap_System.cpp includes it under LOVE_WASM via -I wasi/platform and constructs
 // wasm::System in place of sdl::System at the one guarded factory.
-#ifndef LOVE_WASI_PLATFORM_SYSTEM_BACKEND_H
-#define LOVE_WASI_PLATFORM_SYSTEM_BACKEND_H
+#ifndef LOVE_WASM_PLATFORM_SYSTEM_BACKEND_H
+#define LOVE_WASM_PLATFORM_SYSTEM_BACKEND_H
 
 #include "common/config.h"
 #include "system/System.h"
@@ -86,4 +86,4 @@ public:
 } // system
 } // love
 
-#endif // LOVE_WASI_PLATFORM_SYSTEM_BACKEND_H
+#endif // LOVE_WASM_PLATFORM_SYSTEM_BACKEND_H

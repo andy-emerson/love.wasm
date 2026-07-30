@@ -50,6 +50,6 @@ extern "C" void preview_warn_once(const char *key, const char *message)
 	if (!seen.insert(std::string(key)).second)
 		return;
 
-	std::fprintf(stderr, "[love-wasi preview] %s\n", message);
+	std::fprintf(stderr, "[love.wasm preview] %s\n", message);
 	std::fflush(stderr);
 }

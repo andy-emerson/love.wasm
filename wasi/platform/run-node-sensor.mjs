@@ -3,7 +3,7 @@
 // independent, complete WASI host, the cross-check against the hand-rolled
 // browser shim — and run the shared transcript.
 //
-// The "[love-wasi preview]" warning is emitted over stderr (fd 2). node:wasi
+// The "[love.wasm preview]" warning is emitted over stderr (fd 2). node:wasi
 // routes guest fd 2 to whatever host fd its `stderr` option names, so we point
 // it at a temp file and, after the run, count the preview lines in it: the
 // witness calls getData TWICE (same feature) yet the count must be exactly 1 —
@@ -39,7 +39,7 @@ try {
 const errText = readFileSync(errPath, 'utf8');
 rmSync(tmp, { recursive: true, force: true });
 
-const previewLines = errText.split('\n').filter((l) => l.includes('[love-wasi preview]'));
+const previewLines = errText.split('\n').filter((l) => l.includes('[love.wasm preview]'));
 const count = previewLines.length;
 
 console.log('--- host tap (fd 2) preview lines ---');

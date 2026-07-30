@@ -41,10 +41,10 @@
 // joystick/sensor coupling bug (#23), which surfaces when sensor is compiled out.
 //
 // This header lives out-of-tree (the src tree stays upstream-shaped);
-// wrap_Sensor.cpp includes it under LOVE_WASI via -I wasi/platform and
+// wrap_Sensor.cpp includes it under LOVE_WASM via -I wasi/platform and
 // constructs wasm::Sensor in place of sdl::Sensor at the one guarded factory.
-#ifndef LOVE_WASI_PLATFORM_SENSOR_BACKEND_H
-#define LOVE_WASI_PLATFORM_SENSOR_BACKEND_H
+#ifndef LOVE_WASM_PLATFORM_SENSOR_BACKEND_H
+#define LOVE_WASM_PLATFORM_SENSOR_BACKEND_H
 
 #include "sensor/Sensor.h"
 
@@ -83,4 +83,4 @@ public:
 } // sensor
 } // love
 
-#endif // LOVE_WASI_PLATFORM_SENSOR_BACKEND_H
+#endif // LOVE_WASM_PLATFORM_SENSOR_BACKEND_H

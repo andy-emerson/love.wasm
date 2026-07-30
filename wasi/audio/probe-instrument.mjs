@@ -51,7 +51,7 @@ function makeSineWav(freq, rate, seconds) {
 }
 
 function resolvePlaywright() {
-  for (const base of [process.cwd(), '/root/.love-wasi/npm', process.env.HOME || '/root']) {
+  for (const base of [process.cwd(), '/root/.love.wasm/npm', process.env.HOME || '/root']) {
     try {
       const require = createRequire(base + '/noop.js');
       return require('playwright-core');

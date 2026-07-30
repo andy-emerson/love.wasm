@@ -68,10 +68,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # A single, stable pre-release the SessionStart hook fetches by name.
-          # Marked prerelease so it never reads as a love-wasi software release.
+          # Marked prerelease so it never reads as a love.wasm software release.
           gh release view sysroot >/dev/null 2>&1 || gh release create sysroot \
             --prerelease \
             --title "wasm-EH sysroot (rolling)" \
-            --notes "Prebuilt wasm32-wasi libc++/libc++abi sysroot (wasm exceptions, standardized exnref) for love-wasi interactive sessions — see issue #20 and .claude/hooks/session-start.sh. Rebuilt whenever wasi/toolchain/* changes. Not a software release."
+            --notes "Prebuilt wasm32-wasi libc++/libc++abi sysroot (wasm exceptions, standardized exnref) for love.wasm interactive sessions — see issue #20 and .claude/hooks/session-start.sh. Rebuilt whenever wasi/toolchain/* changes. Not a software release."
           gh release upload sysroot wasi-eh.tar.gz --clobber
           echo "published: $(gh release view sysroot --json url -q .url)/download/wasi-eh.tar.gz"

@@ -21,7 +21,7 @@
 #   - ADD wasi/platform/input-backend.cpp (the three wasm:: backends + shared
 #     input state on the love_input imports).
 #   - NOT compiled: any sdl/*.cpp (native OS event loop + cursor).
-#   -I wasi/platform lets the wrap_*.cpp LOVE_WASI factory seams include
+#   -I wasi/platform lets the wrap_*.cpp LOVE_WASM factory seams include
 #   input-backend.h.
 #
 #   PREFIX=/path/to/wasi-eh OUT=love-input.wasm wasi/platform/build-input.sh

@@ -53,7 +53,7 @@ export function makeWebGLWinHost() {
   // glGetString returns a char*: allocate in wasm memory, cache per enum.
   const strCache = new Map();
   const HOST_STRINGS = {
-    0x1F00: 'love-wasi',                    // GL_VENDOR
+    0x1F00: 'love.wasm',                    // GL_VENDOR
     0x1F01: 'WebGL2',                       // GL_RENDERER
     0x1F02: 'OpenGL ES 3.0 (WebGL2)',       // GL_VERSION
     0x8B8C: 'OpenGL ES GLSL ES 3.00',       // GL_SHADING_LANGUAGE_VERSION

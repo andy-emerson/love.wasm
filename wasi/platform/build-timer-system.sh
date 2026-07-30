@@ -2,7 +2,7 @@
 # Build the step-6.6a artifact: the LÖVE core with the REAL love.timer and
 # love.system modules linked. love.timer is a concrete class (no backend split):
 # Timer.cpp routes through clock_gettime(CLOCK_MONOTONIC)/gettimeofday under the
-# LOVE_WASI arm of its POSIX guard (wasi-libc provides both, the WASI host
+# LOVE_WASM arm of its POSIX guard (wasi-libc provides both, the WASI host
 # fulfils clock_time_get), and love::sleep is an honest browser no-op
 # (wasi/platform/delay-wasi.cpp — the main thread must not block; the host paces
 # frames via requestAnimationFrame). love.system is backend-split: the wasm
@@ -21,7 +21,7 @@
 #   - ADD System.cpp + wrap_System.cpp + system-backend.cpp.
 #   - NOT compiled: any sdl/*.cpp, common/delay.cpp (SDL_Delay), the input /
 #     filesystem / image TUs (this artifact needs none of them).
-#   -I wasi/platform lets wrap_System.cpp's LOVE_WASI factory seam include
+#   -I wasi/platform lets wrap_System.cpp's LOVE_WASM factory seam include
 #   system-backend.h.
 #
 #   PREFIX=/path/to/wasi-eh OUT=love-timer-system.wasm wasi/platform/build-timer-system.sh

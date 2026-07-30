@@ -50,7 +50,7 @@ function love.conf(t)
   t.identity = "uniongame"
   t.window.width = 64
   t.window.height = 64
-  t.window.title = "love-wasi union game"
+  t.window.title = "love.wasm union game"
   t.modules.joystick = false
   t.modules.touch = false
   t.modules.sensor = false

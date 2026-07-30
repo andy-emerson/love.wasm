@@ -11,7 +11,7 @@
 #     registers love.joystick alongside the three input modules + love.image.
 #   - ADD the joystick module TUs: Joystick.cpp (base STRINGMAPs reused to name the
 #     gamepad button/axis enums), wrap_Joystick.cpp, wrap_JoystickModule.cpp (its
-#     ONE guarded factory now builds joystick::wasm::JoystickModule under LOVE_WASI).
+#     ONE guarded factory now builds joystick::wasm::JoystickModule under LOVE_WASM).
 #   - ADD wasi/platform/joystick-backend.cpp (the wasm:: Joystick/JoystickModule +
 #     the strong wasi_poll_gamepad_events that the 6.4 pump's weak hook calls).
 #   - ADD the real love.sensor module (Sensor.cpp + wrap_Sensor.cpp + the #27
@@ -20,7 +20,7 @@
 #     :getDeviceConnectionState unconditionally but only DEFINES them under
 #     LOVE_ENABLE_SENSOR (upstream bug #23), so joystick won't link with sensor off.
 #   - NOT compiled: any sdl/*.cpp (native controller subsystem; SDL_sensor).
-#   -I wasi/platform lets wrap_JoystickModule.cpp's LOVE_WASI factory seam include
+#   -I wasi/platform lets wrap_JoystickModule.cpp's LOVE_WASM factory seam include
 #   joystick-backend.h.
 #
 # Windowless by design, like 6.4 — the joystick path is witnessed by a coroutine

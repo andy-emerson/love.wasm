@@ -27,7 +27,7 @@
 #include "data/wrap_Data.h"
 #include "data/wrap_DataModule.h"
 
-#ifdef LOVE_WASI
+#ifdef LOVE_WASM
 // wasm32-wasi swaps PhysFS for the host-import VFS backend (build-order step 6):
 // PhysFS assumes a real OS fd layer the browser doesn't have. The backend lives
 // out-of-tree in wasi/platform/ so the src tree stays upstream-shaped.
@@ -41,7 +41,7 @@
 #endif
 
 // SDL
-#ifndef LOVE_WASI
+#ifndef LOVE_WASM
 // SDL_LoadObject/SDL_LoadFunction back the extloader (native C library) search
 // path, guarded out below: a browser can't dlopen native libraries.
 #include <SDL3/SDL_loadso.h>
@@ -939,7 +939,7 @@ int loader(lua_State *L)
 	return 1;
 }
 
-#ifndef LOVE_WASI
+#ifndef LOVE_WASM
 // The extloader searcher dlopens a native C library from the game's C require
 // path. A browser has no native-library loader (no SDL_LoadObject), and the
 // import-VFS backend exposes no real on-disk paths to hand one, so this whole
@@ -1065,7 +1065,7 @@ int extloader(lua_State *L)
 	lua_pushcfunction(L, (lua_CFunction) func);
 	return 1;
 }
-#endif // !LOVE_WASI (extloader)
+#endif // !LOVE_WASM (extloader)
 
 // List of functions to wrap.
 static const luaL_Reg functions[] =
@@ -1132,7 +1132,7 @@ extern "C" int luaopen_love_filesystem(lua_State *L)
 	Filesystem *instance = instance();
 	if (instance == nullptr)
 	{
-#ifdef LOVE_WASI
+#ifdef LOVE_WASM
 		luax_catchexcept(L, [&](){ instance = new wasi_fs::Filesystem(); });
 #else
 		luax_catchexcept(L, [&](){ instance = new physfs::Filesystem(); });
@@ -1143,7 +1143,7 @@ extern "C" int luaopen_love_filesystem(lua_State *L)
 
 	// The love loaders should be tried after package.preload.
 	love::luax_register_searcher(L, loader, 2);
-#ifndef LOVE_WASI
+#ifndef LOVE_WASM
 	// extloader (native C library search) is absent on wasm32-wasi — see the
 	// guard on its definition above.
 	love::luax_register_searcher(L, extloader, 3);

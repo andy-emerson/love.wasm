@@ -334,3 +334,19 @@ jobs:
         # graphics job's warm gfxlibs; builds soundlibs on first run. Chromium-only
         # (real WebGL2); no node leg (expected).
         run: PREFIX="$PWD/wasi-eh" wasi/platform/run-game.sh
+
+      - name: interactive shell — a real project, live DOM input, live edit (Beta step 1, real Chromium)
+        # The shell page a person actually opens, driven in real Chromium. Proves
+        # three things no other witness can: a real project from disk runs (its own
+        # conf.lua sizes the canvas 96x64 where the canned project is 64x64, and
+        # love.filesystem reads an asset from a subdirectory of it); REAL DOM key
+        # events reach love.keyboard, moving the game's rectangle right, stopping on
+        # keyup, and moving back on the opposite key — the 6.4 witness proves the
+        # love_input seam with a baked queue and cannot prove the DOM half; and a
+        # module edited ON DISK reaches the RUNNING instance via pump_invalidate()
+        # while main.lua is reported restart-only rather than silently ignored
+        # (#47 / D4). Builds its OWN union artifact (~6 min): run-game.sh above
+        # builds into a mktemp it deletes, so there is nothing to reuse, and this
+        # step is the reason graphics-witness runs materially longer. Chromium-only
+        # (real WebGL2); no node leg (expected).
+        run: PREFIX="$PWD/wasi-eh" OUT="$PWD/wasi/shell/love-game.wasm" wasi/shell/run.sh

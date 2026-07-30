@@ -78,6 +78,9 @@ stamp-h1
 
 # wasi toolchain/witness local products (CI caches wasi-eh at this path)
 /wasi-eh/
+# The interactive shell loads a locally-built artifact; it is a build product, and
+# committing it would be shipping a binary the build already produces.
+/wasi/shell/*.wasm
 /node_modules/
 /package.json
 /package-lock.json

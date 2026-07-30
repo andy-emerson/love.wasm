@@ -8,7 +8,11 @@ This is a fork of [love2d/love](https://github.com/love2d/love) (the `main` / 12
 
 **Status — what runs today.** Real LÖVE, compiled to `wasm32-wasi`, runs an actual game end to end in real Chromium: `conf.lua` sizes the canvas, `love.window.setMode` opens a real WebGL2 context, `love.load` decodes and plays an Ogg asset read through `love.filesystem` and builds a physics world, and `love.update`/`love.draw` step and draw it once per `requestAnimationFrame` tick. Graphics, filesystem (read, write, enumerate), event/keyboard/mouse, joystick, timer, system, audio, sound and physics are all real engine code over browser seams. `love.thread` is the one major module still stubbed — build-order step 7. Every behavioral claim below carries a witness, and CI re-runs all of them on every push to `wasi`.
 
-Two things this is not yet, because the distinction matters. The game run end to end is a **test fixture written into the witness** and driven headless by Playwright — a real, desktop-compatible LÖVE project, but not an interactive page you can play and not a third-party `.love`. And the `testing/` conformance corpus has **not** been run under this build, so desktop parity rests on per-seam witnesses rather than on the corpus. Closing both is the road to Beta.
+There is an **interactive shell**: a page that loads a LÖVE project from disk, runs it on `requestAnimationFrame`, forwards real keyboard and mouse events into `love.event`, and applies a module edit to the running game without a reload (`wasi/shell/`, witnessed by `wasi/shell/run.sh`). It is a game player, not an editor — the downstream consumer this engine is built for is a separate concern.
+
+**What is not proven yet.** No third-party `.love` game has been run — only a real, desktop-compatible project written as a fixture — and the `testing/` conformance corpus has not been run under this build, so desktop parity rests on per-seam witnesses rather than on the corpus. Those two are what stand between here and Beta.
+
+A project has to stay inside the **linked envelope** of the artifact running it: `boot.lua` requires every module its `conf.lua` enables. The union artifact the shell loads links sixteen; `joystick`, `touch`, `sensor`, `video` and `thread` are not among them, so a project must disable those or it will not boot. `love.joystick` is real and witnessed — it is simply on its own build, not this one.
 
 **Ten guarded seams.** Edits to shared engine source are ten small guarded seams, each byte-unchanged for default builds and shaped to be offered upstream. Everything else this fork adds lives outside `src/`.
 
@@ -184,6 +188,7 @@ Each runs every engine it can reach, and every leg must pass. A Chromium-only wi
 | `wasi/platform/run-sound.sh` | the `love.sound` lullaby decoders — a real Ogg Vorbis asset decoded to PCM | node, Chromium |
 | `wasi/platform/run-fs-list.sh` | `love.filesystem` enumeration over `fs_list`, project and save merged and de-duped | node, Chromium |
 | `wasi/platform/run-game.sh` | the union: a real game, with sound, physics and drawing together | Chromium |
+| `wasi/shell/run.sh` | the interactive shell: a project loaded from disk, real DOM key events moving the game and stopping on release, and a module edit reaching the running instance | Chromium |
 
 `wasi/sweep/run.sh` is not a witness but a probe: `-fsyntax-only` over every engine-module translation unit under the build's exact contract flags, so no module's status is left unknown (#9).
 

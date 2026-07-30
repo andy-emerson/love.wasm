@@ -251,10 +251,10 @@ front-run any choice. Resolution status (Human-ratified):
 | D1 | Filesystem seam | **A — replace the module.** Gates 6.2. |
 | D2 | Save-dir backing | **Closed — OPFS, separate untracked namespace, eager-flush (eventual durability, declared).** See below. |
 | D3 | Window/context | **A — `setMode` drives the real canvas/context.** Gates 6.3. |
-| D4 | Reload granularity | **Open — deferred past Beta.** Not C; between A and B. Beta ships module-granularity live-edit (the 6.7 `pump_invalidate` + write path) with **restart** as the fallback for `main.lua`-direct edits; `main.lua`-direct live-edit (D4=A whole-chunk) is not required for Beta. |
+| D4 | Reload granularity | **Open — tracked in #47**, deferred past Beta. Beta ships module-granularity live-edit (the 6.7 `pump_invalidate` + write path) with **restart** as the fallback for `main.lua`-direct edits. |
 | D5 | Supported-edit class | **A — minimal & explicit**, restart fallback. |
 | D6 | Console channel | **A — pure stdio now**, architected so B (host structured tap) can layer on without engine changes. |
-| D7 | Archive/`.love` mounting: who unzips | **Open** — host-side JS unzip vs a guest-side zip reader over the in-tree zlib. Directory enumeration (`getDirectoryItems` over `fs_list`) landed pre-step-7; runtime zip mounting is deferred (most browser games do not mount a `.zip` at runtime). See D7 below. |
+| D7 | Archive/`.love` mounting: who unzips | **Open — tracked in #48.** Directory enumeration (`getDirectoryItems` over `fs_list`) is built; runtime zip mounting waits on the decision. |
 
 ### D1 — Filesystem seam: replace the module, or keep PhysFS and reseam its IO
 
@@ -345,43 +345,17 @@ durability are all settled:
 - **DECIDED — Option A**, at 6.3 — the point of step 6 is to *build* the seam
   graphics faked.
 
-### D4 — Reload granularity (live-edit): whole-chunk re-eval vs. function-body hotswap
+### D4 — Reload granularity (live-edit) — OPEN, tracked in #47
 
-The mechanism that must satisfy the reload invariant (below). A file-scope
-`local` is both how a *tuning constant* (`GRAVITY`) and *evolved state* (`score`)
-are written, and Lua can't tell them apart syntactically.
+An open fork lives in the tracker, not here (`CONTRIBUTING.md` §3.3). The three
+options with their trade-offs, the reopen trigger and what it gates are in
+**#47**.
 
-- **Option A — whole-chunk re-eval.** Re-run the edited chunk; reassign its
-  functions/globals.
-  - **Pros:** dead simple, deterministic.
-  - **Cons:** resets file-scope locals → violates the invariant for state held
-    there; a `local x` assigned in `love.load` becomes nil (load isn't re-run) →
-    crash. Safe only if game state lives in tables/globals the chunk top level
-    doesn't overwrite.
-- **Option B — function-body hotswap** (rxi's `lume.hotswap`): load the new chunk
-  sandboxed, copy new function bodies into the old function objects, preserving
-  upvalues/state.
-  - **Pros:** preserves live state; satisfies the invariant for the tuning /
-    update / draw case ("notebook magic").
-  - **Cons:** leaky at the edges (new/removed upvalues, changed function identity
-    held by live references, added/removed functions); needs the debug library.
-- **Option C — convention + re-eval.** Require state to live in a designated
-  table populated in `love.load` (not re-run); re-eval reassigns functions +
-  top-level constants but never that table.
-  - **Pros:** simpler than full hotswap; predictable; teachable.
-  - **Cons:** imposes a game convention; non-conformant games fall back to
-    restart.
-- **OPEN — not C; between A and B; needs more discussion.** Restart is the blessed
-  fallback for whatever the chosen mechanism can't apply. Post-step-6; blocks
-  nothing in step 6.
-- **Beta disposition (Human-ratified):** deferred past Beta. Beta ships the
-  6.7 mechanism as-is — module-granularity live-edit (`pump_invalidate` + the
-  write path, live for `require`'d game modules) with **restart** as the honest
-  fallback for `main.lua`-direct edits (which `main.lua` is not `require`'d, so
-  the whole-chunk D4=A path would be needed to make live). `main.lua`-direct
-  live-edit is explicitly **not** a Beta requirement; the interactive shell
-  demonstrates module-granularity live-edit only. D4 is revisited if/when a
-  consumer needs `main.lua`-direct hotswap.
+What is settled and so stays here: the mechanism must satisfy the reload
+invariant below, and the difficulty it has to survive is that a file-scope
+`local` is how both a tuning constant and evolved state get written, which Lua
+cannot tell apart syntactically. Restart is the blessed fallback for whatever
+the chosen mechanism cannot apply.
 
 ### D5 — Supported-edit class (live-edit): what is guaranteed live
 
@@ -425,36 +399,19 @@ control over what's included — kept faithful.
   if A proves insufficient. The stdio half exists already (the witnesses read
   fd 1).
 
-### D7 — Archive / `.love`-zip mounting: who unzips (OPEN)
+### D7 — Archive / `.love`-zip mounting: who unzips — OPEN, tracked in #48
 
-Splitting the two features PhysFS used to provide behind `love.filesystem`:
+An open fork lives in the tracker, not here (`CONTRIBUTING.md` §3.3). The fork,
+both options with their trade-offs, the reopen trigger and what it gates are in
+**#48**.
 
-- **Directory enumeration** (`getDirectoryItems`) — **landed** (pre-step-7). A
-  new `fs_list` host import (size-then-fill, mirroring `fs_read`) returns the
-  immediate children of a directory; the host merges the read-only project and
-  the writable save namespace and de-dupes, exactly the merged listing PhysFS
-  gave across a mounted search path. Games call this routinely (asset discovery,
-  level lists), so it was the clearly-needed half. Witnessed:
-  `wasi/platform/run-fs-list.sh`.
-- **Archive / `.love`-zip mounting** (`mount*`) — **still deferred, and it forces
-  a decision**, because PhysFS's zip archiver is gone. Two use cases:
-  - *`.love`-as-source* (boot-time) — the host already presents the project
-    pre-unpacked (the `.love` pillar); no engine work needed. Low priority.
-  - *runtime `mount` of a zip asset* — a running game mounting a downloaded or
-    generated archive. This is the one that forces the choice:
-    - **Option A — host unzips in JS.** `mount` becomes a host import; the JS
-      host decodes the zip (browser `DecompressionStream` or a JS unzip) and
-      exposes the entries as a new namespace layer. No zip code in wasm (the
-      D1=A ethos); but `mount(Data*)` mounts an in-wasm-memory blob, so its bytes
-      would have to cross back out to JS to decode.
-    - **Option B — guest-side zip reader over the in-tree zlib.** `wasi/vendor/zlib`
-      is already in the tree and gives raw `inflate`; a small zip-central-directory
-      reader on top keeps mount ordering guest-side and handles `mount(Data*)`
-      without a round-trip — but partially rebuilds the archive machinery D1=A
-      shed.
-  - **OPEN.** Not resolved: most browser games don't runtime-mount a zip, so the
-    corpus is the right evidence for which use case (and thus which option) is
-    worth building. Recorded here so the choice is deliberate, not defaulted.
+What is settled and so stays here: replacing PhysFS split its two roles.
+**Directory enumeration** is built — an `fs_list` host import returns a
+directory's immediate children, and the host merges the read-only project with
+the writable save namespace and de-dupes, reproducing the merged listing PhysFS
+gave across a mounted search path (`wasi/platform/run-fs-list.sh`). **Archive
+mounting** is not, and cannot be built without closing #48, because PhysFS's zip
+archiver went with it.
 
 ## Resolved by the reload invariant (recorded as decided, not open)
 

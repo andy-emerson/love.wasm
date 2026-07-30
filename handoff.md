@@ -13,11 +13,15 @@ A real game runs, and that is merged to `wasi`. The engine, compiled to
 `love.load`, `love.update`/`love.draw` and present, with graphics, filesystem,
 sound, audio and physics working together in one artifact.
 
-Two limits on that sentence, both deliberate. The game is a **test fixture
-written into the witness** (`wasi/platform/run-browser-game.mjs`) — a real,
-desktop-compatible LÖVE project, but not a third-party `.love` — and it runs
-**headless under Playwright**, not as a page anyone can play. The `testing/`
-corpus has not been run under this build.
+There is also an **interactive shell** (`wasi/shell/`): a page that loads a
+project from disk, pumps it on `requestAnimationFrame`, forwards real DOM
+keyboard and mouse events into `love.event`, and applies a module edit to the
+running game without a reload. Beta step 1 is done, witnessed by
+`wasi/shell/run.sh` and CI-enforced.
+
+What is still unproven: no third-party `.love` has run — the projects so far are
+real, desktop-compatible LÖVE, but written here — and the `testing/` corpus has
+not been run under this build.
 
 `love.thread` is the one major module still stubbed (build-order step 7).
 
@@ -30,43 +34,38 @@ on its own, which is not the same as building every downstream consumer.
 
 Five steps get there, and each names the evidence that will close it.
 
-### 1. Interactive standalone shell — the next step
+### 1. Interactive standalone shell — DONE
 
-A minimal browser page that instantiates the union artifact, wires the existing
-host seams to **live** sources, pumps on `requestAnimationFrame`, and shows a
-playable canvas. This is assembly of seams that already exist rather than new
-engine work: the host fulfillers in `wasi/host/` are written, and
-`run-browser-game.mjs` already boots the real `boot.lua` on rAF. What is missing
-is that those hosts are consumed by **stringification into a Playwright page**,
-driven by a **baked event script**, against a **canned in-memory project**.
-Step 1 turns each of the three into a live source.
+`wasi/shell/` is a game player: `serve.sh` serves the page and, given a
+directory, mounts a project at `/__project/`; `player.mjs` imports the host
+fulfillers as modules, loads the project over a `manifest.json` contract, and
+pumps the union artifact on `requestAnimationFrame`, pausing when the tab is
+hidden or unfocused. `input-host-browser.mjs` is the live counterpart to the
+baked `input-host.mjs`, which stays as it is so both witness legs can share one
+host. Live-edit is module granularity over the existing `pump_invalidate()`;
+`main.lua` and `conf.lua` are reported restart-only, because making them live is
+#47 (D4) and outside Beta.
 
-- **Shape:** game-player only. Not a REPL, not an editor or agent UI — that is
-  the downstream consumer's job.
-- **Live input:** forward real DOM events into the `love_input` seam. Forward
-  the common events, `preventDefault` on game keys, pause on tab blur; IME and
-  pointer-lock are deferred. `input-host.mjs` is self-contained by contract so
-  both witness legs can share one host, so the live version is a sibling —
-  `gl-host.mjs` / `gl-host-browser.mjs` is the precedent already in the tree —
-  not an edit to it.
-- **Live-edit:** module granularity only, over the existing `pump_invalidate()`
-  and write path. `main.lua`-direct live-edit stays deferred (D4); restart is
-  the fallback.
-- **Packaging:** stays a local dev artifact loading the raw `.wasm`. Does not
-  touch #7.
-- **Evidence that closes it:** a witness driving the real page in Chromium —
-  synthetic DOM key events through the live input path, an assertion that the
-  game visibly responds, and one reload cycle — wired into `witness.yml`. That
-  needs a fixture that responds to input; the present one only falls under
-  gravity.
+Divergences declared in the host's own header: physical-`code` keys mapped to a
+US layout, no IME, normalized wheel deltas, and pointer-lock and cursor-warp
+reported as failures rather than faked.
 
-### 2. Real third-party games
+**Evidence:** `wasi/shell/run.sh` in real Chromium, in `witness.yml`. A project
+from disk runs (its own `conf.lua` sizes the canvas, and an asset is read from a
+subdirectory); real DOM key events move the game, it stops on keyup, and it moves
+back on the opposite key; a module edited on disk reaches the running instance,
+and a `main.lua` edit is reported restart-only rather than silently ignored.
 
-Run actual open-source LÖVE 12 games rather than the fixture. **Do not bundle a
+### 2. Real third-party games — the next step
+
+Run actual open-source LÖVE 12 games rather than the fixture. The shell already
+loads any directory: `wasi/shell/serve.sh 8080 ~/love-games/mygame`. **Do not bundle a
 game in the repository** — keep a local folder of a few small free ones.
-Selection: pure LÖVE inside the linked envelope (no `love.thread`, no
-`love.video`, no networking), preferring games that have corpus `expected/`
-outputs where possible. **Evidence:** boots, playable, no crash, visually
+Selection: pure LÖVE inside the linked envelope, which is now concrete — the
+union artifact links sixteen modules, and `boot.lua` requires every module a
+`conf.lua` enables, so a game must disable `joystick`, `touch`, `sensor`, `video`
+and `thread` or it will not boot. Prefer games with corpus `expected/` outputs
+where possible. **Evidence:** boots, playable, no crash, visually
 plausible. Pixel parity is step 3's job.
 
 ### 3. Sliced corpus parity
@@ -101,15 +100,15 @@ These gate work, and only the Human closes them (`AGENTS.md`, "Records").
 
 | Decision | The fork | What it gates |
 |---|---|---|
-| D4 (`DESIGN.md`) | reload granularity: whole-chunk re-eval vs function-body hotswap | deferred past Beta; module granularity plus restart is what ships |
-| D7 (`DESIGN.md`) | who unzips a runtime-mounted archive: host JS vs a guest zip reader over the in-tree zlib | archive mounting; enumeration shipped without needing it |
+| #47 (D4) | reload granularity: whole-chunk re-eval vs function-body hotswap | deferred past Beta; module granularity plus restart is what ships |
+| #48 (D7) | who unzips a runtime-mounted archive: host JS vs a guest zip reader over the in-tree zlib | archive mounting; enumeration shipped without needing it |
 | step-7 divergences | which desktop `love.thread` behaviors we accept losing | enumerated when the thread design document is written |
 | #7 | packaging: single `.js` vs `.js` + `.wasm` | step 8, decided by measurement, post-Beta |
 
 `DESIGN.md` records D1–D3, D5 and D6 as closed, carrying the alternatives that
-lost. Under `CONTRIBUTING.md` §3.3 an open decision belongs in the issue tracker
-rather than inside a durable document, so D4 and D7 want promoting to issues;
-that has not been done.
+lost. D4 and D7 are open, so under `CONTRIBUTING.md` §3.3 they live in the
+tracker — #47 and #48 — and `DESIGN.md` keeps only what is settled about each
+and points at the issue.
 
 ## Practical notes
 

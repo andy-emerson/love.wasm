@@ -27,7 +27,13 @@
 //
 // Self-contained by contract (no imports, no outer-scope refs), so it can be
 // stringified and serialized into a page like the other browser hosts.
-export function makeWebGLWinHost() {
+// `newCanvas(w, h)` lets a caller supply the drawing surface. The default is an
+// OffscreenCanvas, which is what every witness wants: no page, no compositor,
+// and preserveDrawingBuffer keeps the presented pixels readable. The interactive
+// shell passes a factory returning a real <canvas> in the document, so the same
+// host drives a surface a player can see — the only difference between a
+// witnessed frame and a visible one.
+export function makeWebGLWinHost(newCanvas) {
   let canvas = null;
   let gl = null;
 
@@ -262,7 +268,7 @@ export function makeWebGLWinHost() {
     // the witness), preserveDrawingBuffer so the presented backbuffer survives
     // until glReadPixels (Graphics::present's screenshot readback of FBO 0).
     window_setmode(w, h, stencil, depth, _msaa, _vsync) {
-      canvas = new OffscreenCanvas(w, h);
+      canvas = newCanvas ? newCanvas(w, h) : new OffscreenCanvas(w, h);
       gl = canvas.getContext('webgl2', {
         preserveDrawingBuffer: true,
         alpha: true,
@@ -277,9 +283,10 @@ export function makeWebGLWinHost() {
       h[outWPtr >> 2] = canvas ? canvas.width : 0;
       h[outHPtr >> 2] = canvas ? canvas.height : 0;
     },
-    // OffscreenCanvas has nothing to blit to; preserveDrawingBuffer keeps the
-    // pixels. A flush makes the frame's GL commands observable, matching the
-    // present() contract without a real page compositor.
+    // A flush is the whole of present() here. An OffscreenCanvas has nothing to
+    // blit to and preserveDrawingBuffer keeps the pixels readable; a real
+    // in-document canvas is composited by the page. Either way the frame's GL
+    // commands are observable once flushed, which is what present() promises.
     window_present() { if (gl) gl.flush(); },
   };
 

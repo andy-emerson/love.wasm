@@ -101,15 +101,15 @@ These gate work, and only the Human closes them (`AGENTS.md`, "Records").
 
 | Decision | The fork | What it gates |
 |---|---|---|
-| D4 (`DESIGN.md`) | reload granularity: whole-chunk re-eval vs function-body hotswap | deferred past Beta; module granularity plus restart is what ships |
-| D7 (`DESIGN.md`) | who unzips a runtime-mounted archive: host JS vs a guest zip reader over the in-tree zlib | archive mounting; enumeration shipped without needing it |
+| #47 (D4) | reload granularity: whole-chunk re-eval vs function-body hotswap | deferred past Beta; module granularity plus restart is what ships |
+| #48 (D7) | who unzips a runtime-mounted archive: host JS vs a guest zip reader over the in-tree zlib | archive mounting; enumeration shipped without needing it |
 | step-7 divergences | which desktop `love.thread` behaviors we accept losing | enumerated when the thread design document is written |
 | #7 | packaging: single `.js` vs `.js` + `.wasm` | step 8, decided by measurement, post-Beta |
 
 `DESIGN.md` records D1–D3, D5 and D6 as closed, carrying the alternatives that
-lost. Under `CONTRIBUTING.md` §3.3 an open decision belongs in the issue tracker
-rather than inside a durable document, so D4 and D7 want promoting to issues;
-that has not been done.
+lost. D4 and D7 are open, so under `CONTRIBUTING.md` §3.3 they live in the
+tracker — #47 and #48 — and `DESIGN.md` keeps only what is settled about each
+and points at the issue.
 
 ## Practical notes
 

@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.6b. The REDUCED dependency stub
+// love.wasm platform seam — build-order step 6.6b. The REDUCED dependency stub
 // for the first-frame union build.
 //
 // wasi/graphics/graphics-deps-stub.cpp (the windowless step-4 graphics build)

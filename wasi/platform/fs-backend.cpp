@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.2. The real love.filesystem
+// love.wasm platform seam — build-order step 6.2. The real love.filesystem
 // backend on the love_fs VFS seam (6.1). See fs-backend.h for the shape; this
 // file is where the imports are declared and where each honest stop lives.
 //

@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi preview-limitation warning mechanism (issue #27). See preview-warn.h
+// love.wasm preview-limitation warning mechanism (issue #27). See preview-warn.h
 // for the contract. Implementation notes:
 //   - Dedup is a function-local static std::set<std::string>: the wasm reactor
 //     is single-threaded (a browser tab; the pump drives one lua_State), so no
@@ -50,6 +50,6 @@ extern "C" void preview_warn_once(const char *key, const char *message)
 	if (!seen.insert(std::string(key)).second)
 		return;
 
-	std::fprintf(stderr, "[love-wasi preview] %s\n", message);
+	std::fprintf(stderr, "[love.wasm preview] %s\n", message);
 	std::fflush(stderr);
 }

@@ -1,6 +1,6 @@
 #ifndef __CONFIG_TYPES_H__
 #define __CONFIG_TYPES_H__
-/* love-wasi: generated from config_types.h.in for wasm32-wasi (stdint path).
+/* love.wasm: generated from config_types.h.in for wasm32-wasi (stdint path).
  * Not upstream-verbatim — this is the build product configure/cmake would emit. */
 #define INCLUDE_INTTYPES_H 0
 #define INCLUDE_STDINT_H 1

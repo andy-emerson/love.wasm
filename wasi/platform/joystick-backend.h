@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.5: the real love.joystick /
+// love.wasm platform seam — build-order step 6.5: the real love.joystick /
 // love.gamepad backend for wasm32-wasi, on the host-import love_gamepad seam over
 // the browser Gamepad API. It replaces SDL's joystick/gamepad backend (which
 // polls a native controller subsystem the browser has no access to) with one fed
@@ -52,11 +52,11 @@
 // motion sensors (no gamepad sensor stream here).
 //
 // This header lives out-of-tree (readme.md: the src tree stays upstream-shaped);
-// wrap_JoystickModule.cpp includes it under LOVE_WASI via -I wasi/platform and
+// wrap_JoystickModule.cpp includes it under LOVE_WASM via -I wasi/platform and
 // constructs the wasm:: module in place of the sdl:: one at its one guarded
 // factory.
-#ifndef LOVE_WASI_PLATFORM_JOYSTICK_BACKEND_H
-#define LOVE_WASI_PLATFORM_JOYSTICK_BACKEND_H
+#ifndef LOVE_WASM_PLATFORM_JOYSTICK_BACKEND_H
+#define LOVE_WASM_PLATFORM_JOYSTICK_BACKEND_H
 
 #include "common/config.h"
 #include "common/int.h"
@@ -209,4 +209,4 @@ private:
 } // joystick
 } // love
 
-#endif // LOVE_WASI_PLATFORM_JOYSTICK_BACKEND_H
+#endif // LOVE_WASM_PLATFORM_JOYSTICK_BACKEND_H

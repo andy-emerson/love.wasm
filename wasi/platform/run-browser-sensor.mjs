@@ -2,7 +2,7 @@
 // love.sensor warned-stub backend driven in real Chromium (frames on
 // requestAnimationFrame), via the shared harness (wasi/host/witness-harness.mjs)
 // and the shared WASI shim. The shim's fd_write accumulates every fd — stderr
-// included — into its host tap (result.stdout), so the "[love-wasi preview]"
+// included — into its host tap (result.stdout), so the "[love.wasm preview]"
 // line lands there. The witness calls getData TWICE (same feature) yet the tap
 // must hold exactly ONE preview line — the ONE-TIME dedup, witnessed and
 // printed. No browser APIs are used, so a blank page is enough.
@@ -29,7 +29,7 @@ for (const line of result.lines) console.log(line);
 if (result.error) console.log('--- error: ' + result.error + ' ---');
 
 const tap = result.stdout || '';
-const previewLines = tap.split('\n').filter((l) => l.includes('[love-wasi preview]'));
+const previewLines = tap.split('\n').filter((l) => l.includes('[love.wasm preview]'));
 const count = previewLines.length;
 
 console.log('--- host tap (fd_write) preview lines ---');

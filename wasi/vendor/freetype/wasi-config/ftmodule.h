@@ -1,4 +1,4 @@
-/* love-wasi FreeType module list — the TrueType/OpenType + autohint + smooth
+/* love.wasm FreeType module list — the TrueType/OpenType + autohint + smooth
  * subset this build compiles. Overrides upstream include/freetype/config/
  * ftmodule.h via -DFT_CONFIG_MODULES_H. Keep in sync with build.sh's file set. */
 FT_USE_MODULE( FT_Module_Class,      autofit_module_class )

@@ -2,7 +2,7 @@
 # One-command issue-#27 witness: build the LÖVE-core + real love.sensor
 # warned-stub artifact and require STEP27-WARN-WITNESS: PASS under BOTH node
 # (node:wasi) and real Chromium (rAF-driven), AND that the one-time
-# "[love-wasi preview]" warning appears exactly once across two uses of the
+# "[love.wasm preview]" warning appears exactly once across two uses of the
 # warned feature (getData) — asserted from the host tap by each leg.
 #
 #   PREFIX=/path/to/wasi-eh wasi/platform/run-sensor.sh

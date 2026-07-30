@@ -1,5 +1,5 @@
 // Step-5 resampling-delegation probe: can WebAudio do the rate conversion for
-// us — for BOTH playback and mic capture — so love-wasi needs no resampler of
+// us — for BOTH playback and mic capture — so love.wasm needs no resampler of
 // its own? Decides between "delegate resampling everywhere" (no custom DSP) and
 // "vendor one proven resampler". This original runs Chromium only (the pre-
 // provisioned browser). The cross-engine successor probe-resample-xengine.mjs
@@ -36,7 +36,7 @@ function makeSineWav(freq, rate, seconds) {
 }
 
 function resolvePlaywright() {
-  for (const base of [process.cwd(), '/root/.love-wasi/npm', process.env.HOME || '/root']) {
+  for (const base of [process.cwd(), '/root/.love.wasm/npm', process.env.HOME || '/root']) {
     try { return createRequire(base + '/noop.js')('playwright-core'); } catch { /* next */ }
   }
   throw new Error('playwright-core not resolvable');

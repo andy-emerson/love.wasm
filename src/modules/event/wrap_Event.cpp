@@ -23,8 +23,8 @@
 // LOVE
 #include "common/runtime.h"
 #include "common/Reference.h"
-#ifdef LOVE_WASI
-// love-wasi (build-order step 6.4): the browser event backend fed by forwarded
+#ifdef LOVE_WASM
+// love.wasm (build-order step 6.4): the browser event backend fed by forwarded
 // DOM events, in place of the SDL native event loop. See wasi/platform/input-backend.h.
 #include "input-backend.h"
 #else
@@ -279,7 +279,7 @@ extern "C" int luaopen_love_event(lua_State *L)
 	Event *instance = instance();
 	if (instance == nullptr)
 	{
-#ifdef LOVE_WASI
+#ifdef LOVE_WASM
 		luax_catchexcept(L, [&](){ instance = new love::event::wasm::Event(); });
 #else
 		luax_catchexcept(L, [&](){ instance = new love::event::sdl::Event(); });

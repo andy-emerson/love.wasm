@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.3: the real love.window backend
+// love.wasm platform seam — build-order step 6.3: the real love.window backend
 // for wasm32-wasi, on the host-import love_win seam. It replaces the SDL window
 // backend (which drives a native OS window + GL context the browser has no
 // access to) with a thin bridge over three host imports: window_setmode creates
@@ -43,10 +43,10 @@
 // window-backend.cpp at each surface.
 //
 // This header lives out-of-tree (readme.md: the src tree stays upstream-shaped);
-// wrap_Window.cpp includes it under LOVE_WASI via -I wasi/platform and
+// wrap_Window.cpp includes it under LOVE_WASM via -I wasi/platform and
 // constructs wasm::Window in place of sdl::Window at the one guarded factory.
-#ifndef LOVE_WASI_PLATFORM_WINDOW_BACKEND_H
-#define LOVE_WASI_PLATFORM_WINDOW_BACKEND_H
+#ifndef LOVE_WASM_PLATFORM_WINDOW_BACKEND_H
+#define LOVE_WASM_PLATFORM_WINDOW_BACKEND_H
 
 #include "common/config.h"
 #include "common/Object.h"
@@ -182,4 +182,4 @@ private:
 } // window
 } // love
 
-#endif // LOVE_WASI_PLATFORM_WINDOW_BACKEND_H
+#endif // LOVE_WASM_PLATFORM_WINDOW_BACKEND_H

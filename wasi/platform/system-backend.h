@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.6: the real love.system backend
+// love.wasm platform seam — build-order step 6.6: the real love.system backend
 // for wasm32-wasi, on the host-import love_system seam. It replaces the SDL
 // backend (which reads native OS power/clipboard/CPU state) with a thin bridge
 // over a handful of host imports that map onto GENUINE browser capabilities.
@@ -45,10 +45,10 @@
 //                              battery reporting).
 //
 // This header lives out-of-tree (readme.md: the src tree stays upstream-shaped);
-// wrap_System.cpp includes it under LOVE_WASI via -I wasi/platform and constructs
+// wrap_System.cpp includes it under LOVE_WASM via -I wasi/platform and constructs
 // wasm::System in place of sdl::System at the one guarded factory.
-#ifndef LOVE_WASI_PLATFORM_SYSTEM_BACKEND_H
-#define LOVE_WASI_PLATFORM_SYSTEM_BACKEND_H
+#ifndef LOVE_WASM_PLATFORM_SYSTEM_BACKEND_H
+#define LOVE_WASM_PLATFORM_SYSTEM_BACKEND_H
 
 #include "common/config.h"
 #include "system/System.h"
@@ -86,4 +86,4 @@ public:
 } // system
 } // love
 
-#endif // LOVE_WASI_PLATFORM_SYSTEM_BACKEND_H
+#endif // LOVE_WASM_PLATFORM_SYSTEM_BACKEND_H

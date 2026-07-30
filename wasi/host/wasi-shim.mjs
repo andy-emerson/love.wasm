@@ -1,4 +1,4 @@
-// The one hand-rolled WASI preview1 shim for love-wasi's browser host — the
+// The one hand-rolled WASI preview1 shim for love.wasm's browser host — the
 // seed the step-4 WebGL2 import surface grows into (readme.md: "the shim is the
 // seed of the runtime host"). Consolidated here from three near-identical inline
 // copies that lived in the step-0/2/3 browser runners.

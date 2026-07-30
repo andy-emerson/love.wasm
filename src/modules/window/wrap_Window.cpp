@@ -19,7 +19,7 @@
  **/
 
 #include "wrap_Window.h"
-#ifdef LOVE_WASI
+#ifdef LOVE_WASM
 // wasm32-wasi swaps the SDL window backend for the host-import love_win backend
 // (build-order step 6.3): SDL drives a native window + GL context the browser
 // doesn't have. The backend lives out-of-tree in wasi/platform/ so the src tree
@@ -838,7 +838,7 @@ extern "C" int luaopen_love_window(lua_State *L)
 {
 	Window *instance = instance();
 	if (instance == nullptr)
-#ifdef LOVE_WASI
+#ifdef LOVE_WASM
 		luax_catchexcept(L, [&](){ instance = new love::window::wasm::Window(); });
 #else
 		luax_catchexcept(L, [&](){ instance = new love::window::sdl::Window(); });

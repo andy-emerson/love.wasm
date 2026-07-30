@@ -22,7 +22,7 @@ export function makeSystemHost() {
   const te = new TextEncoder(), td = new TextDecoder();
 
   // Deterministic baked values (a real host swaps these for navigator.*).
-  let clipboard = te.encode('love-wasi clipboard');
+  let clipboard = te.encode('love.wasm clipboard');
   const PROCESSOR_COUNT = 4;
   const LOCALES = ['en-US', 'en'];
 

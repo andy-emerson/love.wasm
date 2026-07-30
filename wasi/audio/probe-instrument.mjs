@@ -1,6 +1,6 @@
 // Step-5 sub-step 0 — "witness the witness": prove the AUDIO INSTRUMENT works
 // in *our* exact Chromium before any WebAudio backend is built on top of it.
-// love-wasi is tested without ears — we capture PCM and analyse it numerically.
+// love.wasm is tested without ears — we capture PCM and analyse it numerically.
 // This probe validates the two browser-side mechanisms that make that possible:
 //
 //   A. OfflineAudioContext readback — render a known 440 Hz tone to a buffer
@@ -51,7 +51,7 @@ function makeSineWav(freq, rate, seconds) {
 }
 
 function resolvePlaywright() {
-  for (const base of [process.cwd(), '/root/.love-wasi/npm', process.env.HOME || '/root']) {
+  for (const base of [process.cwd(), '/root/.love.wasm/npm', process.env.HOME || '/root']) {
     try {
       const require = createRequire(base + '/noop.js');
       return require('playwright-core');

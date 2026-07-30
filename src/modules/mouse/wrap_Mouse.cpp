@@ -23,8 +23,8 @@
 #include "wrap_Cursor.h"
 #include "common/config.h"
 
-#ifdef LOVE_WASI
-// love-wasi (build-order step 6.4): mouse state read from the shared input
+#ifdef LOVE_WASM
+// love.wasm (build-order step 6.4): mouse state read from the shared input
 // snapshot pump() maintains; cursor/visibility/pointer-lock via the love_input
 // host seam, in place of SDL_GetMouseState / SDL_SetCursor.
 #include "input-backend.h"
@@ -310,7 +310,7 @@ extern "C" int luaopen_love_mouse(lua_State *L)
 	Mouse *instance = instance();
 	if (instance == nullptr)
 	{
-#ifdef LOVE_WASI
+#ifdef LOVE_WASM
 		luax_catchexcept(L, [&](){ instance = new love::mouse::wasm::Mouse(); });
 #else
 		luax_catchexcept(L, [&](){ instance = new love::mouse::sdl::Mouse(); });

@@ -22,8 +22,8 @@
 
 #include "wrap_Keyboard.h"
 
-#ifdef LOVE_WASI
-// love-wasi (build-order step 6.4): keyboard state read from the shared input
+#ifdef LOVE_WASM
+// love.wasm (build-order step 6.4): keyboard state read from the shared input
 // snapshot pump() maintains, in place of SDL_GetKeyboardState.
 #include "input-backend.h"
 #else
@@ -232,7 +232,7 @@ extern "C" int luaopen_love_keyboard(lua_State *L)
 	Keyboard *instance = instance();
 	if (instance == nullptr)
 	{
-#ifdef LOVE_WASI
+#ifdef LOVE_WASM
 		luax_catchexcept(L, [&](){ instance = new love::keyboard::wasm::Keyboard(); });
 #else
 		luax_catchexcept(L, [&](){ instance = new love::keyboard::sdl::Keyboard(); });

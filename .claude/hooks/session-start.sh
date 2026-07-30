@@ -18,7 +18,7 @@
 # .github/workflows/publish-sysroot.yml is fetched and extracted. (Chromium is
 # already provisioned by the platform at $PLAYWRIGHT_BROWSERS_PATH.)
 #
-# Everything installs under $HOME/.love-wasi (out of the repo tree, so the
+# Everything installs under $HOME/.love.wasm (out of the repo tree, so the
 # working copy stays pristine), and the session env is persisted via
 # $CLAUDE_ENV_FILE. Idempotent: safe to re-run on resume/clear/compact.
 set -euo pipefail
@@ -29,21 +29,23 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
 
-DEPS="$HOME/.love-wasi"
+DEPS="$HOME/.love.wasm"
 PREFIX="$DEPS/wasi-eh"
 NODE_DIR="$DEPS/node"
 NPM_DIR="$DEPS/npm"
 PW_BROWSERS="${PLAYWRIGHT_BROWSERS_PATH:-/opt/pw-browsers}"
 
 # Overridable knobs (env wins), so a session can pin different versions.
-SYSROOT_TAG="${LOVE_WASI_SYSROOT_TAG:-sysroot}"
+SYSROOT_TAG="${LOVE_WASM_SYSROOT_TAG:-sysroot}"
 # The sysroot is published by THIS repo's publish-sysroot.yml as a release asset,
 # so fetch it from the same repo the working copy came from — derived from the
-# origin remote, so the fork it's developed on (wasiware/love-wasi today) and its
-# eventual canonical home both resolve without editing this line. A hardcoded org
-# here is the classic skew bug: the workflow publishes to $GITHUB_REPOSITORY, and
-# if the hook names a different repo the fetch 404s even though the asset exists.
-# Override with LOVE_WASI_SYSROOT_REPO=owner/repo.
+# origin remote, so a rename or a transfer resolves without editing this line. A
+# hardcoded org here is the classic skew bug: the workflow publishes to
+# $GITHUB_REPOSITORY, and if the hook names a different repo the fetch 404s even
+# though the asset exists. The fallback below only applies when origin is not a
+# github.com URL (a proxied checkout, say), so keep it pointing at the canonical
+# home.
+# Override with LOVE_WASM_SYSROOT_REPO=owner/repo.
 sysroot_repo() {
   local url
   url=$(git -C "$(dirname "${BASH_SOURCE[0]}")" remote get-url origin 2>/dev/null) || return 1
@@ -53,14 +55,14 @@ sysroot_repo() {
     *) return 1 ;;
   esac
 }
-SYSROOT_REPO="${LOVE_WASI_SYSROOT_REPO:-$(sysroot_repo || echo wasiware/love-wasi)}"
+SYSROOT_REPO="${LOVE_WASM_SYSROOT_REPO:-$(sysroot_repo || echo andy-emerson/love.wasm)}"
 SYSROOT_URL="https://github.com/$SYSROOT_REPO/releases/download/$SYSROOT_TAG/wasi-eh.tar.gz"
-NODE_VER="${LOVE_WASI_NODE_VER:-v24.18.0}"
-PLAYWRIGHT_VER="${LOVE_WASI_PLAYWRIGHT_VER:-1.61.1}"
+NODE_VER="${LOVE_WASM_NODE_VER:-v24.18.0}"
+PLAYWRIGHT_VER="${LOVE_WASM_PLAYWRIGHT_VER:-1.61.1}"
 
 SUDO=""; [ "$(id -u)" = 0 ] || SUDO="sudo"
 mkdir -p "$DEPS"
-log() { echo "[love-wasi hook] $*"; }
+log() { echo "[love.wasm hook] $*"; }
 
 use_node_dir=0   # set when we install our own Node under $NODE_DIR
 
@@ -127,8 +129,8 @@ else
     log "WARNING: could not fetch the sysroot tarball from $SYSROOT_URL."
     log "  Expected a publish-sysroot.yml release asset on $SYSROOT_REPO (tag: $SYSROOT_TAG)."
     log "  If that repo has no such release yet, trigger the workflow (workflow_dispatch),"
-    log "  or point at another repo's asset: LOVE_WASI_SYSROOT_REPO=owner/repo. Or build once:"
-    log "    WORK=\$HOME/.love-wasi/llvm-eh PREFIX=$PREFIX wasi/toolchain/build-libcxx-eh.sh"
+    log "  or point at another repo's asset: LOVE_WASM_SYSROOT_REPO=owner/repo. Or build once:"
+    log "    WORK=\$HOME/.love.wasm/llvm-eh PREFIX=$PREFIX wasi/toolchain/build-libcxx-eh.sh"
     log "  The witnesses need it; everything else is ready."
   fi
 fi
@@ -141,7 +143,7 @@ done
 ENV_OUT="${CLAUDE_ENV_FILE:-$DEPS/env.sh}"
 # Idempotent: SessionStart also fires on resume/clear/compact within the same
 # container, so guard on a marker to avoid appending duplicate exports.
-MARK="# love-wasi hook env"
+MARK="# love.wasm hook env"
 if ! grep -qF "$MARK" "$ENV_OUT" 2>/dev/null; then
   {
     echo "$MARK"

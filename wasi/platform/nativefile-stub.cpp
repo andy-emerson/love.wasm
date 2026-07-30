@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.2. A non-SDL NativeFile.
+// love.wasm platform seam — build-order step 6.2. A non-SDL NativeFile.
 //
 // The upstream NativeFile (src/modules/filesystem/NativeFile.cpp) is C stdio on
 // top of SDL_IOStream (<SDL3/SDL_iostream.h>), which this target has no SDL for,

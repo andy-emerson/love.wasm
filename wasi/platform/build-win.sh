@@ -7,7 +7,7 @@
 # Delta from wasi/graphics/build.sh (the step-4 graphics core), all here in the
 # build — never with rm (readme.md: the tree stays upstream-shaped):
 #   - ADD src/modules/window/wrap_Window.cpp (the real love.window Lua wrap; its
-#     LOVE_WASI factory seam constructs love::window::wasm::Window).
+#     LOVE_WASM factory seam constructs love::window::wasm::Window).
 #   - ADD wasi/platform/window-backend.cpp (the wasm backend on the love_win
 #     imports + the mandatory setHighDPIAllowedImplementation symbol).
 #   - Use wasi/platform/config (LOVE_ENABLE_WINDOW=1) instead of the graphics
@@ -15,7 +15,7 @@
 #   - Use wasi/boot/pump-ext.cpp (preload love only) instead of graphics-ext.cpp:
 #     the window witness drives the REAL love.window + love.graphics Lua API, so
 #     it needs no C++ witness bridges.
-#   -I wasi/platform lets wrap_Window.cpp's LOVE_WASI factory seam include
+#   -I wasi/platform lets wrap_Window.cpp's LOVE_WASM factory seam include
 #   window-backend.h.
 #   NOT compiled: sdl/Window.cpp (SDL native window + GL context).
 #

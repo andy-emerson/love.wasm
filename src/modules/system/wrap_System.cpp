@@ -20,8 +20,8 @@
 
 // LOVE
 #include "wrap_System.h"
-#ifdef LOVE_WASI
-// love-wasi (build-order step 6.6): the browser system backend on the love_system
+#ifdef LOVE_WASM
+// love.wasm (build-order step 6.6): the browser system backend on the love_system
 // host seam, in place of SDL's. See wasi/platform/system-backend.h.
 #include "system-backend.h"
 #else
@@ -149,7 +149,7 @@ extern "C" int luaopen_love_system(lua_State *L)
 	System *instance = instance();
 	if (instance == nullptr)
 	{
-#ifdef LOVE_WASI
+#ifdef LOVE_WASM
 		instance = new love::system::wasm::System();
 #else
 		instance = new love::system::sdl::System();

@@ -16,7 +16,7 @@
 #     love_fs read+write imports) and the non-SDL NativeFile stub
 #     (nativefile-stub.cpp).
 #   - NOT compiled: NativeFile.cpp (SDL3) and physfs/* (real OS fd layer).
-#   -I wasi/platform lets wrap_Filesystem.cpp's LOVE_WASI factory seam include
+#   -I wasi/platform lets wrap_Filesystem.cpp's LOVE_WASM factory seam include
 #   fs-backend.h.
 #
 #   PREFIX=/path/to/wasi-eh OUT=love-embed.wasm wasi/platform/build-embed.sh

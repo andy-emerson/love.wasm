@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.2: the real love.filesystem
+// love.wasm platform seam — build-order step 6.2: the real love.filesystem
 // backend for wasm32-wasi. It replaces PhysFS (which assumes a real OS fd
 // layer the browser lacks) with the host-import VFS seam proven in 6.1: every
 // read routes through the love_fs imports (fs_size / fs_read / fs_stat), which
@@ -34,10 +34,10 @@
 //
 // This header lives out-of-tree (readme.md: the src tree stays upstream-shaped;
 // the wasi build compiles the subset). wrap_Filesystem.cpp includes it under
-// LOVE_WASI via -I wasi/platform, and constructs wasi_fs::Filesystem in place of
+// LOVE_WASM via -I wasi/platform, and constructs wasi_fs::Filesystem in place of
 // physfs::Filesystem at the one guarded factory seam.
-#ifndef LOVE_WASI_PLATFORM_FS_BACKEND_H
-#define LOVE_WASI_PLATFORM_FS_BACKEND_H
+#ifndef LOVE_WASM_PLATFORM_FS_BACKEND_H
+#define LOVE_WASM_PLATFORM_FS_BACKEND_H
 
 #include "common/config.h"
 #include "filesystem/Filesystem.h"
@@ -190,4 +190,4 @@ private:
 } // filesystem
 } // love
 
-#endif // LOVE_WASI_PLATFORM_FS_BACKEND_H
+#endif // LOVE_WASM_PLATFORM_FS_BACKEND_H

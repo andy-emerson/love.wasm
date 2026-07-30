@@ -1,8 +1,8 @@
-# love-wasi embedding contract (build-order step 6.7)
+# love.wasm embedding contract (build-order step 6.7)
 
 This is the seam a **host** (an IDE, a live-edit runner, a game shell) fulfils to
 run a real LÖVE 12 game as wasm32-wasi in the browser. It is the boundary of this
-repo's responsibility: love-wasi ships and documents the contract; the downstream
+repo's responsibility: love.wasm ships and documents the contract; the downstream
 consumer (LoveIDE: editor, git-wasm save flow, agent live-edit UX) is a separate
 repo that *uses* it, out of scope here.
 
@@ -144,7 +144,7 @@ Chromium instantiate/bind/drive scaffolding.
 
 ## 4. Live-edit reload (D5=A — minimal & explicit, whole-chunk re-eval)
 
-**The reload invariant** (architect-set): `reload(edit)` at state S ≡ a fresh run
+**The reload invariant** (Human-set): `reload(edit)` at state S ≡ a fresh run
 of the new code that has reached S. Edits change the **future, not the past**:
 `love.load` does **not** re-run on reload (a fresh run reaching S already ran it
 once); only the per-frame path picks up edits. A broken save breaks the game —

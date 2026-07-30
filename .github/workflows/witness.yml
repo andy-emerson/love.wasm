@@ -4,8 +4,8 @@ name: witness
 # source drop (step 2, incl. drop provenance at its PIN), the LÖVE core
 # boot (step 3), and love.graphics on the reused opengl backend reseamed to
 # WebGL2 (step 4) must never silently rot. Every artifact also passes the
-# standardized-EH encoding gate. Durability target per AGENTS.md:
-# CI-enforced.
+# standardized-EH encoding gate. These are the executable evidence AGENTS.md
+# prefers: every claim they carry re-earns itself on every push.
 on:
   push:
     branches: [wasi]
@@ -184,7 +184,7 @@ jobs:
 
       - name: preview-limitation warning witness — love.sensor warned stub (issue #27, node + real Chromium)
         # Issue #27's mechanism: preview_warn_once emits a one-time
-        # [love-wasi preview] notice to the host tap when a preview-limited
+        # [love.wasm preview] notice to the host tap when a preview-limited
         # feature is used, non-fatally, returning a safe default. The love.sensor
         # warned stub is the witnessed example (motion sensors -> zeros); the
         # witness asserts non-fatal + safe-default + the one-time dedup (count 1
@@ -193,7 +193,7 @@ jobs:
 
       - name: platform witness — real love.timer/love.system (step 6.6a, node + real Chromium)
         # Build-order step 6.6a: love.timer (a concrete class — Timer.cpp routes
-        # through clock_gettime(CLOCK_MONOTONIC)/gettimeofday under the LOVE_WASI arm
+        # through clock_gettime(CLOCK_MONOTONIC)/gettimeofday under the LOVE_WASM arm
         # of its POSIX guard; love::sleep is the honest browser no-op) + love.system
         # (the wasm backend on the love_system seam for the genuine browser
         # capabilities — processor count, clipboard, openURL, locales; getOS "Web"

@@ -24,7 +24,7 @@
 #include "common/runtime.h"
 #include "common/Reference.h"
 #ifdef LOVE_WASM
-// love-wasi (build-order step 6.4): the browser event backend fed by forwarded
+// love.wasm (build-order step 6.4): the browser event backend fed by forwarded
 // DOM events, in place of the SDL native event loop. See wasi/platform/input-backend.h.
 #include "input-backend.h"
 #else

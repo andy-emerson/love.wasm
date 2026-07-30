@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.6. love::sleep for wasm32-wasi.
+// love.wasm platform seam — build-order step 6.6. love::sleep for wasm32-wasi.
 //
 // The desktop implementation (src/common/delay.cpp) is SDL_DelayNS, which is
 // EXCLUDED from every wasm build (SDL is not linked). love::sleep is declared in

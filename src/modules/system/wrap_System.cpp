@@ -21,7 +21,7 @@
 // LOVE
 #include "wrap_System.h"
 #ifdef LOVE_WASM
-// love-wasi (build-order step 6.6): the browser system backend on the love_system
+// love.wasm (build-order step 6.6): the browser system backend on the love_system
 // host seam, in place of SDL's. See wasi/platform/system-backend.h.
 #include "system-backend.h"
 #else

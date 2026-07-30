@@ -1,4 +1,4 @@
-// love-wasi frame pump — build-order step 2.
+// love.wasm frame pump — build-order step 2.
 //
 // The engine-side half of the browser main loop: Lua (the lua.wasm source
 // drop) runs as a RESIDENT COROUTINE inside this artifact, and the host

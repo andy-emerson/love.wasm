@@ -1,4 +1,4 @@
-// love-wasi platform seam — the UNION "real game" build's reduced dependency stub.
+// love.wasm platform seam — the UNION "real game" build's reduced dependency stub.
 //
 // Forked from frame-deps-stub.cpp. The frame build stubbed the audio, video and
 // thread module symbols love.graphics references at link time but the frame did

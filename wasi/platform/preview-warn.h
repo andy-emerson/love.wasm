@@ -18,11 +18,11 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — the preview-limitation warning mechanism (issue
+// love.wasm platform seam — the preview-limitation warning mechanism (issue
 // #27). A small, host-routed, ONE-TIME, NON-FATAL warning that a
 // preview-limited feature was used.
 //
-// This is love-wasi's OWN diagnostic surface, NOT an engine one: it is used
+// This is love.wasm's OWN diagnostic surface, NOT an engine one: it is used
 // only by the fork's out-of-tree warned-stub backends (e.g. the love.sensor
 // wasm backend, wasi/platform/sensor-backend.cpp), never wired into any shared
 // engine compute/graphics path — that would be a fork-private, un-upstreamable

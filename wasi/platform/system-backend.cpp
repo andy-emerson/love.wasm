@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.6 implementation. See the header
+// love.wasm platform seam — build-order step 6.6 implementation. See the header
 // (system-backend.h) for the design: real browser capabilities ride host imports
 // (processor count, clipboard, openURL, locales); genuinely-absent ones are
 // honest defaults (memory size 0, power unknown).

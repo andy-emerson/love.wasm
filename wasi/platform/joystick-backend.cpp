@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.5 implementation. See the header
+// love.wasm platform seam — build-order step 6.5 implementation. See the header
 // (joystick-backend.h) for the design: a poll-based love_gamepad seam over the
 // browser Gamepad API, the per-frame diff that synthesizes the joystick/gamepad
 // events SDL would push, and the W3C-standard <-> LÖVE mapping kept in C++.

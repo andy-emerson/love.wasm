@@ -24,7 +24,7 @@
 #include "common/config.h"
 
 #ifdef LOVE_WASM
-// love-wasi (build-order step 6.4): mouse state read from the shared input
+// love.wasm (build-order step 6.4): mouse state read from the shared input
 // snapshot pump() maintains; cursor/visibility/pointer-lock via the love_input
 // host seam, in place of SDL_GetMouseState / SDL_SetCursor.
 #include "input-backend.h"

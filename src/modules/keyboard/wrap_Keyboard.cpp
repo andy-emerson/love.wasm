@@ -23,7 +23,7 @@
 #include "wrap_Keyboard.h"
 
 #ifdef LOVE_WASM
-// love-wasi (build-order step 6.4): keyboard state read from the shared input
+// love.wasm (build-order step 6.4): keyboard state read from the shared input
 // snapshot pump() maintains, in place of SDL_GetKeyboardState.
 #include "input-backend.h"
 #else

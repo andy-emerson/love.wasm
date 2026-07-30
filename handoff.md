@@ -95,32 +95,60 @@ game sets `t.modules.*`, so both die in boot before reaching `main.lua` —
 none of them. No game-side filter catches this, and requiring every game to edit
 its `conf.lua` would break the `.love`-runs-unmodified pillar outright.
 
-### 2a. Widen the artifact so a default `conf.lua` boots — DO THIS FIRST
+### 2a. Make the artifact satisfy LÖVE's defaults — DO THIS FIRST
 
-**Needs the Human to confirm**, because it changes the module-disposition table
-in `readme.md`.
+**Whose defect this is, settled from the source.** `boot.lua:204` defaults every
+one of the twenty modules to `true`, then loads them with a bare
+`require("love." .. v)` that hard-errors on a missing module. So `t.modules.*` has
+never been required of any game, on 11 or 12 — omitting it is idiomatic, and on
+desktop the default is always satisfiable because desktop links everything. It
+becomes unsatisfiable only on a build shipping a subset, which is ours. Both
+candidate games are correct; the incompatibility is ours, and calling it a
+"selection criterion" for games had it backwards.
 
-| Module | What it needs | Backend today |
-|---|---|---|
-| `joystick` | link it | `wasi/platform/joystick-backend.cpp`, real and witnessed |
-| `sensor` | link it | `wasi/platform/sensor-backend.cpp`, the #27 warned stub |
-| `touch` | a new warned stub | SDL only |
-| `video` | a module-level warned stub so `require` succeeds | none, Theora dropped |
-| `thread` | a module-level warned stub so `require` succeeds | none, step 7 |
+Two things this must NOT do. Editing a game's `conf.lua` voids the
+`.love`-runs-unmodified pillar. Changing `boot.lua`'s defaults is a fork-private
+edit to shared engine source (lane 3, forbidden) and would make `love.conf`
+report something desktop does not.
 
-`joystick` and `sensor` are a `config-game` change. The other three want the
-already-ratified #27 warned-stub tier: `require` succeeds, the API is honestly
-inert, first use emits one `[love.wasm preview]` notice. That keeps the
-divergence declared rather than faked, and it is what lets an unmodified game
-boot.
+**Tier 1 — warned-stub preload. Cheap, and enough for legend-of-lua.**
+`witness-frame.lua` (the boot wrapper *we* supply, in `wasi/`) already documents
+that running `require("love")` registers the `love.*` submodules into
+`package.preload`, and `boot.lua` resolves modules through plain `require`. So for
+each module the build does not link, preload a table whose `__index` returns a
+function that emits one `[love.wasm preview]` notice and no-ops. One mechanism for
+all unlinked modules, **no new guarded seam** (the count stays ten), no `src/`
+change, and no artifact rebuild to iterate. legend-of-lua *enables* `touch`,
+`video` and `thread` by default but never calls them, so satisfying `require` is
+all it needs.
 
-**Then:** run legend-of-lua through `wasi/shell/serve.sh 8080 <clone>`.
-**Evidence:** boots, playable, no crash, visually plausible. Pixel parity is
-step 3's job.
+**Tier 2 — link `joystick` and `sensor` for real.** Both have witnessed wasm
+backends (`wasi/platform/{joystick,sensor}-backend.cpp`), so stubbing them would
+be a lie where the truth is cheap. A `config-game` change plus the sources
+`build-joystick.sh` already lists — a known-good recipe applied to the union
+build. Costs a ~6 min rebuild and a re-run of the union and shell witnesses.
+
+**Explicitly NOT doing:** bespoke `touch`, `video` or `thread` backends in
+`src/`. They would add two or three guarded seams, breaking the documented ten,
+for no gain over the preload stub. `thread` stays step 7's problem — `Channel` is
+already compiled but `Thread:start()` genuinely cannot work, so a warn-once stub
+is the more truthful shape.
+
+**The bargain, stated:** a preload stub is correct for a module a game *enables
+but does not use*. A game that really calls `love.video.newVideoStream` gets a
+warned no-op and may misbehave downstream. So "boots" and "works" stay separate
+claims, which is what step 2's evidence bar already says.
+
+**Unverified:** the preload mechanism reads correct against `boot.lua` and
+`witness-frame.lua`, but has not been run. Only booting a real game counts.
+
+**Then:** `wasi/shell/serve.sh 8080 <legend-of-lua clone>`.
+**Evidence:** boots, playable, no crash, visually plausible. Pixel parity is step
+3's job.
 
 **Unknown worth measuring, not assuming:** the game targets **1920x1080**. Every
-witness so far renders 64x64 or 96x64, so nothing yet says the WebGL2 path
-handles a canvas that size, or at what frame cost.
+witness so far renders 64x64 or 96x64, so nothing yet says the WebGL2 path handles
+a canvas that size, or at what frame cost.
 
 [lol]: https://github.com/challacade/legend-of-lua
 

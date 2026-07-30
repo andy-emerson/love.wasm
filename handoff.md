@@ -56,17 +56,73 @@ subdirectory); real DOM key events move the game, it stops on keyup, and it move
 back on the opposite key; a module edited on disk reaches the running instance,
 and a `main.lua` edit is reported restart-only rather than silently ignored.
 
-### 2. Real third-party games — the next step
+### 2. Real third-party games — IN PROGRESS
 
-Run actual open-source LÖVE 12 games rather than the fixture. The shell already
-loads any directory: `wasi/shell/serve.sh 8080 ~/love-games/mygame`. **Do not bundle a
-game in the repository** — keep a local folder of a few small free ones.
-Selection: pure LÖVE inside the linked envelope, which is now concrete — the
-union artifact links sixteen modules, and `boot.lua` requires every module a
-`conf.lua` enables, so a game must disable `joystick`, `touch`, `sensor`, `video`
-and `thread` or it will not boot. Prefer games with corpus `expected/` outputs
-where possible. **Evidence:** boots, playable, no crash, visually
-plausible. Pixel parity is step 3's job.
+Run actual open-source LÖVE games rather than a fixture. **Do not bundle a game
+in the repository.**
+
+**Games are reachable after all.** `add_repo` refuses cross-owner adds and
+`github.com` returns 403 to unauthenticated browsing, but **`git clone` of a
+public repository works through the session proxy** — verified on two repos. So
+any public GitHub LÖVE game can be fetched into a scratch directory and run.
+itch.io does not resolve, so itch-only games need the Human to supply them.
+
+**The chosen game: [challacade/legend-of-lua][lol]**, pinned at
+`351f2456` (2026-07-01), 12 MB. Why it is the right first candidate:
+
+- `conf.lua` declares `t.version = "11.5"`, and the code uses **no API removed in
+  12** — checked against every removal and rename in `changes.txt`.
+- Every module it touches is inside the sixteen the union artifact links:
+  `audio`, `data`, `event`, `filesystem`, `graphics`, `image`, `keyboard`,
+  `math`, `mouse`, `physics`, `system`, `timer`, `window`.
+- Assets are 167 loose `.png`/`.ogg`/`.wav`/`.ttf` files, no archives — so D7
+  (#48) archive mounting is not in the way.
+- It has **already been ported to love.js**, and its `conf.lua` carries the scars:
+  an explicit canvas size because "web builds need an explicit canvas size since
+  there is no desktop to query", and `resizable = false` because resizing
+  "breaks love.js (canvas collapses to ~1x1)". A game pre-shaped around web
+  constraints is a fairer first test, and gives a reference for whether we hit
+  the same edges love.js did.
+
+Rejected candidate: `besnoi/arkanoid` — clean on the 12 API scan and inside the
+envelope, but it ships **no `conf.lua`** and its assets are a **split RAR** with
+no extractor available here.
+
+**The blocker, confirmed against two real games and not their fault.** LÖVE
+enables every module by default and `boot.lua` requires each enabled one. Neither
+game sets `t.modules.*`, so both die in boot before reaching `main.lua` —
+`touch`, `video` and `thread` are enabled by default and the union artifact links
+none of them. No game-side filter catches this, and requiring every game to edit
+its `conf.lua` would break the `.love`-runs-unmodified pillar outright.
+
+### 2a. Widen the artifact so a default `conf.lua` boots — DO THIS FIRST
+
+**Needs the Human to confirm**, because it changes the module-disposition table
+in `readme.md`.
+
+| Module | What it needs | Backend today |
+|---|---|---|
+| `joystick` | link it | `wasi/platform/joystick-backend.cpp`, real and witnessed |
+| `sensor` | link it | `wasi/platform/sensor-backend.cpp`, the #27 warned stub |
+| `touch` | a new warned stub | SDL only |
+| `video` | a module-level warned stub so `require` succeeds | none, Theora dropped |
+| `thread` | a module-level warned stub so `require` succeeds | none, step 7 |
+
+`joystick` and `sensor` are a `config-game` change. The other three want the
+already-ratified #27 warned-stub tier: `require` succeeds, the API is honestly
+inert, first use emits one `[love.wasm preview]` notice. That keeps the
+divergence declared rather than faked, and it is what lets an unmodified game
+boot.
+
+**Then:** run legend-of-lua through `wasi/shell/serve.sh 8080 <clone>`.
+**Evidence:** boots, playable, no crash, visually plausible. Pixel parity is
+step 3's job.
+
+**Unknown worth measuring, not assuming:** the game targets **1920x1080**. Every
+witness so far renders 64x64 or 96x64, so nothing yet says the WebGL2 path
+handles a canvas that size, or at what frame cost.
+
+[lol]: https://github.com/challacade/legend-of-lua
 
 ### 3. Sliced corpus parity
 

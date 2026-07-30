@@ -13,6 +13,7 @@
 //                         conf.lua + main.lua + the real clickmono.ogg asset
 //   love_audio         -> audio-host (source_* + mic_*; taps queued PCM)
 //   love_input         -> an empty queue; love_system -> system-host
+//   love_gamepad       -> gamepad-host (the union build links love.joystick)
 //
 // After pumping the driver asserts the union worked, by transcript + one pixel:
 //   (1) stdout has UNION-GAME-LOAD           -> love.load ran through real boot
@@ -31,6 +32,7 @@ import { makeWebGLWinHost } from '../host/webgl-win-host.mjs';
 import { makeFsHost } from '../host/fs-host.mjs';
 import { makeSystemHost } from '../host/system-host.mjs';
 import { makeAudioHost } from '../host/audio-host.mjs';
+import { makeGamepadHost } from '../host/gamepad-host.mjs';
 import { runInChromium } from '../host/witness-harness.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -44,18 +46,15 @@ const boot = readFileSync(join(here, 'witness-frame.lua'), 'utf8');
 
 // The game — a normal LÖVE 12 project (runs identically on desktop LÖVE). It
 // reads its sound asset through love.filesystem, decodes + plays it, and draws a
-// physics-simulated body. conf.lua disables the modules this build does not link.
+// physics-simulated body. Its conf.lua sets NO t.modules, exactly like a real
+// game: LOVE enables all twenty by default, so leaving them alone is what
+// exercises the boot wrapper's handling of the ones this build does not link.
 const gameConf = `
 function love.conf(t)
   t.identity = "uniongame"
   t.window.width = 64
   t.window.height = 64
   t.window.title = "love.wasm union game"
-  t.modules.joystick = false
-  t.modules.touch = false
-  t.modules.sensor = false
-  t.modules.video = false
-  t.modules.thread = false
 end
 `;
 const gameMain = `
@@ -95,7 +94,7 @@ function love.draw()
 end
 `;
 
-async function gamePageFn({ b64, boot, gameConf, gameMain, oggB64, shimSrc, winHostSrc, fsHostSrc, systemHostSrc, audioHostSrc }) {
+async function gamePageFn({ b64, boot, gameConf, gameMain, oggB64, shimSrc, winHostSrc, fsHostSrc, systemHostSrc, audioHostSrc, gamepadHostSrc }) {
   const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   const te = new TextEncoder(), td = new TextDecoder();
   const shim = (new Function('return ' + shimSrc)())();
@@ -103,6 +102,9 @@ async function gamePageFn({ b64, boot, gameConf, gameMain, oggB64, shimSrc, winH
   const fs = (new Function('return ' + fsHostSrc)())();
   const system = (new Function('return ' + systemHostSrc)())();
   const audio = (new Function('return ' + audioHostSrc)())();
+  // The union build links love.joystick, so love_gamepad must be satisfied at
+  // instantiate even though this witness drives no controller.
+  const gamepad = (new Function('return ' + gamepadHostSrc)())();
   const lines = [];
   const log = (s) => lines.push(s);
 
@@ -130,6 +132,7 @@ async function gamePageFn({ b64, boot, gameConf, gameMain, oggB64, shimSrc, winH
       love_input: input,
       love_system: system.imports,
       love_audio: audio.imports,
+      love_gamepad: gamepad.imports,
     });
     const x = instance.exports;
     shim.bind(x.memory);
@@ -137,6 +140,7 @@ async function gamePageFn({ b64, boot, gameConf, gameMain, oggB64, shimSrc, winH
     fs.bind(x.memory);
     system.bind(x.memory);
     audio.bind(x.memory);
+    gamepad.bind(x.memory);
     x._initialize();
 
     const put = (s) => { const b = te.encode(s); const p = x.pump_in(b.length); new Uint8Array(x.memory.buffer).set(b, p); return b.length; };
@@ -193,6 +197,7 @@ const result = await runInChromium(gamePageFn, {
   fsHostSrc: makeFsHost.toString(),
   systemHostSrc: makeSystemHost.toString(),
   audioHostSrc: makeAudioHost.toString(),
+  gamepadHostSrc: makeGamepadHost.toString(),
 });
 
 console.log('--- browser transcript ---');

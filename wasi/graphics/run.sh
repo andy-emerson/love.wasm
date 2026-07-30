@@ -10,7 +10,8 @@
 #          backend, reseamed to a real WebGL2 context, driven through the
 #          graphics-ext bridges to draw and read pixels back: clear (4.1c),
 #          first primitive (4.2), the primitive set (4.3), textures (4.4), a
-#          user shader (4.5), a canvas (4.6), text (4.7), blend/scissor/stencil
+#          user shader (4.5) and one created but never attached (4.5b), a
+#          canvas (4.6), text (4.7), blend/scissor/stencil
 #          (4.8), the drawables — Mesh (4.9), SpriteBatch+Quad (4.10),
 #          ParticleSystem (4.11) — the compose-only API tail — transforms (4.12),
 #          MRT (4.13), MSAA (4.14), engine readback (4.15), GraphicsBuffer (4.16),
@@ -117,6 +118,19 @@ echo "### shader witness (4.5) ###"
 echo "-- Chromium leg (real WebGL2, real backend) --"
 node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-shader.lua"
 echo "shader witness (4.5): Chromium PASS"
+
+# ── 4.5b: creating a shader must not disturb what is bound ───────────────────
+# 4.5 draws WITH its shader, so setShader() re-binds a program right after
+# newShader() and repairs any damage before the draw. The case it cannot see is
+# every real game's love.load: create shaders for later, keep drawing with the
+# DEFAULT one. That drew nothing — Shader::loadVolatile saves and restores
+# GL_CURRENT_PROGRAM, and the host answered that query with 0, so the restore
+# unbound the shader LOVE still believed was attached. Same wasm as 4.5.
+echo
+echo "### unused-shader witness (4.5b) ###"
+echo "-- Chromium leg (real WebGL2, real backend) --"
+node "$HERE/run-browser-love.mjs" "$LOVE_WASM" "$HERE/witness-shader-unused.lua"
+echo "unused-shader witness (4.5b): Chromium PASS"
 
 # ── 4.6: the first render target ─────────────────────────────────────────────
 # The first draw that does not go to the backbuffer: render into an off-screen

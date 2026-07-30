@@ -298,7 +298,9 @@ jobs:
         # build.sh bootstraps vendored FreeType + HarfBuzz into gfxlibs on first
         # run; glslang, glad and zlib compile from in-tree source. run.sh then
         # drives 4.1a (raw-GL, node + Chromium) and 4.1c..4.20 (real backend,
-        # Chromium) off one wasm build.
+        # Chromium) off one wasm build. 4.5b is the regression leg: a shader
+        # created but NEVER attached must not unbind the program. 4.5 cannot see
+        # this, because it draws WITH its shader.
         run: PREFIX="$PWD/wasi-eh" wasi/graphics/run.sh
 
       - name: window witness — real love.window + captureScreenshot (step 6.3 + step-4 close, real Chromium)

@@ -345,6 +345,62 @@ static int w_draw_shader(lua_State *L)
 	return pushSamples(L, H, sx, sy, 2);
 }
 
+// __wasi_gfx_draw_shader_unused() -> (Rl, Gl, Bl, Al,  Rr, Gr, Br, Ar).
+// The step-4 (4.5b) witness: creating a Shader must not disturb what is already
+// bound. 4.5 draws WITH its shader, so setShader() re-binds a program straight
+// after and any damage newShader did is immediately papered over; the case it
+// cannot see is a game that creates a shader for later and keeps drawing with
+// the DEFAULT one, which is what every real game's love.load does. That case
+// drew nothing at all: Shader::loadVolatile saves GL_CURRENT_PROGRAM, binds its
+// new program to inspect uniforms, and restores what it saved — and the WebGL
+// host answered that query with 0, meaning "nothing bound", so the restore
+// unbound the default shader while LOVE's own `current` cache still believed it
+// was attached. Every later draw then failed with GL_INVALID_OPERATION while the
+// clear colour still reached the screen, which is why a game looked like it was
+// running and drew nothing.
+//
+// So: draw the left half in a known colour with the default shader, create a
+// shader and NEVER attach it, then draw the right half the same way. Both halves
+// must carry the drawn colour. The right half is the assertion; the left half is
+// the control that says the draw path worked before the shader existed.
+static int w_draw_shader_unused(lua_State *L)
+{
+	auto *gfx = witnessGfx(L);
+
+	const int W = 16, H = 16;
+	graphics::Graphics::BackbufferSettings bb;
+	bb.width = bb.pixelWidth = W; bb.height = bb.pixelHeight = H;
+	graphics::OptionalColorD clear(ColorD(0.3, 0.3, 0.3, 1.0)); // (76,76,76)
+
+	const char *pixelsrc =
+		"vec4 effect(vec4 vcolor, Image tex, vec2 texcoord, vec2 pixcoord)\n"
+		"{\n"
+		"    return vec4(1.0 - vcolor.rgb, 1.0);\n"
+		"}\n";
+
+	luax_catchexcept(L, [&]() {
+		gfx->setMode(nullptr, bb);
+		gfx->clear(clear, OptionalInt(), OptionalDouble());
+
+		gfx->setColor(Colorf(0.8f, 0.6f, 0.4f, 1.0f)); // (204,153,102)
+		gfx->rectangle(graphics::Graphics::DRAW_FILL, 0.0f, 0.0f, 8.0f, 16.0f);
+		gfx->flushBatchedDraws();
+
+		// Created and thrown away without ever being attached — the whole point.
+		std::vector<std::string> stages;
+		stages.push_back(pixelsrc);
+		graphics::Shader::CompileOptions opts;
+		graphics::Shader *shader = gfx->newShader(stages, opts);
+		shader->release();
+
+		gfx->rectangle(graphics::Graphics::DRAW_FILL, 8.0f, 0.0f, 8.0f, 16.0f);
+		gfx->flushBatchedDraws();
+	});
+
+	const int sx[2] = {4, 12}, sy[2] = {8, 8};
+	return pushSamples(L, H, sx, sy, 2);
+}
+
 // __wasi_gfx_draw_canvas() -> 16 ints: four (R,G,B,A) samples, in this order —
 //   canvas rect B (top-left), canvas clear A (top-right), canvas clear A
 //   (bottom-left), backbuffer background.
@@ -1235,6 +1291,7 @@ extern "C" void pump_open_extensions(lua_State *L)
 	lua_register(L, "__wasi_gfx_draw_prims", w_draw_prims);
 	lua_register(L, "__wasi_gfx_draw_texture", w_draw_texture);
 	lua_register(L, "__wasi_gfx_draw_shader", w_draw_shader);
+	lua_register(L, "__wasi_gfx_draw_shader_unused", w_draw_shader_unused);
 	lua_register(L, "__wasi_gfx_draw_canvas", w_draw_canvas);
 	lua_register(L, "__wasi_gfx_draw_text", w_draw_text);
 	lua_register(L, "__wasi_gfx_draw_state", w_draw_state);

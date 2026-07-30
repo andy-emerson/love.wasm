@@ -24,8 +24,7 @@ Its Lua needs three small edits to be 5.4-clean; the LÖVE features it uses all
 work. See step 2, and **The Lua dialect** in `readme.md` for what those edits
 are.
 
-What is still unproven: the `testing/` corpus has not been run under this build,
-and neither of step 2's two fixes has a witness.
+What is still unproven: the `testing/` corpus has not been run under this build.
 
 `love.thread` is the one major module still stubbed (build-order step 7).
 
@@ -96,28 +95,40 @@ no extractor available here.
 canvas, and plays: tilemap, trees, water, shadows, sprites, the equip UI and text
 all draw, keys move the game, and GL reports no error. Getting there took two
 fixes, both ours and both now on this branch, plus three one-line edits to the
-game's own Lua to bring it from 5.1 to 5.4.
+game's own Lua to bring it from 5.1 to 5.4. The union artifact links **eighteen**
+modules — everything but `touch`, `video` and `thread`.
 
 Three findings, in the order they were hit:
 
-**1. Module defaults — fixed (was step 2a).** `boot.lua:204` defaults every one
+**1. Module defaults — fixed, then fixed properly (was step 2a).** `boot.lua:204` defaults every one
 of the twenty modules to `true`, then loads them with a bare
 `require("love." .. v)` that hard-errors on a missing module. So `t.modules.*` has
 never been required of any game, on 11 or 12 — omitting it is idiomatic, and on
 desktop the default is always satisfiable because desktop links everything. It
 becomes unsatisfiable only on a build shipping a subset, which is ours.
 
-The boot wrapper now preloads the modules this build does not link, reading
-linked-ness from `package.preload` rather than a list, so linking one for real
-retires its stub with no edit. It deliberately does **not** set `love.<name>`,
-which leaves the engine in the shape desktop has when a game sets
-`t.modules.<name> = false` — `callbacks.lua`'s `if love.joystick then` takes the
-absent path instead of calling into a stub. No new guarded seam (the count stays
-ten), no `src/` change, no rebuild.
+**`joystick` and `sensor` are now linked for real**, not stubbed. Both had real,
+CI-enforced backends already (`witness.yml` covers `joystickadded/removed`,
+`joystickpressed/released/axis`, `isGamepad`, `isGamepadDown`, `getGamepadAxis`,
+`getName`), so the first version of this fix stubbed over a working feature: a
+game's `if love.joystick then` took the absent path and silently lost gamepad
+support. Linking them is a `config-game` + `build-game.sh` change; the stub
+retires itself, because linked-ness is read from `package.preload` rather than
+listed.
 
-The bargain stated plainly: this is correct for a module a game *enables but
-never calls*. A game that really uses `love.video` gets a nil index and fails
-loudly, which is the honest outcome. "Boots" and "works" stay separate claims.
+`touch`, `video` and `thread` remain unlinked and are supplied by the boot
+wrapper. `love.<name>` stays **nil**, which is the shape desktop has with
+`t.modules.<name> = false`, so a feature test takes the absent path; the report
+rides on a metatable on `love` itself, so the same read both reports and
+correctly evaluates false.
+
+**The notice fires on USE, not on enable** — the `preview-warn.cpp` contract
+(#27) every other preview limitation here follows. The first version reported at
+`require` time, which is exactly backwards: LÖVE enables all twenty modules for
+every game, so it printed five lines on every boot whether or not the game cared,
+and printed *nothing* in the one case worth knowing about. The question this
+build has to answer is "did a game need a feature we do not have?", so the notice
+belongs where that question is answered.
 
 Two things it deliberately does not do. Making every game declare `t.modules.*`
 would push our packaging gap onto game authors for no benefit to them. Changing
@@ -136,8 +147,15 @@ was running while drawing nothing at all — the hardest shape of bug to read fr
 the outside. Both hosts now keep a reverse object → name map, which fixes every
 `*_BINDING` query rather than just this one.
 
-Reproduced in an 8-line project: create one trivial passthrough shader, draw two
-rectangles, and the rectangles vanish. That repro should become the witness.
+**Witnessed, and the witness is shown able to fail.** New graphics leg **4.5b**
+(`wasi/graphics/witness-shader-unused.lua`): draw, create a shader and never
+attach it, draw again — both draws must land. With the host fix reverted it
+reads back the clear colour and FAILS; with the fix it PASSES. The existing 4.5
+shader leg passes **either way**, which is exactly why it never caught this: 4.5
+draws *with* its shader, so `setShader()` re-binds a program immediately after
+`newShader()` and repairs the damage before the draw. The uncovered case was
+every real game's `love.load` — create shaders for later, keep drawing with the
+default one.
 
 **3. The Lua dialect — settled, and it is a porting cost, not a defect.** The
 game's Lua is written for 5.1; three idioms do not survive 5.4 (`unpack`,
@@ -145,21 +163,27 @@ game's Lua is written for 5.1; three idioms do not survive 5.4 (`unpack`,
 both, so the port is cheap and costs the game nothing on desktop. No LÖVE feature
 it uses is missing. Documented in `readme.md`; the choice itself is D8.
 
-**Tier 2, still to do — link `joystick` and `sensor` for real.** Both have
-witnessed wasm backends (`wasi/platform/{joystick,sensor}-backend.cpp`), so
-stubbing them is a lie where the truth is cheap: a `config-game` change plus the
-sources `build-joystick.sh` already lists. Costs a ~6 min rebuild and a re-run of
-the union and shell witnesses. `touch`, `video` and `thread` keep the stub —
-bespoke backends would add guarded seams for no gain, and `thread` stays step 7's
-problem.
+**Both witness projects now set NO `t.modules`**, exactly like a real game, so
+the boot-wrapper path is CI-enforced rather than sidestepped. That change caught
+a real regression on the way in: linking `joystick` adds a `love_gamepad` import,
+which `run-browser-game.mjs` did not provide, and the union witness failed at
+instantiate until it was wired.
+
+**`love.touch` is unbuilt, not impossible.** A browser has real touch events. It
+is stubbed today because nobody has written the backend, which is a different
+claim from `video` (Theora dropped) and `thread` (step 7), and the module
+disposition table now says so.
 
 **Measured, not assumed:** 1920x1080 renders correctly. A minimal project at that
 size draws rectangles and text exactly as the 96x64 fixtures do, and the game
 fills the canvas. The earlier worry that nothing above 96x64 had ever been tried
 is closed.
 
-**Not yet earned:** neither fix has a witness, so both are **observed**, not
-tested. Nothing in CI would catch a regression of either.
+**Evidence:** the GL fix is **tested** — 4.5b is CI-enforced and demonstrated to
+fail without it. The module handling is **observed**: both witness projects now
+take the default path in CI, so a boot regression would be caught, but nothing
+asserts the use-time notice itself. That assertion is the obvious next witness —
+a fixture that reads `love.video` and expects the named line.
 
 [lol]: https://github.com/challacade/legend-of-lua
 

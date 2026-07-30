@@ -19,10 +19,10 @@ keyboard and mouse events into `love.event`, and applies a module edit to the
 running game without a reload. Beta step 1 is done, witnessed by
 `wasi/shell/run.sh` and CI-enforced.
 
-A third-party game runs too: `challacade/legend-of-lua`, at 1920x1080, playable.
-Its Lua needs three small edits to be 5.4-clean; the LÖVE features it uses all
-work. See step 2, and **The Lua dialect** in `readme.md` for what those edits
-are.
+A third-party game runs too: `challacade/legend-of-lua`, at 1920x1080, playable,
+and **re-runnable** — `wasi/games/run.sh` fetches the pin, applies our port
+patch, plays it and asserts. Its Lua needs a 5.1 → 5.4 port; every LÖVE feature
+it uses works. See step 2, and **The Lua dialect** in `readme.md`.
 
 What is still unproven: the `testing/` corpus has not been run under this build.
 
@@ -59,7 +59,7 @@ subdirectory); real DOM key events move the game, it stops on keyup, and it move
 back on the opposite key; a module edited on disk reaches the running instance,
 and a `main.lua` edit is reported restart-only rather than silently ignored.
 
-### 2. Real third-party games — IN PROGRESS
+### 2. Real third-party games — ONE GAME DONE, RE-RUNNABLE
 
 Run actual open-source LÖVE games rather than a fixture. **Do not bundle a game
 in the repository.**
@@ -91,12 +91,37 @@ Rejected candidate: `besnoi/arkanoid` — clean on the 12 API scan and inside th
 envelope, but it ships **no `conf.lua`** and its assets are a **split RAR** with
 no extractor available here.
 
-**It runs.** Legend of Lua boots from its own `conf.lua`, opens a 1920x1080
-canvas, and plays: tilemap, trees, water, shadows, sprites, the equip UI and text
-all draw, keys move the game, and GL reports no error. Getting there took two
-fixes, both ours and both now on this branch, plus three one-line edits to the
-game's own Lua to bring it from 5.1 to 5.4. The union artifact links **nineteen**
+**It runs, and the run is repeatable.** Legend of Lua boots from its own
+`conf.lua`, opens a 1920x1080 canvas, and plays: tilemap, trees, water, shadows,
+sprites, the equip UI and text all draw, keys move the game, GL reports no error,
+and there are no preview notices at all. The union artifact links **nineteen**
 modules — everything but `video` and `thread`.
+
+**`wasi/games/run.sh`** is the reproducer, and it is what makes this a claim
+rather than an anecdote: it clones the pinned commit into a scratch directory,
+applies `wasi/games/legend-of-lua.patch`, plays it in real Chromium, asserts, and
+deletes the clone. The game is not bundled and must not be; what this repository
+owns is the patch — our port — at 59 lines.
+
+**Deliberately not in CI.** Every other witness depends only on this repository
+and its pinned toolchain; this one depends on a third party's repository staying
+reachable and a commit staying alive. Wiring that into the per-push gate would
+turn somebody else's force-push into our red CI. `readme.md` states the exception
+rather than letting "CI re-runs all of them" quietly become false.
+
+**The port was bigger than first reported.** Three *names* moved between 5.1 and
+5.4, but across **41 call sites**, 29 of them inside the four libraries the game
+vendors (hump, windfield, sti, mlib) — so the patch restores the names once in a
+three-line prelude instead of forking four third-party libraries. Only the 8
+computed font sizes are edited where they are written, because a wrong *value*
+has no prelude fix. The earlier "three one-line edits" undercounted it.
+
+**The witness is demonstrated able to fail.** Run against the same game with the
+patch NOT applied, it fails with "the game crashed — the canvas is LÖVE's error
+screen". That assertion is the load-bearing one: LÖVE's error screen renders a
+traceback, so it has 229 distinct colours and would sail past a "something is
+drawn" check. Recognising the screen by its colour is what separates *ran* from
+*crashed*.
 
 Three findings, in the order they were hit:
 

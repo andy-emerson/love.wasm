@@ -6,11 +6,11 @@ This is a fork of [love2d/love](https://github.com/love2d/love) (the `main` / 12
 
 **Base pin:** upstream `main` @ `81eb4dbcaf2f1d31c10268340e995a5c4a8270af` (2026-07-18) — reached via a GitHub *sync-merge* of `love2d/love:main` into `wasi`, not the deliberate rebase the swap below describes. It pulled in the QOI image format plus minor fixes with no seam conflicts, and the witnesses stayed green. Previous base: `540e681` (2026-07-05). The clean, rebase-based adoption (which flattens this sync-merge away and sheds the lane-2 patches) remains planned for the 12.0 release; base bumps stay deliberate, recorded events.
 
-**Status — what runs today.** Real LÖVE, compiled to `wasm32-wasi`, runs an actual game end to end in real Chromium: `conf.lua` sizes the canvas, `love.window.setMode` opens a real WebGL2 context, `love.load` decodes and plays an Ogg asset read through `love.filesystem` and builds a physics world, and `love.update`/`love.draw` step and draw it once per `requestAnimationFrame` tick. Graphics, filesystem (read, write, enumerate), event/keyboard/mouse, joystick, touch, timer, system, audio, sound and physics are all real engine code over browser seams. `love.thread` is the one major module still stubbed — build-order step 7. Every behavioral claim below carries a witness, and CI re-runs all of them on every push to `wasi`.
+**Status — what runs today.** Real LÖVE, compiled to `wasm32-wasi`, runs an actual game end to end in real Chromium: `conf.lua` sizes the canvas, `love.window.setMode` opens a real WebGL2 context, `love.load` decodes and plays an Ogg asset read through `love.filesystem` and builds a physics world, and `love.update`/`love.draw` step and draw it once per `requestAnimationFrame` tick. Graphics, filesystem (read, write, enumerate), event/keyboard/mouse, joystick, touch, timer, system, audio, sound and physics are all real engine code over browser seams. `love.thread` is the one major module still stubbed — build-order step 7. Every behavioral claim below carries a witness, and CI re-runs them on every push to `wasi` — with one deliberate exception, `wasi/games/run.sh`, which depends on a third party's repository staying reachable and so is run on demand rather than in the per-push gate.
 
 There is an **interactive shell**: a page that loads a LÖVE project from disk, runs it on `requestAnimationFrame`, forwards real keyboard, mouse and touch events into `love.event`, and applies a module edit to the running game without a reload (`wasi/shell/`, witnessed by `wasi/shell/run.sh`). It is a game player, not an editor — the downstream consumer this engine is built for is a separate concern.
 
-**A third-party game runs.** [Legend of Lua](https://github.com/challacade/legend-of-lua), an open-source game written for LÖVE 11.5 and not bundled here, boots from its own `conf.lua`, opens a 1920x1080 canvas and plays — tilemap, sprites, shadows, UI and text — after three one-line edits bringing its Lua from 5.1 to 5.4 (see **The Lua dialect**). Every LÖVE feature it uses works. Evidence: observed, on one game.
+**A third-party game runs.** [Legend of Lua](https://github.com/challacade/legend-of-lua), an open-source game written for LÖVE 11.5 and **not bundled here**, boots from its own `conf.lua`, opens a 1920x1080 canvas and plays — tilemap, sprites, shadows, UI and text. Every LÖVE feature it uses works; what it needed was a Lua 5.1 → 5.4 port, and nothing else (see **The Lua dialect**). Re-runnable: `wasi/games/run.sh` clones the pinned commit into a scratch directory, applies `wasi/games/legend-of-lua.patch` — 59 lines, our port, the only part of this that lives in the repository — plays it in real Chromium and asserts. Evidence: tested, on one game.
 
 **What is not proven yet.** The `testing/` conformance corpus has not been run under this build, so desktop parity rests on per-seam witnesses rather than on the corpus. That is what stands between here and Beta.
 
@@ -65,7 +65,7 @@ Desktop LÖVE 12 runs **Lua 5.1** — LuaJIT 2.1 by default, or PUC Lua 5.1 with
 
 The engine is unaffected: LÖVE's C++ carries the `LUA_VERSION_NUM >= 504` branches it needs, and the `love.*` modules behave identically. Game *Lua* is where the dialect shows. A game written for 5.1 can need edits — that is a language port, not a lost LÖVE feature, and a ported game is still a LÖVE game. **The compatibility question this project measures is whether a LÖVE feature works, not how a game's Lua was wired up.**
 
-Observed so far, running one 11.5 game (Legend of Lua) to a playable state:
+Three names moved between the two versions, and they are what a port has to deal with. Observed running one 11.5 game (Legend of Lua) to a playable state — **41 call sites** across the game and the four libraries it vendors, plus 8 font sizes:
 
 | 5.1 idiom | Under 5.4 | Portable form — runs on both |
 |---|---|---|
@@ -74,6 +74,8 @@ Observed so far, running one 11.5 game (Legend of Lua) to a playable state:
 | `math.atan2(y, x)` | removed, it is `math.atan(y, x)` | `local atan2 = math.atan2 or math.atan` |
 
 The right-hand column is the point: each portable form runs under 5.1 *and* 5.4, so porting a game forward costs it nothing on desktop — the source still runs there, and the `.love` pillar holds.
+
+Scale matters more than count. The three *names* were 41 call sites, 29 of them inside vendored libraries (hump, windfield, sti, mlib) — so the port restores the names once in a three-line prelude rather than forking four third-party libraries. Only the font sizes need editing where they are written, because a wrong *value* has no prelude fix. `wasi/games/legend-of-lua.patch` is the whole port, and it is 59 lines.
 
 **Evidence: observed**, on one game. This is not a survey of the 5.1↔5.4 delta, and the list should be expected to grow as more games run.
 

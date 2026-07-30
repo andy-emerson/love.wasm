@@ -29,6 +29,15 @@ import { makeBrowserInputHost } from '../host/input-host-browser.mjs';
 
 const params = new URLSearchParams(location.search);
 const WASM_URL = params.get('wasm') || './love-game.wasm';
+// A project is a base URL containing manifest.json — {"files": ["main.lua", …]} —
+// plus those files. Deliberately not tied to this dev server: any static host
+// that exposes a manifest beside the files works, and serve.sh synthesizes one
+// for a local folder so pointing it at a game directory is enough. Without
+// ?project the canned project in fs-host.mjs runs, which is a real LÖVE game.
+const PROJECT_URL = params.get('project');
+// A project is game source, not a disk image. The cap is here so a wrong URL
+// fails with a clear message instead of exhausting memory.
+const MAX_PROJECT_BYTES = 256 * 1024 * 1024;
 // LÖVE's own boot wrapper: require love, then love.boot, which reads conf.lua and
 // main.lua through love.filesystem. Game-agnostic, and shared with the frame and
 // game witnesses rather than copied — one source for how this engine boots.
@@ -72,6 +81,40 @@ const input = makeBrowserInputHost();
 
 const te = new TextEncoder(), td = new TextDecoder();
 
+// Replace the canned project with a real one, read through the manifest contract.
+// Files land in fs.files, the read-only project map; the writable save namespace
+// (fs.saves) is left alone, so a game's saves never overwrite its source.
+async function loadProject(base) {
+  const baseUrl = new URL(base.endsWith('/') ? base : base + '/', location.href);
+  const manRes = await fetch(new URL('manifest.json', baseUrl));
+  if (!manRes.ok) throw new Error(`manifest.json: ${manRes.status} at ${baseUrl}`);
+  const man = await manRes.json();
+  const list = Array.isArray(man) ? man : man.files;
+  if (!Array.isArray(list)) throw new Error('manifest.json has no "files" array');
+
+  // Fetch concurrently — a project is many small files, and serially would make
+  // load time the file count times the round trip.
+  let total = 0;
+  const entries = await Promise.all(list.map(async (name) => {
+    if (typeof name !== 'string' || name.startsWith('/') || name.split('/').includes('..'))
+      throw new Error(`manifest entry is not a project-relative path: ${name}`);
+    const res = await fetch(new URL(name, baseUrl));
+    if (!res.ok) throw new Error(`${name}: ${res.status}`);
+    // ArrayBuffer, not text: assets are binary and a project must round-trip
+    // byte-exact, the same property the filesystem witnesses assert.
+    const buf = new Uint8Array(await res.arrayBuffer());
+    total += buf.length;
+    if (total > MAX_PROJECT_BYTES) throw new Error('project exceeds the size cap');
+    return [name, buf];
+  }));
+
+  for (const k of Object.keys(fs.files)) delete fs.files[k];
+  for (const [name, buf] of entries) fs.files[name] = buf;
+  if (!fs.files['main.lua'])
+    throw new Error('the project has no main.lua — LÖVE has nothing to run');
+  return { count: entries.length, bytes: total };
+}
+
 // Frame cadence is the browser's, and a hidden or unfocused tab gets none: a
 // game must not keep simulating in a tab nobody is looking at. love.timer's dt
 // comes from the pump, so a paused tab resumes without a giant time step.
@@ -92,6 +135,22 @@ async function main() {
     setStatus('failed to load', 'bad');
     log('load error: ' + e.message);
     return;
+  }
+
+  // The project has to be in place before pump_boot: love.boot reads conf.lua and
+  // main.lua through love.filesystem on its very first frame.
+  if (PROJECT_URL) {
+    setStatus('loading project…');
+    try {
+      const { count, bytes } = await loadProject(PROJECT_URL);
+      log(`project: ${count} file(s), ${bytes} bytes from ${PROJECT_URL}`);
+    } catch (e) {
+      setStatus('project failed to load', 'bad');
+      log('project error: ' + e.message);
+      return;
+    }
+  } else {
+    log('project: none given, running the canned project (pass ?project=<url>)');
   }
 
   shim.autostub(module);

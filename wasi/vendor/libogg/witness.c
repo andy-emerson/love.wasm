@@ -19,7 +19,7 @@ int main(void)
     ogg_sync_init(&oy);
     ogg_stream_init(&os_r, 0x5eed);
 
-    const char *msg = "love-wasi ogg framing witness";
+    const char *msg = "love.wasm ogg framing witness";
     op.packet = (unsigned char *)msg;
     op.bytes = (long)strlen(msg);
     op.b_o_s = 1;

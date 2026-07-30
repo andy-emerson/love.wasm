@@ -89,8 +89,16 @@ async function loadProject(base) {
   const manRes = await fetch(new URL('manifest.json', baseUrl));
   if (!manRes.ok) throw new Error(`manifest.json: ${manRes.status} at ${baseUrl}`);
   const man = await manRes.json();
-  const list = Array.isArray(man) ? man : man.files;
-  if (!Array.isArray(list)) throw new Error('manifest.json has no "files" array');
+  const raw = Array.isArray(man) ? man : man.files;
+  if (!Array.isArray(raw)) throw new Error('manifest.json has no "files" array');
+  // An entry is a path, or a path with change-detection metadata. A hand-written
+  // manifest of plain strings stays valid; serve.sh supplies mtime and size so
+  // live-edit can tell what changed without re-reading the project.
+  const list = raw.map((e) => (typeof e === 'string' ? { path: e } : e))
+                  .map((e) => e && e.path);
+  const meta = new Map(raw.map((e) => (typeof e === 'string'
+    ? [e, null]
+    : [e.path, `${e.mtime}:${e.size}`])));
 
   // Fetch concurrently — a project is many small files, and serially would make
   // load time the file count times the round trip.
@@ -112,7 +120,72 @@ async function loadProject(base) {
   for (const [name, buf] of entries) fs.files[name] = buf;
   if (!fs.files['main.lua'])
     throw new Error('the project has no main.lua — LÖVE has nothing to run');
-  return { count: entries.length, bytes: total };
+  return { count: entries.length, bytes: total, base: baseUrl, meta };
+}
+
+// Live-edit, at module granularity, over the mechanism step 6.7 already ships:
+// replace the source the VFS serves, then pump_invalidate() drops the game's Lua
+// modules from package.loaded so the next require re-reads and re-evaluates them.
+// love and every love.* submodule survive, so the engine is not rebooted.
+//
+// main.lua is deliberately NOT live. LÖVE does not require() it, so nothing
+// caches it and nothing re-reads it; making it live needs whole-chunk re-eval of
+// the main chunk, which is open decision #47 (D4) and explicitly not Beta scope.
+// conf.lua is read once before the window exists, so it cannot be live either.
+// For both, the honest answer is a restart, and the shell says so rather than
+// silently doing nothing.
+const RESTART_ONLY = new Set(['main.lua', 'conf.lua']);
+
+function watchProject(project, invalidate, intervalMs = 700) {
+  let meta = project.meta;
+  let stop = false;
+  const poll = async () => {
+    if (stop) return;
+    try {
+      const res = await fetch(new URL('manifest.json', project.base), { cache: 'no-store' });
+      if (res.ok) {
+        const man = await res.json();
+        const raw = Array.isArray(man) ? man : man.files;
+        const next = new Map((raw || []).map((e) => (typeof e === 'string'
+          ? [e, null] : [e.path, `${e.mtime}:${e.size}`])));
+
+        const changed = [];
+        for (const [p, sig] of next) {
+          const was = meta.get(p);
+          // A null signature means the manifest carries no metadata, so change
+          // cannot be detected — treat it as unchanged rather than reloading
+          // the project on every poll.
+          if (sig !== null && (was === undefined || was !== sig)) changed.push(p);
+        }
+        const gone = [...meta.keys()].filter((p) => !next.has(p));
+        meta = next;
+
+        if (changed.length || gone.length) {
+          const live = changed.filter((p) => !RESTART_ONLY.has(p));
+          const needsRestart = [...changed, ...gone].filter((p) => RESTART_ONLY.has(p));
+
+          for (const p of gone) delete fs.files[p];
+          for (const p of live) {
+            const r = await fetch(new URL(p, project.base), { cache: 'no-store' });
+            if (r.ok) fs.files[p] = new Uint8Array(await r.arrayBuffer());
+            else log(`live-edit: ${p} vanished (${r.status})`);
+          }
+          if (live.length || gone.length) {
+            const dropped = invalidate();
+            log(`live-edit: ${[...live, ...gone].join(', ')} → ${dropped} module(s) invalidated`);
+          }
+          if (needsRestart.length)
+            log(`live-edit: ${needsRestart.join(', ')} changed — reload the page to apply (#47)`);
+        }
+      }
+    } catch (e) {
+      // A poll failure is not fatal: the server may be restarting under us.
+      log('live-edit: poll failed — ' + e.message);
+    }
+    setTimeout(poll, intervalMs);
+  };
+  setTimeout(poll, intervalMs);
+  return { stop() { stop = true; } };
 }
 
 // Frame cadence is the browser's, and a hidden or unfocused tab gets none: a
@@ -139,11 +212,12 @@ async function main() {
 
   // The project has to be in place before pump_boot: love.boot reads conf.lua and
   // main.lua through love.filesystem on its very first frame.
+  let project = null;
   if (PROJECT_URL) {
     setStatus('loading project…');
     try {
-      const { count, bytes } = await loadProject(PROJECT_URL);
-      log(`project: ${count} file(s), ${bytes} bytes from ${PROJECT_URL}`);
+      project = await loadProject(PROJECT_URL);
+      log(`project: ${project.count} file(s), ${project.bytes} bytes from ${PROJECT_URL}`);
     } catch (e) {
       setStatus('project failed to load', 'bad');
       log('project error: ' + e.message);
@@ -199,6 +273,9 @@ async function main() {
   if (st === -2) { setStatus('boot error', 'bad'); log(out()); return; }
   setStatus('running', 'good');
   running = true;
+
+  // Watch only a mounted project: the canned one has no source on disk to change.
+  if (project) watchProject(project, () => x.pump_invalidate());
 
   const frame = () => {
     if (!running) return;

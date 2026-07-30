@@ -80,13 +80,18 @@ const inside = (dir, file) => file === dir || file.startsWith(dir + path.sep);
 // folder this synthesizes one by walking it, so pointing the server at a game
 // directory is all it takes. Directories LÖVE never reads are skipped, and so is
 // anything a project should not be shipping to the engine.
+// Each entry carries mtime and size so the shell can tell what changed without
+// re-fetching the whole project: that is what makes live-edit polling cheap.
 const SKIP = new Set([".git", ".svn", "node_modules", ".DS_Store", ".love-wasm"]);
 const walk = (dir, rel = "", out = []) => {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (SKIP.has(e.name)) continue;
     const r = rel ? rel + "/" + e.name : e.name;
     if (e.isDirectory()) walk(path.join(dir, e.name), r, out);
-    else if (e.isFile()) out.push(r);
+    else if (e.isFile()) {
+      const st = fs.statSync(path.join(dir, e.name));
+      out.push({ path: r, mtime: Math.floor(st.mtimeMs), size: st.size });
+    }
   }
   return out;
 };

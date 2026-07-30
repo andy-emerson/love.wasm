@@ -51,8 +51,7 @@ rm -rf "$WORK/game/.git"
 echo "== applying $(basename "$PATCH") (the Lua 5.1 -> 5.4 port) =="
 # --check first: if the game's tree has moved under the pin, say so plainly
 # rather than half-applying and failing later with a confusing Lua error.
-git apply --check --directory=. -p1 --unsafe-paths "$PATCH" 2>/dev/null \
-  || git -C "$WORK/game" apply --check "$PATCH" \
+git -C "$WORK/game" apply --check "$PATCH" \
   || { echo "FAIL: the patch does not apply to $GAME_REF — the pin or the patch is wrong" >&2; exit 1; }
 git -C "$WORK/game" apply "$PATCH"
 

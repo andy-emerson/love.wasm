@@ -64,7 +64,7 @@ function love.load()
   -- Module disposition, the way a real game meets it. This project sets no
   -- t.modules, so LOVE enabled all twenty and boot.lua required every one; that
   -- this line is reached at all is the proof that require was satisfied for the
-  -- three this build does not link.
+  -- two this build does not link.
   --
   -- love.joystick and love.touch are LINKED, so they must be real tables and
   -- must stay silent.

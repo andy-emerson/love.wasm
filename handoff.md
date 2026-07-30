@@ -19,9 +19,12 @@ keyboard and mouse events into `love.event`, and applies a module edit to the
 running game without a reload. Beta step 1 is done, witnessed by
 `wasi/shell/run.sh` and CI-enforced.
 
-What is still unproven: no third-party `.love` has run — the projects so far are
-real, desktop-compatible LÖVE, but written here — and the `testing/` corpus has
-not been run under this build.
+A third-party game runs too: `challacade/legend-of-lua`, unmodified, at
+1920x1080 — though only with a Lua 5.1 compatibility layer that is **not** on
+this branch, because it answers an open decision. See step 2.
+
+What is still unproven: the `testing/` corpus has not been run under this build,
+and neither of step 2's two fixes has a witness.
 
 `love.thread` is the one major module still stubbed (build-order step 7).
 
@@ -88,67 +91,72 @@ Rejected candidate: `besnoi/arkanoid` — clean on the 12 API scan and inside th
 envelope, but it ships **no `conf.lua`** and its assets are a **split RAR** with
 no extractor available here.
 
-**The blocker, confirmed against two real games and not their fault.** LÖVE
-enables every module by default and `boot.lua` requires each enabled one. Neither
-game sets `t.modules.*`, so both die in boot before reaching `main.lua` —
-`touch`, `video` and `thread` are enabled by default and the union artifact links
-none of them. No game-side filter catches this, and requiring every game to edit
-its `conf.lua` would break the `.love`-runs-unmodified pillar outright.
+**It runs.** Legend of Lua boots from its own `conf.lua`, opens a 1920x1080
+canvas, and plays: tilemap, trees, water, shadows, sprites, the equip UI and text
+all draw, keys move the game, and GL reports no error. Getting there took two
+fixes, both ours and both now on this branch, and it still needs one thing that
+is **not** on this branch because it answers an open decision — see "The Lua
+gap" below.
 
-### 2a. Make the artifact satisfy LÖVE's defaults — DO THIS FIRST
+Three findings, in the order they were hit:
 
-**Whose defect this is, settled from the source.** `boot.lua:204` defaults every
-one of the twenty modules to `true`, then loads them with a bare
+**1. Module defaults — fixed (was step 2a).** `boot.lua:204` defaults every one
+of the twenty modules to `true`, then loads them with a bare
 `require("love." .. v)` that hard-errors on a missing module. So `t.modules.*` has
 never been required of any game, on 11 or 12 — omitting it is idiomatic, and on
 desktop the default is always satisfiable because desktop links everything. It
-becomes unsatisfiable only on a build shipping a subset, which is ours. Both
-candidate games are correct; the incompatibility is ours, and calling it a
-"selection criterion" for games had it backwards.
+becomes unsatisfiable only on a build shipping a subset, which is ours.
 
-Two things this must NOT do. Editing a game's `conf.lua` voids the
+The boot wrapper now preloads the modules this build does not link, reading
+linked-ness from `package.preload` rather than a list, so linking one for real
+retires its stub with no edit. It deliberately does **not** set `love.<name>`,
+which leaves the engine in the shape desktop has when a game sets
+`t.modules.<name> = false` — `callbacks.lua`'s `if love.joystick then` takes the
+absent path instead of calling into a stub. No new guarded seam (the count stays
+ten), no `src/` change, no rebuild.
+
+The bargain stated plainly: this is correct for a module a game *enables but
+never calls*. A game that really uses `love.video` gets a nil index and fails
+loudly, which is the honest outcome. "Boots" and "works" stay separate claims.
+
+Two things it deliberately does not do. Editing a game's `conf.lua` voids the
 `.love`-runs-unmodified pillar. Changing `boot.lua`'s defaults is a fork-private
 edit to shared engine source (lane 3, forbidden) and would make `love.conf`
 report something desktop does not.
 
-**Tier 1 — warned-stub preload. Cheap, and enough for legend-of-lua.**
-`witness-frame.lua` (the boot wrapper *we* supply, in `wasi/`) already documents
-that running `require("love")` registers the `love.*` submodules into
-`package.preload`, and `boot.lua` resolves modules through plain `require`. So for
-each module the build does not link, preload a table whose `__index` returns a
-function that emits one `[love.wasm preview]` notice and no-ops. One mechanism for
-all unlinked modules, **no new guarded seam** (the count stays ten), no `src/`
-change, and no artifact rebuild to iterate. legend-of-lua *enables* `touch`,
-`video` and `thread` by default but never calls them, so satisfying `require` is
-all it needs.
+**2. `glGetIntegerv` unbound the shader program — fixed.** Desktop GL names
+objects with integers; WebGL hands out opaque objects, and both GL hosts
+converted the answer with `v | 0`, which is `0` for an object — and `0` is also
+the GL name for *nothing bound*. `Shader::loadVolatile` saves
+`GL_CURRENT_PROGRAM`, binds its new program to inspect uniforms, and restores
+what it saved. So creating **any** Shader, even one never used, left no program
+bound, and every draw after it failed with `GL_INVALID_OPERATION`. The clear
+colour still reached the screen, so the symptom was a game that looked like it
+was running while drawing nothing at all — the hardest shape of bug to read from
+the outside. Both hosts now keep a reverse object → name map, which fixes every
+`*_BINDING` query rather than just this one.
 
-**Tier 2 — link `joystick` and `sensor` for real.** Both have witnessed wasm
-backends (`wasi/platform/{joystick,sensor}-backend.cpp`), so stubbing them would
-be a lie where the truth is cheap. A `config-game` change plus the sources
-`build-joystick.sh` already lists — a known-good recipe applied to the union
-build. Costs a ~6 min rebuild and a re-run of the union and shell witnesses.
+Reproduced in an 8-line project: create one trivial passthrough shader, draw two
+rectangles, and the rectangles vanish. That repro should become the witness.
 
-**Explicitly NOT doing:** bespoke `touch`, `video` or `thread` backends in
-`src/`. They would add two or three guarded seams, breaking the documented ten,
-for no gain over the preload stub. `thread` stays step 7's problem — `Channel` is
-already compiled but `Thread:start()` genuinely cannot work, so a warn-once stub
-is the more truthful shape.
+**3. The Lua gap — OPEN, and the last thing between us and unmodified games.**
+See "Open decisions".
 
-**The bargain, stated:** a preload stub is correct for a module a game *enables
-but does not use*. A game that really calls `love.video.newVideoStream` gets a
-warned no-op and may misbehave downstream. So "boots" and "works" stay separate
-claims, which is what step 2's evidence bar already says.
+**Tier 2, still to do — link `joystick` and `sensor` for real.** Both have
+witnessed wasm backends (`wasi/platform/{joystick,sensor}-backend.cpp`), so
+stubbing them is a lie where the truth is cheap: a `config-game` change plus the
+sources `build-joystick.sh` already lists. Costs a ~6 min rebuild and a re-run of
+the union and shell witnesses. `touch`, `video` and `thread` keep the stub —
+bespoke backends would add guarded seams for no gain, and `thread` stays step 7's
+problem.
 
-**Unverified:** the preload mechanism reads correct against `boot.lua` and
-`witness-frame.lua`, but has not been run. Only booting a real game counts.
+**Measured, not assumed:** 1920x1080 renders correctly. A minimal project at that
+size draws rectangles and text exactly as the 96x64 fixtures do, and the game
+fills the canvas. The earlier worry that nothing above 96x64 had ever been tried
+is closed.
 
-**Then:** `wasi/shell/serve.sh 8080 <legend-of-lua clone>`.
-**Evidence:** boots, playable, no crash, visually plausible. Pixel parity is step
-3's job.
-
-**Unknown worth measuring, not assuming:** the game targets **1920x1080**. Every
-witness so far renders 64x64 or 96x64, so nothing yet says the WebGL2 path handles
-a canvas that size, or at what frame cost.
+**Not yet earned:** neither fix has a witness, so both are **observed**, not
+tested. Nothing in CI would catch a regression of either.
 
 [lol]: https://github.com/challacade/legend-of-lua
 
@@ -184,6 +192,7 @@ These gate work, and only the Human closes them (`AGENTS.md`, "Records").
 
 | Decision | The fork | What it gates |
 |---|---|---|
+| **Lua dialect** | **which Lua surface a game sees: 5.4 as-is, 5.4 made to look like 5.1, or actually vendoring 5.1** | **every game; step 2 cannot close without it** |
 | #47 (D4) | reload granularity: whole-chunk re-eval vs function-body hotswap | deferred past Beta; module granularity plus restart is what ships |
 | #48 (D7) | who unzips a runtime-mounted archive: host JS vs a guest zip reader over the in-tree zlib | archive mounting; enumeration shipped without needing it |
 | step-7 divergences | which desktop `love.thread` behaviors we accept losing | enumerated when the thread design document is written |
@@ -192,7 +201,60 @@ These gate work, and only the Human closes them (`AGENTS.md`, "Records").
 `DESIGN.md` records D1–D3, D5 and D6 as closed, carrying the alternatives that
 lost. D4 and D7 are open, so under `CONTRIBUTING.md` §3.3 they live in the
 tracker — #47 and #48 — and `DESIGN.md` keeps only what is settled about each
-and points at the issue.
+and points at the issue. The Lua-dialect decision is new and has no issue yet.
+
+### The Lua dialect decision
+
+**What forces it.** Desktop LÖVE ships **LuaJIT**, which implements **Lua 5.1**.
+LuaJIT has no wasm backend, so this build vendors **PUC Lua 5.4** — a choice made
+early and never recorded as a decision. It is not a detail: it changes the
+language every game is written against. Legend of Lua hit three instances before
+its title screen, and none is the game's fault:
+
+| What the game does | LuaJIT / 5.1 | our Lua 5.4 |
+|---|---|---|
+| `newFont(path, 4.5*scale)` | truncates silently | **errors**: "number has no integer representation" |
+| `unpack(t)` | a global | removed; it is `table.unpack` |
+| `math.atan2(y, x)` | present | removed; it is `math.atan(y, x)` |
+
+The first is the wide one. LÖVE's C API takes sizes with `luaL_optinteger`, which
+truncates under 5.1 and raises under 5.4 — so **any** game computing a size from
+a scale factor dies, and computing sizes from a scale factor is what every game
+that supports more than one resolution does.
+
+**The options.**
+
+- **A. Keep 5.4, make it look like 5.1.** Two parts: `-DLUA_FLOORN2I=F2Ifloor`
+  on the vendored Lua (a documented knob in `lvm.h`) restores silent float→int
+  conversion, and a compatibility preamble in the boot wrapper restores the
+  missing library functions. Both are in our lane. **Measured: this works.** With
+  both applied, the completely unmodified clone runs, pixel-identical to the
+  patched run. Its permanent gaps: `tostring(3.0)` is `"3.0"` where 5.1 says
+  `"3"`, which shows up in *displayed text*; `setfenv`/`getfenv` can only be
+  approximated over `_ENV`; and any 5.3+ parse error in a game is still fatal.
+- **B. Vendor Lua 5.1.5.** PUC 5.1 compiles to wasm as readily as 5.4, and it is
+  exactly the language LuaJIT implements — the closest we can get to the oracle,
+  and it removes the whole class rather than patching instances. Costs: no
+  integers, no `goto`, none of 5.4's own fixes, and an unknown amount of work
+  where LÖVE 12's own Lua or our pump assumes 5.4. Upstream LÖVE 12 targets
+  LuaJIT, so the engine's own Lua should be fine.
+- **C. Declare it a divergence.** Games must be 5.4-clean. Cheapest, and it
+  breaks the `.love`-runs-unmodified pillar for a very common pattern. Recorded
+  for completeness; not recommended.
+
+**Recommendation: A now, B evaluated before Beta closes.** A is measured, small,
+and reversible; B is the more honest answer but nothing yet says how much of LÖVE
+12 assumes 5.4, and that is a spike, not a step-2 task.
+
+**How the survey was made:** by running one real game to its title screen and
+reading every failure, plus reading `luaL_optinteger`'s definition in both
+dialects. It is not a systematic audit of the 5.1↔5.4 delta, so treat the option
+list as observed, not complete, and re-check it before the decision closes.
+
+**Where the evidence sits:** the probe build with `-DLUA_FLOORN2I=F2Ifloor` and
+the boot-wrapper preamble were both **reverted**, because landing them would
+entrench an answer. Reproducing them is a one-line build-flag change and a
+ten-line preamble.
 
 ## Practical notes
 

@@ -36,8 +36,14 @@ export function makeWebGLHost() {
   // GL uint "names" <-> WebGL objects. id 0 == "no object" (unbind / default).
   const objs = new Map();
   let nextId = 1;
-  const put = (o) => { const id = nextId++; objs.set(id, o); return id; };
+  // ...and back again. Desktop GL names objects with integers, so a caller can
+  // read a binding back with glGetIntegerv and restore it later; WebGL hands out
+  // opaque objects instead, which have no integer to report. Keeping the reverse
+  // direction is what makes save/restore work — see glGetIntegerv.
+  const ids = new WeakMap();
+  const put = (o) => { const id = nextId++; objs.set(id, o); if (o) ids.set(o, id); return id; };
   const get = (id) => (id === 0 ? null : objs.get(id));
+  const idOf = (o) => (o ? ids.get(o) ?? 0 : 0);
   const gen = (n, ptr, create) => { const h = HEAPU32(); for (let i = 0; i < n; i++) h[(ptr >> 2) + i] = put(create()); };
   const del = (n, ptr, destroy) => { const h = HEAPU32(); for (let i = 0; i < n; i++) { const id = h[(ptr >> 2) + i]; const o = objs.get(id); if (o) { destroy(o); objs.delete(id); } } };
   const uloc = (id) => (id === -1 ? null : objs.get(id));
@@ -71,7 +77,15 @@ export function makeWebGLHost() {
     glGetIntegerv(pname, ptr) {
       const v = gl.getParameter(pname);
       const h = HEAP32();
-      if (Array.isArray(v) || v instanceof Int32Array || v instanceof Uint32Array) { for (let i = 0; i < v.length; i++) h[(ptr >> 2) + i] = v[i] | 0; }
+      if (Array.isArray(v) || ArrayBuffer.isView(v)) { for (let i = 0; i < v.length; i++) h[(ptr >> 2) + i] = v[i] | 0; }
+      // A BINDING query (GL_CURRENT_PROGRAM, GL_*_BINDING, …) answers with the
+      // bound WebGL object, not a number. Report its GL name, because `object|0`
+      // is 0 and 0 means "nothing bound": callers that save a binding and restore
+      // it later would silently unbind instead. LOVE's Shader::loadVolatile does
+      // exactly that around every shader it creates, so without this, creating
+      // any Shader leaves no program bound and every later draw fails with
+      // GL_INVALID_OPERATION.
+      else if (v !== null && typeof v === 'object') h[ptr >> 2] = idOf(v);
       else h[ptr >> 2] = (v | 0);
     },
     glGetFloatv(pname, ptr) {

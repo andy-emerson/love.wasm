@@ -16,7 +16,12 @@
 -- The seeded script (see input-host.mjs) is:
 --   keydown KeyA · textinput "A" · keyup KeyA · keydown ArrowLeft(left held) ·
 --   mousemoved(10,20,+10,+20) · mousepressed left · mousepressed right ·
---   mousereleased left · wheelmoved(0,1,standard) · resize(800,600) · quit
+--   mousereleased left · wheelmoved(0,1,standard) · resize(800,600) ·
+--   touchpressed 7 · touchmoved 7 · touchpressed 9 · touchreleased 7 · quit
+--
+-- The touch tail is two fingers on purpose: love.touch keeps a LIST of live
+-- touches, so a single finger would not tell a working list from a single slot.
+-- After the pump, finger 9 must be the only one left.
 local failures = 0
 local function check(name, cond, got)
   if cond then
@@ -36,17 +41,21 @@ local kok = pcall(require, "love.keyboard")
 check("require 'love.keyboard' SUCCEEDS", kok and type(love.keyboard) == "table", kok)
 local mok = pcall(require, "love.mouse")
 check("require 'love.mouse' SUCCEEDS", mok and type(love.mouse) == "table", mok)
+local tok = pcall(require, "love.touch")
+check("require 'love.touch' SUCCEEDS", tok and type(love.touch) == "table", tok)
 
 -- Drain the host queue into the event queue + update input state.
 local pok, perr = pcall(love.event.pump)
 check("love.event.pump() does not throw", pok, perr)
 
 -- Collect the whole translated message sequence.
+-- Eight slots, because a touch message carries the most: id, x, y, dx, dy,
+-- pressure, devicetype, mouse.
 local msgs = {}
-for name, a, b, c, d, e in love.event.poll() do
-  msgs[#msgs + 1] = { name, a, b, c, d, e }
+for name, a, b, c, d, e, f, g, h in love.event.poll() do
+  msgs[#msgs + 1] = { name, a, b, c, d, e, f, g, h }
 end
-check("pump produced 11 messages", #msgs == 11, #msgs)
+check("pump produced 15 messages", #msgs == 15, #msgs)
 
 local function m(i) return msgs[i] or {} end
 local function eq(i, name, a, b, c, d)
@@ -89,8 +98,42 @@ check("msg9 wheelmoved 0,1,standard", ok9, g9)
 -- resize(800,600)
 local ok10, g10 = eq(10, "resize", 800, 600)
 check("msg10 resize 800,600", ok10, g10)
+-- ── love.touch ──────────────────────────────────────────────────────────────
+-- The id reaches Lua as lightuserdata (upstream's choice — a double cannot hold
+-- every id), so it is compared by identity across messages, never by value.
+local t11, t12, t13, t14 = m(11), m(12), m(13), m(14)
+check("msg11 touchpressed", t11[1] == "touchpressed", t11[1])
+check("msg11 x,y = 30,40", t11[3] == 30 and t11[4] == 40, tostring(t11[3]) .. "," .. tostring(t11[4]))
+check("msg11 dx,dy = 0,0 (a press has no delta)", t11[5] == 0 and t11[6] == 0, tostring(t11[5]) .. "," .. tostring(t11[6]))
+check("msg11 pressure = 1", t11[7] == 1, t11[7])
+check("msg11 devicetype = touchscreen", t11[8] == "touchscreen", t11[8])
+check("msg11 mouse = false (a browser never synthesizes touch from the mouse)", t11[9] == false, t11[9])
+check("msg11 id is lightuserdata", type(t11[2]) == "userdata", type(t11[2]))
+
+check("msg12 touchmoved, same finger as msg11", t12[1] == "touchmoved" and t12[2] == t11[2], t12[1])
+check("msg12 x,y = 35,48", t12[3] == 35 and t12[4] == 48, tostring(t12[3]) .. "," .. tostring(t12[4]))
+check("msg12 dx,dy = 5,8 (the move carries its delta)", t12[5] == 5 and t12[6] == 8, tostring(t12[5]) .. "," .. tostring(t12[6]))
+check("msg12 pressure = 0.5", t12[7] == 0.5, t12[7])
+
+check("msg13 touchpressed, a DIFFERENT finger", t13[1] == "touchpressed" and t13[2] ~= t11[2], t13[1])
+check("msg14 touchreleased, the FIRST finger", t14[1] == "touchreleased" and t14[2] == t11[2], t14[1])
+
+-- The live-touch list: the module's state, updated by the pump as it converts,
+-- which is the half love.event.poll() cannot show.
+local touches = love.touch.getTouches()
+check("getTouches() has exactly the one finger still down", #touches == 1, #touches)
+if #touches == 1 then
+  check("the survivor is finger 9, not finger 7", touches[1] == t13[2], tostring(touches[1]))
+  local tx, ty = love.touch.getPosition(touches[1])
+  check("getPosition(9) = 60,70", tx == 60 and ty == 70, tostring(tx) .. "," .. tostring(ty))
+  check("getPressure(9) = 0.25", love.touch.getPressure(touches[1]) == 0.25, love.touch.getPressure(touches[1]))
+  check("getDeviceType(9) = touchscreen", love.touch.getDeviceType(touches[1]) == "touchscreen", love.touch.getDeviceType(touches[1]))
+  -- A released finger must be gone, not merely absent from the list.
+  check("getPosition on the RELEASED finger errors", not pcall(love.touch.getPosition, t11[2]), "no error")
+end
+
 -- quit
-check("msg11 quit", m(11)[1] == "quit", m(11)[1])
+check("msg15 quit", m(15)[1] == "quit", m(15)[1])
 
 -- Now the shared-state readers. After the pump: 'a' was pressed then released,
 -- 'left' is still held; left mouse pressed then released, right still held; last

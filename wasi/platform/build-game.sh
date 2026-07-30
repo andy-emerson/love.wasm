@@ -7,6 +7,7 @@
 #   - love.audio   (webaudio backend + null fallback, from build-audio)
 #   - love.sound   (lullaby decoders: Wave/Vorbis/FLAC/MP3/ModPlug, from build-sound)
 #   - love.physics (in-tree Box2D, from build-physics)
+#   - love.touch (browser TouchEvent, on the same love_input record)
 #   - love.joystick + love.sensor (Gamepad API backend + the #27 warned sensor
 #     stub, from build-joystick; joystick will not link with sensor off,
 #     upstream #23)
@@ -14,7 +15,7 @@
 # decodes + plays a sound, simulates physics, and draws — all in one artifact.
 #
 # Deltas from build-frame.sh, all in the build — never with rm:
-#   - USE config-game (frame set + AUDIO + SOUND + PHYSICS + JOYSTICK + SENSOR).
+#   - USE config-game (frame set + AUDIO + SOUND + PHYSICS + JOYSTICK + SENSOR + TOUCH).
 #   - ADD the audio module + null/webaudio backends (-DLOVE_AUDIO_NO_OPENAL
 #     -DLOVE_AUDIO_WEBAUDIO), the sound module + lullaby decoders (minus Apple-only
 #     CoreAudioDecoder) + Wuff (C), and the physics module + in-tree Box2D.
@@ -98,12 +99,15 @@ LOVE_SOURCES="
   $SRC/modules/mouse/Cursor.cpp
   $SRC/modules/mouse/wrap_Cursor.cpp
   $SRC/modules/mouse/wrap_Mouse.cpp
+  $SRC/modules/touch/Touch.cpp
+  $SRC/modules/touch/wrap_Touch.cpp
   $SRC/modules/joystick/Joystick.cpp
   $SRC/modules/joystick/wrap_Joystick.cpp
   $SRC/modules/joystick/wrap_JoystickModule.cpp
   $SRC/modules/sensor/Sensor.cpp
   $SRC/modules/sensor/wrap_Sensor.cpp
   $HERE/input-backend.cpp
+  $HERE/touch-backend.cpp
   $HERE/joystick-backend.cpp
   $HERE/sensor-backend.cpp
   $SRC/modules/timer/Timer.cpp
@@ -181,4 +185,4 @@ grep -aq "libc++abi" "$OUT" || {
   exit 1
 }
 "$ROOT/wasi/toolchain/check-eh-encoding.sh" "$OUT"
-echo "built $OUT (LÖVE union real-game: graphics+window+filesystem+input+joystick+sensor+timer+system+audio+sound+physics; external EH confirmed)"
+echo "built $OUT (LÖVE union real-game: graphics+window+filesystem+input+touch+joystick+sensor+timer+system+audio+sound+physics; external EH confirmed)"

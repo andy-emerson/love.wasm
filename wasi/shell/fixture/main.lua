@@ -9,6 +9,23 @@ function love.load()
   print("SHELL-LOAD " .. tostring(love.filesystem.read("assets/note.txt")))
 end
 
+-- love.touch, reported so the witness can prove a REAL DOM TouchEvent reaches
+-- it. The live-touch count is what separates the module's state from the event:
+-- 1 while a finger is down, 0 once it lifts.
+function love.touchpressed(id, tx, ty, dx, dy, pressure)
+  print(("SHELL-TOUCHPRESSED x=%.1f y=%.1f dx=%.1f dy=%.1f p=%.2f live=%d")
+    :format(tx, ty, dx, dy, pressure, #love.touch.getTouches()))
+end
+
+function love.touchmoved(id, tx, ty, dx, dy)
+  print(("SHELL-TOUCHMOVED x=%.1f y=%.1f dx=%.1f dy=%.1f live=%d")
+    :format(tx, ty, dx, dy, #love.touch.getTouches()))
+end
+
+function love.touchreleased(id, tx, ty)
+  print(("SHELL-TOUCHRELEASED x=%.1f y=%.1f live=%d"):format(tx, ty, #love.touch.getTouches()))
+end
+
 function love.update(dt)
   if love.keyboard.isDown("right") then x = x + 120 * dt end
   if love.keyboard.isDown("left")  then x = x - 120 * dt end

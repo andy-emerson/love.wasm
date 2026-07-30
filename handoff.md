@@ -75,7 +75,7 @@ itch.io does not resolve, so itch-only games need the Human to supply them.
 
 - `conf.lua` declares `t.version = "11.5"`, and the code uses **no API removed in
   12** — checked against every removal and rename in `changes.txt`.
-- Every module it touches is inside the eighteen the union artifact links:
+- Every module it touches is inside the nineteen the union artifact links:
   `audio`, `data`, `event`, `filesystem`, `graphics`, `image`, `keyboard`,
   `math`, `mouse`, `physics`, `system`, `timer`, `window`.
 - Assets are 167 loose `.png`/`.ogg`/`.wav`/`.ttf` files, no archives — so D7
@@ -95,8 +95,8 @@ no extractor available here.
 canvas, and plays: tilemap, trees, water, shadows, sprites, the equip UI and text
 all draw, keys move the game, and GL reports no error. Getting there took two
 fixes, both ours and both now on this branch, plus three one-line edits to the
-game's own Lua to bring it from 5.1 to 5.4. The union artifact links **eighteen**
-modules — everything but `touch`, `video` and `thread`.
+game's own Lua to bring it from 5.1 to 5.4. The union artifact links **nineteen**
+modules — everything but `video` and `thread`.
 
 Three findings, in the order they were hit:
 
@@ -116,8 +116,7 @@ support. Linking them is a `config-game` + `build-game.sh` change; the stub
 retires itself, because linked-ness is read from `package.preload` rather than
 listed.
 
-`touch`, `video` and `thread` remain unlinked and are supplied by the boot
-wrapper. `love.<name>` stays **nil**, which is the shape desktop has with
+`video` and `thread` remain unlinked and are supplied by the boot wrapper. `love.<name>` stays **nil**, which is the shape desktop has with
 `t.modules.<name> = false`, so a feature test takes the absent path; the report
 rides on a metatable on `love` itself, so the same read both reports and
 correctly evaluates false.
@@ -169,10 +168,18 @@ a real regression on the way in: linking `joystick` adds a `love_gamepad` import
 which `run-browser-game.mjs` did not provide, and the union witness failed at
 instantiate until it was wired.
 
-**`love.touch` is unbuilt, not impossible.** A browser has real touch events. It
-is stubbed today because nobody has written the backend, which is a different
-claim from `video` (Theora dropped) and `thread` (step 7), and the module
-disposition table now says so.
+**`love.touch` is now built.** A browser has real touch events, so `touch` was
+unbuilt rather than impossible — the third reason in a list of three, and the
+only one that was just a gap. `wasi/platform/touch-backend.{h,cpp}` is the
+browser-TouchEvent sibling of `touch/sdl/Touch.cpp`, keeping upstream's division:
+the live-touch list lives in the module and the event pump updates it as it
+converts, which is exactly where `event/sdl/Event.cpp` does it.
+
+It needs **no host import of its own**. Touch arrives as three more record types
+on the existing `love_input` seam (13/14/15), next to the mouse and keyboard
+ones, the same way finger events sit next to them in an SDL queue — so the host
+count is unchanged and only the guarded-seam count moves, ten to eleven.
+`love.thread` and `love.video` are what remain absent, for their own reasons.
 
 **Measured, not assumed:** 1920x1080 renders correctly. A minimal project at that
 size draws rectangles and text exactly as the 96x64 fixtures do, and the game
@@ -180,7 +187,14 @@ fills the canvas. The earlier worry that nothing above 96x64 had ever been tried
 is closed.
 
 **Evidence: both fixes are tested, and both witnesses are demonstrated able to
-fail.** The GL fix is 4.5b — reverting the host change makes it read back the
+fail.** love.touch is witnessed twice, both legs green: the 6.4 input witness
+drives two fingers through a baked record queue (node AND Chromium) and asserts
+the message args, the live-touch LIST, and that a released finger is gone; the
+shell witness dispatches REAL DOM TouchEvents over CDP — held across frames, not
+tapped — and asserts the press lands on the canvas centre, the move carries a
+host-computed delta, and getTouches() goes 1 then 0.
+
+The GL fix is 4.5b — reverting the host change makes it read back the
 clear colour and FAIL, while the pre-existing 4.5 passes either way. The module
 handling is the union game witness, which now asserts seven things about a
 project that sets no `t.modules`: linked modules are real tables, an unlinked one

@@ -17,8 +17,12 @@
  * CI-enforced would hide a working feature: a game's `if love.joystick then`
  * would take the absent path and silently lose gamepad support.
  *
+ * love.touch is linked too, over the browser's TouchEvent API
+ * (wasi/platform/touch-backend.cpp), on the same love_input record as the mouse
+ * and keyboard.
+ *
  * NOT enabled (and NOT linked): love.thread (step 7 Workers), love.video
- * (Theora dropped), love.touch. LOVE enables all twenty modules by default and
+ * (Theora dropped). LOVE enables all twenty modules by default and
  * boot.lua hard-errors on a missing one, so the boot wrapper
  * (wasi/platform/witness-frame.lua) preloads the absent ones and reports them
  * when a game USES them.
@@ -41,3 +45,4 @@
 #define LOVE_ENABLE_PHYSICS 1
 #define LOVE_ENABLE_JOYSTICK 1
 #define LOVE_ENABLE_SENSOR 1
+#define LOVE_ENABLE_TOUCH 1

@@ -9,6 +9,11 @@
  * luax_getdata / File::type to load a cursor from a file), so love.image and
  * love.filesystem (the real 6.2 module on the love_fs seam) are enabled too;
  * love.data backs love.image's compressed formats. No graphics / window / font
+ * love.touch rides the same love_input seam: a browser TouchEvent has no host
+ * import of its own, it arrives as three more record types next to the mouse
+ * and keyboard ones, so witnessing it here costs only the module TUs.
+ *
+ * No graphics / window / font
  * here — the input path is witnessed windowlessly (a coroutine driving
  * love.event.pump + poll and the love.keyboard/mouse readers), so this artifact
  * runs on BOTH node:wasi and real Chromium, no WebGL2 needed.
@@ -20,3 +25,4 @@
 #define LOVE_ENABLE_EVENT 1
 #define LOVE_ENABLE_KEYBOARD 1
 #define LOVE_ENABLE_MOUSE 1
+#define LOVE_ENABLE_TOUCH 1

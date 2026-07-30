@@ -27,7 +27,8 @@ export function makeInputHost() {
   // Event type tags (must match EventType in input-backend.cpp).
   const KEYDOWN = 1, KEYUP = 2, TEXTINPUT = 3, MOUSEMOVED = 4,
         MOUSEPRESSED = 5, MOUSERELEASED = 6, WHEEL = 7, RESIZE = 8,
-        FOCUS = 9, MOUSEFOCUS = 10, VISIBLE = 11, QUIT = 12;
+        FOCUS = 9, MOUSEFOCUS = 10, VISIBLE = 11, QUIT = 12,
+        TOUCHPRESSED = 13, TOUCHMOVED = 14, TOUCHRELEASED = 15;
 
   // The baked event script. DOM button codes are 0/1/2 (left/middle/right); the
   // backend remaps to LÖVE 1/3/2. The witness (witness-input.lua) asserts the
@@ -43,6 +44,13 @@ export function makeInputHost() {
     { type: MOUSERELEASED, a: 10, b: 20, i0: 0, i1: 1 },         // mousereleased button1(left)
     { type: WHEEL, a: 0, b: 1, i2: 0 },                          // wheelmoved 0,1,standard
     { type: RESIZE, i0: 800, i1: 600 },                          // resize 800,600
+    // Two fingers, so getTouches() has to track a LIST rather than one touch:
+    // finger 7 goes down and moves, finger 9 goes down beside it, then 7 lifts
+    // while 9 stays. i0 is the touch identifier; p is pressure.
+    { type: TOUCHPRESSED,  a: 30, b: 40, c: 0, d: 0, i0: 7, p: 1 },
+    { type: TOUCHMOVED,    a: 35, b: 48, c: 5, d: 8, i0: 7, p: 0.5 },
+    { type: TOUCHPRESSED,  a: 60, b: 70, c: 0, d: 0, i0: 9, p: 0.25 },
+    { type: TOUCHRELEASED, a: 35, b: 48, c: 0, d: 0, i0: 7, p: 0.5 },
     { type: QUIT },                                               // quit
   ];
 
@@ -75,6 +83,9 @@ export function makeInputHost() {
       dv.setInt32(recPtr + 44, ev.i2 | 0, true);
       writeStr(dv, recPtr + 48, ev.code);
       writeStr(dv, recPtr + 88, ev.key);
+      // Touch pressure overlays the (unused) code[] field — see the record
+      // layout in input-backend.cpp. Written after the strings, so it wins.
+      if (ev.p !== undefined) dv.setFloat64(recPtr + 48, ev.p, true);
       return 1;
     },
     input_set_cursor_visible(v) { effects.cursorVisible.push(v); },

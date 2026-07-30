@@ -38,7 +38,11 @@
     outline: none; border: 1px solid #2a2e35;
   }
   #log {
-    margin: 0; padding: .5rem .75rem; max-height: 11rem; overflow-y: auto;
+    /* A FIXED height, not max-height. #stage is flex:1 and centres the canvas,
+       so a log that grows shrinks the stage and slides the canvas — which moves
+       the game under the player's finger, and shifts every mouse and touch
+       coordinate mid-play. Reserving the space keeps the game area still. */
+    margin: 0; padding: .5rem .75rem; height: 11rem; overflow-y: auto;
     white-space: pre-wrap; border-top: 1px solid #2a2e35;
     background: #101216; color: #98a0ab; font-size: 12px;
   }

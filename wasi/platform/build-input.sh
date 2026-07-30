@@ -66,7 +66,10 @@ LOVE_SOURCES="
   $SRC/modules/mouse/Cursor.cpp
   $SRC/modules/mouse/wrap_Cursor.cpp
   $SRC/modules/mouse/wrap_Mouse.cpp
+  $SRC/modules/touch/Touch.cpp
+  $SRC/modules/touch/wrap_Touch.cpp
   $HERE/input-backend.cpp
+  $HERE/touch-backend.cpp
   $HERE/preview-warn.cpp
   $BOOT/pump-ext.cpp
   $BOOT/threads-wasi.cpp

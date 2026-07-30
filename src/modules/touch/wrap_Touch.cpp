@@ -23,7 +23,13 @@
 // LOVE
 #include "wrap_Touch.h"
 
+#ifdef LOVE_WASM
+// The browser TouchEvent backend, in this fork's own tree (wasi/platform). SDL's
+// backend is not compiled for wasm, and its header pulls in SDL3.
+#include "touch-backend.h"
+#else
 #include "sdl/Touch.h"
+#endif
 #include "common/Optional.h"
 
 namespace love
@@ -140,7 +146,11 @@ extern "C" int luaopen_love_touch(lua_State *L)
 	Touch *instance = instance();
 	if (instance == nullptr)
 	{
+#ifdef LOVE_WASM
+		luax_catchexcept(L, [&](){ instance = new love::touch::wasm::Touch(); });
+#else
 		luax_catchexcept(L, [&](){ instance = new love::touch::sdl::Touch(); });
+#endif
 	}
 	else
 		instance->retain();

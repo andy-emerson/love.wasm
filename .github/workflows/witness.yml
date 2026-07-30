@@ -345,6 +345,8 @@ jobs:
         # love_input seam with a baked queue and cannot prove the DOM half; and a
         # module edited ON DISK reaches the RUNNING instance via pump_invalidate()
         # while main.lua is reported restart-only rather than silently ignored
-        # (#47 / D4). Reuses the union artifact the previous step built. Chromium-only
+        # (#47 / D4). Builds its OWN union artifact (~6 min): run-game.sh above
+        # builds into a mktemp it deletes, so there is nothing to reuse, and this
+        # step is the reason graphics-witness runs materially longer. Chromium-only
         # (real WebGL2); no node leg (expected).
         run: PREFIX="$PWD/wasi-eh" OUT="$PWD/wasi/shell/love-game.wasm" wasi/shell/run.sh

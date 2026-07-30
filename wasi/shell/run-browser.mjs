@@ -22,11 +22,11 @@
 //
 //   node run-browser.mjs <wasm> <fixture-dir>
 import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { cpSync, writeFileSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, writeFileSync, readFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolvePlaywright } from '../host/witness-harness.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
@@ -34,11 +34,11 @@ const wasm = process.argv[2] || join(here, 'love-game.wasm');
 const fixture = process.argv[3] || join(here, 'fixture');
 const PORT = Number(process.env.SHELL_PORT || 8188);
 
-let chromium;
-for (const base of [process.cwd(), '/root/.love.wasm/npm', process.env.HOME || '/root']) {
-  try { chromium = createRequire(base + '/x.js')('playwright-core').chromium; break; } catch {}
-}
-if (!chromium) { console.error('playwright-core is not resolvable'); process.exit(1); }
+// Resolve Playwright and pick the browser exactly the way every other witness
+// does (wasi/host/witness-harness.mjs): one resolution rule for the whole repo,
+// so a witness cannot work in one environment and not another. Hardcoding a
+// container's browser path is what broke the first CI run of this witness.
+const { chromium } = resolvePlaywright();
 
 // A scratch copy: the live-edit assertions rewrite project files.
 const work = mkdtempSync(join(tmpdir(), 'shell-witness-'));
@@ -53,10 +53,10 @@ try {
   server = spawn(join(here, 'serve.sh'), [String(PORT), work], { cwd: root, stdio: 'ignore' });
   await new Promise((r) => setTimeout(r, 900));
 
-  browser = await chromium.launch({
-    executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium',
-    args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
-  });
+  // $CHROMIUM only when it actually exists, else let Playwright use its own
+  // installed browser — the harness's rule, and what CI relies on.
+  const exe = process.env.CHROMIUM && existsSync(process.env.CHROMIUM) ? process.env.CHROMIUM : null;
+  browser = await chromium.launch(exe ? { executablePath: exe } : {});
   const page = await browser.newPage();
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));

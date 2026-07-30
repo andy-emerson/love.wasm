@@ -223,6 +223,31 @@ jobs:
       - name: audio witness (love.audio playback + mic, node + Chromium + fake-device capture)
         run: PREFIX="$PWD/wasi-eh" wasi/audio/run.sh
 
+      - name: platform witness — love.physics (Box2D) link (pre-step-7, node + real Chromium)
+        # Pre-step-7 "unblock a real game": love.physics on the in-tree Box2D 2.4,
+        # a pure-compute module with no host seam and no engine-source edits. A
+        # dynamic body with an attached shape falls under gravity — position
+        # advances in +y and it gains downward velocity. Windowless: node + Chromium.
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-physics.sh
+
+      - name: platform witness — love.sound decoders (pre-step-7, node + real Chromium)
+        # Pre-step-7 "unblock a real game": the lullaby decoders (Wave/Vorbis/FLAC/
+        # MP3/ModPlug) linked so a real encoded asset becomes PCM. Decodes the corpus
+        # asset testing/resources/clickmono.ogg via the VorbisDecoder over vendored
+        # libogg+libvorbis (built into $PREFIX/soundlibs on first run) and inspects
+        # the SoundData. Pure compute (decode from a Data): node + Chromium both.
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-sound.sh
+
+      - name: platform witness — love.filesystem directory enumeration (pre-step-7, node + real Chromium)
+        # Pre-step-7 "unblock a real game": getDirectoryItems over the new fs_list
+        # seam (size-then-fill, as fs_read). The host merges the read-only project
+        # and the writable save namespace and de-dupes, so a written file shadows a
+        # project file of the same name exactly once. Enumerate a save subtree and
+        # the merged root; a file/absent path yields empty (never faked). Reuses the
+        # 6.2 filesystem build. Windowless: node + Chromium both. (Archive/.love
+        # mounting stays a declared deferral — a loud return false.)
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-fs-list.sh
+
       - name: resample-delegation probe — Chromium + Firefox + WebKit (issue #33)
         # A PROBE, not a gate (exits 0 regardless): records per-engine whether a
         # requested capture rate is honored and whether createMediaStreamSource
@@ -297,3 +322,15 @@ jobs:
         # is RED (read back through the WebGL2 context). Reuses the graphics job's
         # warm gfxlibs. Chromium-only (real WebGL2); no node leg (expected).
         run: PREFIX="$PWD/wasi-eh" wasi/platform/run-frame.sh
+
+      - name: union real game — graphics + filesystem + sound/audio + physics together (pre-step-7 capstone, real Chromium)
+        # Pre-step-7 capstone — "a real game runs". The union artifact (the frame
+        # set PLUS love.audio + love.sound + love.physics) boots LÖVE's real boot.lua
+        # and runs an actual game: love.load decodes + plays a real Ogg asset read
+        # through love.filesystem and builds a physics world with a falling body;
+        # love.update steps physics; love.draw draws the body red. The driver asserts
+        # the load / sound-decoded / physics-fell markers reached the host tap AND a
+        # red pixel (the physics-positioned body) is on the canvas. Reuses the
+        # graphics job's warm gfxlibs; builds soundlibs on first run. Chromium-only
+        # (real WebGL2); no node leg (expected).
+        run: PREFIX="$PWD/wasi-eh" wasi/platform/run-game.sh

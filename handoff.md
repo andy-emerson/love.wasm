@@ -205,11 +205,24 @@ and points at the issue. The Lua-dialect decision is new and has no issue yet.
 
 ### The Lua dialect decision
 
-**What forces it.** Desktop LÖVE ships **LuaJIT**, which implements **Lua 5.1**.
+**What forces it.** **LÖVE 12 is a Lua 5.1 engine, in both of its
+configurations.** `CMakeLists.txt:214` offers exactly one fork: `LOVE_JIT` on
+gives LuaJIT 2.1 (which implements 5.1), `LOVE_JIT` off gives `find_package(Lua51
+REQUIRED)`. It defaults on everywhere but Apple, where it defaults off. There is
+no Lua 5.4 build of LÖVE. `src/libraries/lua53/` confirms the baseline from the
+other direction: it *backports* 5.3's `lstrlib` and `lutf8lib` into a 5.1 world.
+
+What does exist is **build-time** compatibility: three `LUA_VERSION_NUM >= 504`
+branches (`src/love.cpp:266`, `common/runtime.cpp:1191` and `luax_objlen`) let
+the engine compile against 5.4, and `changes.txt:203` records it as exactly that
+— "Fixed build-time compatibility with Lua 5.4", in **11.4**, not 12. That is C
+API portability, and it is what makes this build possible at all. It says nothing
+about the standard library or the VM, which is where games break.
+
 LuaJIT has no wasm backend, so this build vendors **PUC Lua 5.4** — a choice made
-early and never recorded as a decision. It is not a detail: it changes the
-language every game is written against. Legend of Lua hit three instances before
-its title screen, and none is the game's fault:
+early and never recorded as a decision. So we are running LÖVE 12 off its
+supported matrix, against a language every existing game predates. Legend of Lua
+hit three instances before its title screen, and none is the game's fault:
 
 | What the game does | LuaJIT / 5.1 | our Lua 5.4 |
 |---|---|---|
@@ -232,19 +245,30 @@ that supports more than one resolution does.
   patched run. Its permanent gaps: `tostring(3.0)` is `"3.0"` where 5.1 says
   `"3"`, which shows up in *displayed text*; `setfenv`/`getfenv` can only be
   approximated over `_ENV`; and any 5.3+ parse error in a game is still fatal.
-- **B. Vendor Lua 5.1.5.** PUC 5.1 compiles to wasm as readily as 5.4, and it is
-  exactly the language LuaJIT implements — the closest we can get to the oracle,
-  and it removes the whole class rather than patching instances. Costs: no
-  integers, no `goto`, none of 5.4's own fixes, and an unknown amount of work
-  where LÖVE 12's own Lua or our pump assumes 5.4. Upstream LÖVE 12 targets
-  LuaJIT, so the engine's own Lua should be fine.
+- **B. Vendor Lua 5.1.5.** Not an alternative dialect but *the* one: 5.1 is what
+  LÖVE 12's own build produces, what its Lua is written against, and what every
+  existing game targets. It removes the whole class rather than patching
+  instances. Costs: no integers, no `goto`, none of 5.4's own fixes, and — the
+  real bill — `lua.wasm` is a 5.4 source drop, so `onelua.c` (a 5.4
+  amalgamation), `LUAW_EXTERNAL_EH` and the wasm `setjmp` shim are all 5.4-shaped
+  work that would need redoing against a 5.1 tree.
 - **C. Declare it a divergence.** Games must be 5.4-clean. Cheapest, and it
   breaks the `.love`-runs-unmodified pillar for a very common pattern. Recorded
   for completeness; not recommended.
 
-**Recommendation: A now, B evaluated before Beta closes.** A is measured, small,
-and reversible; B is the more honest answer but nothing yet says how much of LÖVE
-12 assumes 5.4, and that is a spike, not a step-2 task.
+**Recommendation: A as the cheap thing that works, B spiked before Beta closes.**
+A is measured, small and reversible, but it is a permanent shim over a mismatch
+that will keep producing findings like these three; calling it "the answer" would
+overstate it. B is the baseline the engine was built for, and the only unknown
+that matters is how much of the wasm toolchain assumes 5.4. That is a spike, and
+it belongs before Beta closes rather than after — the longer A stands, the more
+of the shim there is to unwind.
+
+**Correction owed to `readme.md` in the doc pass:** line 62 says "LÖVE 12
+supports Lua 5.4 natively". "Natively" is wrong and "supports" is too strong —
+it *compiles* against 5.4 by way of three portability branches, and its build
+system cannot produce such a build. The citation to `love.cpp` should also read
+`src/love.cpp`, not `src/modules/love/love.cpp`.
 
 **How the survey was made:** by running one real game to its title screen and
 reading every failure, plus reading `luaL_optinteger`'s definition in both

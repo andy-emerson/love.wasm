@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.4: the real love.event /
+// love.wasm platform seam — build-order step 6.4: the real love.event /
 // love.keyboard / love.mouse backends for wasm32-wasi, on the host-import
 // love_input seam. They replace the three SDL backends (which poll a native
 // OS event loop the browser has no access to) with backends fed by DOM events

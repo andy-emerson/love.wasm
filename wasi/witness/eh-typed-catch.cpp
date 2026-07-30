@@ -1,4 +1,4 @@
-// Step-0 witness for love-wasi: full C++ EH under wasm32-wasi + wasm-EH.
+// Step-0 witness for love.wasm: full C++ EH under wasm32-wasi + wasm-EH.
 // Proves the behaviors LÖVE's error path needs (luax_catchexcept):
 //   1. a typed catch (RTTI match against a base class) actually catches,
 //   2. the exception object is inspectable (what() returns the message),

@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — the love.sensor WARNED-STUB backend for wasm32-wasi
+// love.wasm platform seam — the love.sensor WARNED-STUB backend for wasm32-wasi
 // (issue #27). It is the witnessed, concrete example of the preview-limitation
 // warning mechanism (wasi/platform/preview-warn.h): every method that would need
 // real motion hardware (accelerometer / gyroscope) is a NON-FATAL warned stub

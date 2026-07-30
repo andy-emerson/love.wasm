@@ -25,7 +25,7 @@
 // host supplies as imports, the same role an OS plays for desktop LÖVE). The
 // host — a browser, or the witness's mock — implements these; wasm only calls
 // them. Any host does the mixing (per-source WebAudio nodes) and the sample-rate
-// conversion (AudioBuffer at the source's own rate); love-wasi owns no DSP.
+// conversion (AudioBuffer at the source's own rate); love.wasm owns no DSP.
 // See wasi/audio/DESIGN.md.
 
 #define WA_IMPORT(sym) __attribute__((import_module("love_audio"), import_name(sym)))

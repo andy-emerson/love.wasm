@@ -1,4 +1,4 @@
-/* love-wasi FreeType options — stock upstream ftoption.h with the options for
+/* love.wasm FreeType options — stock upstream ftoption.h with the options for
  * modules NOT in our compiled subset (see build.sh / PIN) turned off:
  *   - FT_CONFIG_OPTION_USE_ZLIB — LÖVE loads TTF/OTF; dropping gzip/WOFF avoids
  *     bundling a second zlib (wasi/vendor/zlib is the one zlib). To add WOFF
@@ -190,7 +190,7 @@ FT_BEGIN_HEADER
    *
    *   Define this macro if you want to enable this 'feature'.
    */
-/* love-wasi: disabled — no LZW module compiled */
+/* love.wasm: disabled — no LZW module compiled */
 /* #define FT_CONFIG_OPTION_USE_LZW */
 
 
@@ -206,7 +206,7 @@ FT_BEGIN_HEADER
    *   Define this macro if you want to enable this 'feature'.  See also the
    *   macro `FT_CONFIG_OPTION_SYSTEM_ZLIB` below.
    */
-/* love-wasi: disabled, see header note */
+/* love.wasm: disabled, see header note */
 // #define FT_CONFIG_OPTION_USE_ZLIB
 
 
@@ -550,7 +550,7 @@ FT_BEGIN_HEADER
    *
    *   More details on the hooks can be found in file `otsvg.h`.
    */
-/* love-wasi: disabled — no SVG module compiled */
+/* love.wasm: disabled — no SVG module compiled */
 /* #define FT_CONFIG_OPTION_SVG */
 
 

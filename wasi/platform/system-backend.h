@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.6: the real love.system backend
+// love.wasm platform seam — build-order step 6.6: the real love.system backend
 // for wasm32-wasi, on the host-import love_system seam. It replaces the SDL
 // backend (which reads native OS power/clipboard/CPU state) with a thin bridge
 // over a handful of host imports that map onto GENUINE browser capabilities.

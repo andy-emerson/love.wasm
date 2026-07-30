@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.5: the real love.joystick /
+// love.wasm platform seam — build-order step 6.5: the real love.joystick /
 // love.gamepad backend for wasm32-wasi, on the host-import love_gamepad seam over
 // the browser Gamepad API. It replaces SDL's joystick/gamepad backend (which
 // polls a native controller subsystem the browser has no access to) with one fed

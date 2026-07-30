@@ -1,4 +1,4 @@
-# love-wasi audio backend — design decisions
+# love.wasm audio backend — design decisions
 
 The build-order step-5 audio seam. This records the decisions the `webaudio`
 backend is built on, and the microphone plan — both now **built and witnessed**
@@ -7,9 +7,9 @@ backend is built on, and the microphone plan — both now **built and witnessed*
 reads as a plan, the code has since landed it (the import names are kept in sync
 with `src/modules/audio/webaudio/Imports.h`).
 
-## The one principle: love-wasi is a pure audio adapter
+## The one principle: love.wasm is a pure audio adapter
 
-love-wasi does **no custom audio DSP**. It decodes (real, in-tree, already
+love.wasm does **no custom audio DSP**. It decodes (real, in-tree, already
 ours), does the one trivial per-sample format cast the boundary forces
 (int16 ↔ Float32), and hands PCM to the platform. Everything hard — mixing,
 spatialization, sample-rate conversion — is the platform's job, exactly as it
@@ -84,12 +84,12 @@ and **HRTF spatialization** (`PannerNode`, 3D math not spec-pinned).
 So **HRTF is deferred**: use the deterministic `StereoPannerNode` + gain now; a
 device-agnostic 3D spatializer is a separate, later, deliberate design.
 
-| WebAudio owns (identical everywhere) | love-wasi owns |
+| WebAudio owns (identical everywhere) | love.wasm owns |
 |---|---|
 | summation (mix), gain, equal-power stereo pan, device output | decode; the trivial int16↔Float32 cast |
 | sample-rate conversion (playback + capture) | the runtime capability check + report-rate fallback |
 
-love-wasi owns no DSP it must be good at.
+love.wasm owns no DSP it must be good at.
 
 ## The playback contract (sub-step 1b)
 

@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.3. The real love.window backend
+// love.wasm platform seam — build-order step 6.3. The real love.window backend
 // on the love_win host seam. See window-backend.h for the shape and the design;
 // this file declares the imports and implements every method.
 //

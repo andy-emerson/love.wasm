@@ -62,7 +62,7 @@ namespace opengl
 {
 
 #ifdef LOVE_GRAPHICS_GL_STATIC_IMPORTS
-// Supplied by the build's GL import shim (love-wasi: wasi/graphics/gl-imports.cpp,
+// Supplied by the build's GL import shim (love.wasm: wasi/graphics/gl-imports.cpp,
 // generated). The GL entry points are static wasm imports; the "loader" returns
 // each import's address so glad's fp_* table populates exactly as on desktop.
 void *getStaticGLProcAddress(const char *name);

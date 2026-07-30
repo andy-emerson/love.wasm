@@ -8,7 +8,7 @@
  *   real:     love (registry + boot scripts), love.data, love.math,
  *             love.audio (webaudio backend — pushes deterministic PCM to the
  *             host; WebAudio does the mix/gain/pan/output and the resampling,
- *             so love-wasi owns no DSP; null is the always-linked fallback,
+ *             so love.wasm owns no DSP; null is the always-linked fallback,
  *             the openal/null shape upstream)
  *   stubbed:  love.filesystem (wasi/boot/filesystem-stub.cpp, loud seam)
  *   absent:   everything else (SDL/GL-backed, or not yet reached)

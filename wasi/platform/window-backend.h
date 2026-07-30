@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.3: the real love.window backend
+// love.wasm platform seam — build-order step 6.3: the real love.window backend
 // for wasm32-wasi, on the host-import love_win seam. It replaces the SDL window
 // backend (which drives a native OS window + GL context the browser has no
 // access to) with a thin bridge over three host imports: window_setmode creates

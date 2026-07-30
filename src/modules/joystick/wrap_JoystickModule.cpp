@@ -25,7 +25,7 @@
 #include "filesystem/wrap_Filesystem.h"
 
 #ifdef LOVE_WASM
-// love-wasi (build-order step 6.5): the browser joystick/gamepad backend polling
+// love.wasm (build-order step 6.5): the browser joystick/gamepad backend polling
 // the Gamepad API on the love_gamepad seam, in place of SDL's native controller
 // subsystem. See wasi/platform/joystick-backend.h.
 #include "joystick-backend.h"

@@ -1,4 +1,4 @@
-// The host side of the love-wasi audio seam: implements the `love_audio` import
+// The host side of the love.wasm audio seam: implements the `love_audio` import
 // surface the webaudio backend calls (src/modules/audio/webaudio/Imports.h).
 // This is the witness/mock host — it captures the PCM handed to each Source so
 // the tone can be recovered at the seam. A real browser host implements the same

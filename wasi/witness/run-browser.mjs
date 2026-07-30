@@ -2,7 +2,7 @@
 // browser with the shared hand-rolled WASI preview1 shim (no Emscripten, no
 // node:wasi), capture stdout, and report the exit code. The launch + in-page
 // body live in the shared harness (wasi/host/witness-harness.mjs); the shim
-// (wasi/host/wasi-shim.mjs) is the seed of love-wasi's browser host.
+// (wasi/host/wasi-shim.mjs) is the seed of love.wasm's browser host.
 //
 // WITNESS_BROWSER selects the engine (default chromium). firefox (SpiderMonkey)
 // and webkit (JavaScriptCore) are non-V8 engines — the same module running there

@@ -1,4 +1,4 @@
-// love-wasi platform seam — build-order step 6, sub-step 6.1: the love_fs VFS
+// love.wasm platform seam — build-order step 6, sub-step 6.1: the love_fs VFS
 // seam, read round-trip. ISOLATES THE HOST<->WASM FILE-BYTES PLUMBING before
 // the real love.filesystem module rides on it (6.2), the same way graphics'
 // 4.1a raw-GL leg isolated the WebGL2 import plumbing before the reused opengl

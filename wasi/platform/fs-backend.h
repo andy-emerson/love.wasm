@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.2: the real love.filesystem
+// love.wasm platform seam — build-order step 6.2: the real love.filesystem
 // backend for wasm32-wasi. It replaces PhysFS (which assumes a real OS fd
 // layer the browser lacks) with the host-import VFS seam proven in 6.1: every
 // read routes through the love_fs imports (fs_size / fs_read / fs_stat), which

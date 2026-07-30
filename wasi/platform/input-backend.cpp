@@ -18,7 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// love-wasi platform seam — build-order step 6.4 implementation. See the header
+// love.wasm platform seam — build-order step 6.4 implementation. See the header
 // (input-backend.h) for the design: one shared InputState, pump() the single
 // writer, keyboard/mouse the readers, and the DOM<->LÖVE name mapping kept here
 // in C++ next to LÖVE's Key/Scancode enums.

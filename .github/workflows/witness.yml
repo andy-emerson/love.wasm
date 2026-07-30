@@ -4,8 +4,8 @@ name: witness
 # source drop (step 2, incl. drop provenance at its PIN), the LÖVE core
 # boot (step 3), and love.graphics on the reused opengl backend reseamed to
 # WebGL2 (step 4) must never silently rot. Every artifact also passes the
-# standardized-EH encoding gate. Durability target per AGENTS.md:
-# CI-enforced.
+# standardized-EH encoding gate. These are the executable evidence AGENTS.md
+# prefers: every claim they carry re-earns itself on every push.
 on:
   push:
     branches: [wasi]

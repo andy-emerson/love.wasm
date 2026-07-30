@@ -1,4 +1,4 @@
-# love-wasi platform seam — design decisions (build-order step 6)
+# love.wasm platform seam — design decisions (build-order step 6)
 
 Build-order step 6 reseams the roles SDL plays for desktop LÖVE — window + GL
 context, input, filesystem, timer, system — onto browser primitives, under the
@@ -7,7 +7,7 @@ same guarded-seam discipline as the graphics (`opengl` → WebGL2) and audio
 and — because step 6 is where the roadmap starts leaning into agentic,
 live-edited development — the decisions the downstream **live-edit / agent**
 consumer forces, which are surfaced here **while still open** (AGENTS.md: never
-hand the architect a result built on choices they never saw).
+hand the Human a result built on choices they never saw).
 
 Where a passage reads as a plan, the code has not landed it yet. **Step 6 is
 COMPLETE — 6.1–6.7 are all built** (the `love_fs` read seam; the real
@@ -60,7 +60,7 @@ The single place this tempts a fidelity violation is the console-control idea
 *calls*, it would break on other engines. It stays faithful instead — `print`
 is `print`; control is host-side.
 
-## Sub-step ledger (proposed — the architect owns the ordering)
+## Sub-step ledger (proposed — the Human owns the ordering)
 
 Boot order puts filesystem first: LÖVE reads `conf.lua`/`main.lua` before it
 opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
@@ -165,7 +165,7 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
   added). Two phases:
   - **6.6a — `love.timer` + `love.system`.** `love.timer` is a concrete class (no
     backend split): `Timer.cpp` routes through
-    `clock_gettime(CLOCK_MONOTONIC)`/`gettimeofday` under a guarded `LOVE_WASI` arm
+    `clock_gettime(CLOCK_MONOTONIC)`/`gettimeofday` under a guarded `LOVE_WASM` arm
     of its POSIX `#if` (wasi-libc provides both; the WASI host fulfils
     `clock_time_get`), and `love::sleep` is an **honest browser no-op**
     (`wasi/platform/delay-wasi.cpp`) — a browser must not block its main thread;
@@ -244,7 +244,7 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
 
 Each is stated with options, trade-offs, and a recommendation. 6.1 depended on
 none of them (the raw seam is shared by every option), so building it did not
-front-run any choice. Resolution status (architect-ratified):
+front-run any choice. Resolution status (Human-ratified):
 
 | # | Topic | Resolution |
 |---|---|---|
@@ -374,7 +374,7 @@ are written, and Lua can't tell them apart syntactically.
 - **OPEN — not C; between A and B; needs more discussion.** Restart is the blessed
   fallback for whatever the chosen mechanism can't apply. Post-step-6; blocks
   nothing in step 6.
-- **Beta disposition (architect-ratified):** deferred past Beta. Beta ships the
+- **Beta disposition (Human-ratified):** deferred past Beta. Beta ships the
   6.7 mechanism as-is — module-granularity live-edit (`pump_invalidate` + the
   write path, live for `require`'d game modules) with **restart** as the honest
   fallback for `main.lua`-direct edits (which `main.lua` is not `require`'d, so
@@ -402,7 +402,7 @@ are written, and Lua can't tell them apart syntactically.
 
 ### D6 — Console / diagnostic channel shape
 
-The agent needs sight on a live game's output, and (the architect's ask) some
+The agent needs sight on a live game's output, and (the Human's ask) some
 control over what's included — kept faithful.
 
 - **Option A — pure stdio.** `print` → fd 1, errors → fd 2, host taps both. No
@@ -414,7 +414,7 @@ control over what's included — kept faithful.
   host tags/timestamps/filters lines and optionally taps the pump (it already
   drives `update`/`draw` and sees `love.errorhandler`), so the agent gets a
   richer, filterable signal — the "control what's included," done host-side.
-  - **Pros:** faithful game side; the control the architect wants; callback/error
+  - **Pros:** faithful game side; the control the Human wants; callback/error
     visibility for the agent.
   - **Cons:** the callback tap needs a hook in the pump; more host code.
 - **Option C — a game-facing `love.log()` API.** **Rejected:** a divergence that
@@ -458,7 +458,7 @@ Splitting the two features PhysFS used to provide behind `love.filesystem`:
 
 ## Resolved by the reload invariant (recorded as decided, not open)
 
-The architect set the reload contract:
+The Human set the reload contract:
 
 > **`reload(edit)` at state S ≡ a fresh run of the new code that has reached S.**
 > Live edits change the **future, not the past**; if you break your code and save

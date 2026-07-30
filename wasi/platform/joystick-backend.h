@@ -52,11 +52,11 @@
 // motion sensors (no gamepad sensor stream here).
 //
 // This header lives out-of-tree (readme.md: the src tree stays upstream-shaped);
-// wrap_JoystickModule.cpp includes it under LOVE_WASI via -I wasi/platform and
+// wrap_JoystickModule.cpp includes it under LOVE_WASM via -I wasi/platform and
 // constructs the wasm:: module in place of the sdl:: one at its one guarded
 // factory.
-#ifndef LOVE_WASI_PLATFORM_JOYSTICK_BACKEND_H
-#define LOVE_WASI_PLATFORM_JOYSTICK_BACKEND_H
+#ifndef LOVE_WASM_PLATFORM_JOYSTICK_BACKEND_H
+#define LOVE_WASM_PLATFORM_JOYSTICK_BACKEND_H
 
 #include "common/config.h"
 #include "common/int.h"
@@ -209,4 +209,4 @@ private:
 } // joystick
 } // love
 
-#endif // LOVE_WASI_PLATFORM_JOYSTICK_BACKEND_H
+#endif // LOVE_WASM_PLATFORM_JOYSTICK_BACKEND_H

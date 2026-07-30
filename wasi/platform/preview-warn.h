@@ -30,22 +30,22 @@
 // wasi/platform/ and is reached via -I wasi/platform.
 //
 // Routing: on the FIRST use of a given key, one line
-//     [love-wasi preview] <message>
+//     [love.wasm preview] <message>
 // is emitted to the host over stderr (fd 2). The browser WASI shim's fd_write
 // accumulates every fd into its host tap (wasi/host/wasi-shim.mjs), and
 // node:wasi routes fd 2 to the process's stderr, so the line reaches the host
 // on both witness legs. Repeated use of the same key is silent (deduped by a
 // static set). The call NEVER throws and returns nothing — a warned stub can
 // call it unconditionally without changing its own (benign) control flow.
-#ifndef LOVE_WASI_PLATFORM_PREVIEW_WARN_H
-#define LOVE_WASI_PLATFORM_PREVIEW_WARN_H
+#ifndef LOVE_WASM_PLATFORM_PREVIEW_WARN_H
+#define LOVE_WASM_PLATFORM_PREVIEW_WARN_H
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-// Emit `[love-wasi preview] <message>` to the host over stderr the first time
+// Emit `[love.wasm preview] <message>` to the host over stderr the first time
 // `key` is seen; subsequent calls with the same `key` are silent. Never throws;
 // returns nothing. Both arguments must be non-null, NUL-terminated strings.
 void preview_warn_once(const char *key, const char *message);
@@ -54,4 +54,4 @@ void preview_warn_once(const char *key, const char *message);
 } // extern "C"
 #endif
 
-#endif // LOVE_WASI_PLATFORM_PREVIEW_WARN_H
+#endif // LOVE_WASM_PLATFORM_PREVIEW_WARN_H

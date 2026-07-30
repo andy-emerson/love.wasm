@@ -52,7 +52,7 @@ const char *System::getOS()
 	return "Android";
 #elif defined(LOVE_LINUX)
 	return "Linux";
-#elif defined(LOVE_WASI)
+#elif defined(LOVE_WASM)
 	return "Web";
 #else
 	return "Unknown";

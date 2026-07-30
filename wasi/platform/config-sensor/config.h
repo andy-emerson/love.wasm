@@ -5,7 +5,7 @@
  * This is the step-3 boot core's module set (LOVE + DATA + MATH +
  * FILESYSTEM-stub — the known-good set the boot witness already proves loads and
  * boots) PLUS love.sensor: with LOVE_ENABLE_SENSOR defined, love.cpp registers
- * love.sensor -> luaopen_love_sensor, whose LOVE_WASI factory seam constructs
+ * love.sensor -> luaopen_love_sensor, whose LOVE_WASM factory seam constructs
  * love::sensor::wasm::Sensor (wasi/platform/sensor-backend.cpp) in place of
  * sdl::Sensor. Keeping SENSOR enabled also moots the upstream joystick/sensor
  * coupling bug (#23), which surfaces when the module is compiled out.

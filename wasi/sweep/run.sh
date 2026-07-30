@@ -95,7 +95,7 @@ clang-20 "${CFLAGS[@]}" -I"$SRC/libraries/stb" -fsyntax-only "$TMP/stb_probe.c" 
 emit() {
   local total ok fail
   total=$(wc -l < "$RESULTS"); ok=$(grep -cP '\tOK\t' "$RESULTS"); fail=$(grep -cP '\tFAIL\t' "$RESULTS")
-  echo "# love-wasi compile sweep (#9)"
+  echo "# love.wasm compile sweep (#9)"
   echo
   echo "$ok/$total translation units compile under the contract flags; $fail blocked."
   echo

@@ -34,10 +34,10 @@
 //
 // This header lives out-of-tree (readme.md: the src tree stays upstream-shaped;
 // the wasi build compiles the subset). wrap_Filesystem.cpp includes it under
-// LOVE_WASI via -I wasi/platform, and constructs wasi_fs::Filesystem in place of
+// LOVE_WASM via -I wasi/platform, and constructs wasi_fs::Filesystem in place of
 // physfs::Filesystem at the one guarded factory seam.
-#ifndef LOVE_WASI_PLATFORM_FS_BACKEND_H
-#define LOVE_WASI_PLATFORM_FS_BACKEND_H
+#ifndef LOVE_WASM_PLATFORM_FS_BACKEND_H
+#define LOVE_WASM_PLATFORM_FS_BACKEND_H
 
 #include "common/config.h"
 #include "filesystem/Filesystem.h"
@@ -190,4 +190,4 @@ private:
 } // filesystem
 } // love
 
-#endif // LOVE_WASI_PLATFORM_FS_BACKEND_H
+#endif // LOVE_WASM_PLATFORM_FS_BACKEND_H

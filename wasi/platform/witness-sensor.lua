@@ -1,5 +1,5 @@
 -- Issue-#27 witness: love.sensor as a warned-stub backend, and the one-time,
--- non-fatal "[love-wasi preview]" warning mechanism behind it. Runs as the
+-- non-fatal "[love.wasm preview]" warning mechanism behind it. Runs as the
 -- pump's resident coroutine (love is preloaded by pump-ext), yielding one line
 -- per check so the host transcript shows each fact as it lands. The final return
 -- value is the verdict.
@@ -9,7 +9,7 @@
 -- sensor (getData) returns a benign, well-shaped default instead of throwing.
 -- The ONE-TIME half — that the preview warning is emitted exactly once no matter
 -- how many times the feature is used — is host-routed over stderr, which Lua
--- cannot see; the JS legs assert the "[love-wasi preview]" line count from the
+-- cannot see; the JS legs assert the "[love.wasm preview]" line count from the
 -- host tap after this coroutine finishes (getData is called TWICE below; the tap
 -- must hold exactly one preview line).
 local failures = 0
@@ -45,7 +45,7 @@ check("isEnabled('gyroscope') == false", eok and en == false, en)
 -- ATTEMPTED USE: getData is the warned feature. It must NOT throw and must
 -- return a benign, well-shaped default (three zeros: x, y, z). This is the first
 -- use of the "sensor.getData" preview key, so the host tap gains ONE
--- "[love-wasi preview]" line here.
+-- "[love.wasm preview]" line here.
 local g1ok, x1, y1, z1 = pcall(love.sensor.getData, "accelerometer")
 check("getData('accelerometer') does not throw (non-fatal)", g1ok, x1)
 check("getData returns three zeros (safe default)",

@@ -19,9 +19,10 @@ keyboard and mouse events into `love.event`, and applies a module edit to the
 running game without a reload. Beta step 1 is done, witnessed by
 `wasi/shell/run.sh` and CI-enforced.
 
-A third-party game runs too: `challacade/legend-of-lua`, unmodified, at
-1920x1080 — though only with a Lua 5.1 compatibility layer that is **not** on
-this branch, because it answers an open decision. See step 2.
+A third-party game runs too: `challacade/legend-of-lua`, at 1920x1080, playable.
+Its Lua needs three small edits to be 5.4-clean; the LÖVE features it uses all
+work. See step 2, and **The Lua dialect** in `readme.md` for what those edits
+are.
 
 What is still unproven: the `testing/` corpus has not been run under this build,
 and neither of step 2's two fixes has a witness.
@@ -94,9 +95,8 @@ no extractor available here.
 **It runs.** Legend of Lua boots from its own `conf.lua`, opens a 1920x1080
 canvas, and plays: tilemap, trees, water, shadows, sprites, the equip UI and text
 all draw, keys move the game, and GL reports no error. Getting there took two
-fixes, both ours and both now on this branch, and it still needs one thing that
-is **not** on this branch because it answers an open decision — see "The Lua
-gap" below.
+fixes, both ours and both now on this branch, plus three one-line edits to the
+game's own Lua to bring it from 5.1 to 5.4.
 
 Three findings, in the order they were hit:
 
@@ -119,10 +119,10 @@ The bargain stated plainly: this is correct for a module a game *enables but
 never calls*. A game that really uses `love.video` gets a nil index and fails
 loudly, which is the honest outcome. "Boots" and "works" stay separate claims.
 
-Two things it deliberately does not do. Editing a game's `conf.lua` voids the
-`.love`-runs-unmodified pillar. Changing `boot.lua`'s defaults is a fork-private
-edit to shared engine source (lane 3, forbidden) and would make `love.conf`
-report something desktop does not.
+Two things it deliberately does not do. Making every game declare `t.modules.*`
+would push our packaging gap onto game authors for no benefit to them. Changing
+`boot.lua`'s defaults is a fork-private edit to shared engine source (lane 3,
+forbidden) and would make `love.conf` report something desktop does not.
 
 **2. `glGetIntegerv` unbound the shader program — fixed.** Desktop GL names
 objects with integers; WebGL hands out opaque objects, and both GL hosts
@@ -139,8 +139,11 @@ the outside. Both hosts now keep a reverse object → name map, which fixes ever
 Reproduced in an 8-line project: create one trivial passthrough shader, draw two
 rectangles, and the rectangles vanish. That repro should become the witness.
 
-**3. The Lua gap — OPEN, and the last thing between us and unmodified games.**
-See "Open decisions".
+**3. The Lua dialect — settled, and it is a porting cost, not a defect.** The
+game's Lua is written for 5.1; three idioms do not survive 5.4 (`unpack`,
+`math.atan2`, and a non-integer font size). Each has a portable form that runs on
+both, so the port is cheap and costs the game nothing on desktop. No LÖVE feature
+it uses is missing. Documented in `readme.md`; the choice itself is D8.
 
 **Tier 2, still to do — link `joystick` and `sensor` for real.** Both have
 witnessed wasm backends (`wasi/platform/{joystick,sensor}-backend.cpp`), so
@@ -192,7 +195,6 @@ These gate work, and only the Human closes them (`AGENTS.md`, "Records").
 
 | Decision | The fork | What it gates |
 |---|---|---|
-| **Lua dialect** | **which Lua surface a game sees: 5.4 as-is, 5.4 made to look like 5.1, or actually vendoring 5.1** | **every game; step 2 cannot close without it** |
 | #47 (D4) | reload granularity: whole-chunk re-eval vs function-body hotswap | deferred past Beta; module granularity plus restart is what ships |
 | #48 (D7) | who unzips a runtime-mounted archive: host JS vs a guest zip reader over the in-tree zlib | archive mounting; enumeration shipped without needing it |
 | step-7 divergences | which desktop `love.thread` behaviors we accept losing | enumerated when the thread design document is written |
@@ -201,84 +203,27 @@ These gate work, and only the Human closes them (`AGENTS.md`, "Records").
 `DESIGN.md` records D1–D3, D5 and D6 as closed, carrying the alternatives that
 lost. D4 and D7 are open, so under `CONTRIBUTING.md` §3.3 they live in the
 tracker — #47 and #48 — and `DESIGN.md` keeps only what is settled about each
-and points at the issue. The Lua-dialect decision is new and has no issue yet.
+and points at the issue. D8 (Lua dialect) closed this session and is recorded in
+`DESIGN.md` in full.
 
-### The Lua dialect decision
+### The Lua dialect — CLOSED, and where it now lives
 
-**What forces it.** **LÖVE 12 is a Lua 5.1 engine, in both of its
-configurations.** `CMakeLists.txt:214` offers exactly one fork: `LOVE_JIT` on
-gives LuaJIT 2.1 (which implements 5.1), `LOVE_JIT` off gives `find_package(Lua51
-REQUIRED)`. It defaults on everywhere but Apple, where it defaults off. There is
-no Lua 5.4 build of LÖVE. `src/libraries/lua53/` confirms the baseline from the
-other direction: it *backports* 5.3's `lstrlib` and `lutf8lib` into a 5.1 world.
+Settled by the Human: **PUC Lua 5.4 stays, LÖVE 12 stays.** Both are deliberate
+choices, not accidents to be corrected — 5.4 fits wasm, Lua's 5.x line is
+incremental by design, and 12 is where LÖVE is going. Recorded as **D8** in
+`wasi/platform/DESIGN.md` with the alternative that lost and its reopen
+conditions; the game-facing surface is **The Lua dialect** in `readme.md`.
 
-What does exist is **build-time** compatibility: three `LUA_VERSION_NUM >= 504`
-branches (`src/love.cpp:266`, `common/runtime.cpp:1191` and `luax_objlen`) let
-the engine compile against 5.4, and `changes.txt:203` records it as exactly that
-— "Fixed build-time compatibility with Lua 5.4", in **11.4**, not 12. That is C
-API portability, and it is what makes this build possible at all. It says nothing
-about the standard library or the VM, which is where games break.
+The framing that was wrong, and is corrected in both documents: a game whose Lua
+is ported into 5.4 is still a LÖVE game. What this project measures is whether a
+LÖVE **feature** works, not how a game's Lua was wired up. And the `.love`
+pillar is *outbound* — "the same source runs unmodified **on desktop LÖVE**; a
+game made here can go to desktop and back" — so it was never a promise that
+arbitrary 5.1-era source runs here untouched. Earlier entries in this file cited
+it the wrong way round.
 
-LuaJIT has no wasm backend, so this build vendors **PUC Lua 5.4** — a choice made
-early and never recorded as a decision. So we are running LÖVE 12 off its
-supported matrix, against a language every existing game predates. Legend of Lua
-hit three instances before its title screen, and none is the game's fault:
-
-| What the game does | LuaJIT / 5.1 | our Lua 5.4 |
-|---|---|---|
-| `newFont(path, 4.5*scale)` | truncates silently | **errors**: "number has no integer representation" |
-| `unpack(t)` | a global | removed; it is `table.unpack` |
-| `math.atan2(y, x)` | present | removed; it is `math.atan(y, x)` |
-
-The first is the wide one. LÖVE's C API takes sizes with `luaL_optinteger`, which
-truncates under 5.1 and raises under 5.4 — so **any** game computing a size from
-a scale factor dies, and computing sizes from a scale factor is what every game
-that supports more than one resolution does.
-
-**The options.**
-
-- **A. Keep 5.4, make it look like 5.1.** Two parts: `-DLUA_FLOORN2I=F2Ifloor`
-  on the vendored Lua (a documented knob in `lvm.h`) restores silent float→int
-  conversion, and a compatibility preamble in the boot wrapper restores the
-  missing library functions. Both are in our lane. **Measured: this works.** With
-  both applied, the completely unmodified clone runs, pixel-identical to the
-  patched run. Its permanent gaps: `tostring(3.0)` is `"3.0"` where 5.1 says
-  `"3"`, which shows up in *displayed text*; `setfenv`/`getfenv` can only be
-  approximated over `_ENV`; and any 5.3+ parse error in a game is still fatal.
-- **B. Vendor Lua 5.1.5.** Not an alternative dialect but *the* one: 5.1 is what
-  LÖVE 12's own build produces, what its Lua is written against, and what every
-  existing game targets. It removes the whole class rather than patching
-  instances. Costs: no integers, no `goto`, none of 5.4's own fixes, and — the
-  real bill — `lua.wasm` is a 5.4 source drop, so `onelua.c` (a 5.4
-  amalgamation), `LUAW_EXTERNAL_EH` and the wasm `setjmp` shim are all 5.4-shaped
-  work that would need redoing against a 5.1 tree.
-- **C. Declare it a divergence.** Games must be 5.4-clean. Cheapest, and it
-  breaks the `.love`-runs-unmodified pillar for a very common pattern. Recorded
-  for completeness; not recommended.
-
-**Recommendation: A as the cheap thing that works, B spiked before Beta closes.**
-A is measured, small and reversible, but it is a permanent shim over a mismatch
-that will keep producing findings like these three; calling it "the answer" would
-overstate it. B is the baseline the engine was built for, and the only unknown
-that matters is how much of the wasm toolchain assumes 5.4. That is a spike, and
-it belongs before Beta closes rather than after — the longer A stands, the more
-of the shim there is to unwind.
-
-**Correction owed to `readme.md` in the doc pass:** line 62 says "LÖVE 12
-supports Lua 5.4 natively". "Natively" is wrong and "supports" is too strong —
-it *compiles* against 5.4 by way of three portability branches, and its build
-system cannot produce such a build. The citation to `love.cpp` should also read
-`src/love.cpp`, not `src/modules/love/love.cpp`.
-
-**How the survey was made:** by running one real game to its title screen and
-reading every failure, plus reading `luaL_optinteger`'s definition in both
-dialects. It is not a systematic audit of the 5.1↔5.4 delta, so treat the option
-list as observed, not complete, and re-check it before the decision closes.
-
-**Where the evidence sits:** the probe build with `-DLUA_FLOORN2I=F2Ifloor` and
-the boot-wrapper preamble were both **reverted**, because landing them would
-entrench an answer. Reproducing them is a one-line build-flag change and a
-ten-line preamble.
+No compatibility shim ships. The probe build (`-DLUA_FLOORN2I=F2Ifloor`) and the
+boot-wrapper preamble were reverted and stay reverted.
 
 ## Practical notes
 

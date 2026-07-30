@@ -255,6 +255,7 @@ front-run any choice. Resolution status (Human-ratified):
 | D5 | Supported-edit class | **A — minimal & explicit**, restart fallback. |
 | D6 | Console channel | **A — pure stdio now**, architected so B (host structured tap) can layer on without engine changes. |
 | D7 | Archive/`.love` mounting: who unzips | **Open — tracked in #48.** Directory enumeration (`getDirectoryItems` over `fs_list`) is built; runtime zip mounting waits on the decision. |
+| D8 | Lua dialect | **Closed — PUC Lua 5.4.** See below. |
 
 ### D1 — Filesystem seam: replace the module, or keep PhysFS and reseam its IO
 
@@ -412,6 +413,44 @@ the writable save namespace and de-dupes, reproducing the merged listing PhysFS
 gave across a mounted search path (`wasi/platform/run-fs-list.sh`). **Archive
 mounting** is not, and cannot be built without closing #48, because PhysFS's zip
 archiver went with it.
+
+### D8 — Lua dialect: which Lua the engine runs — CLOSED
+
+LuaJIT is not available under wasm: it needs runtime codegen and has no wasm
+interpreter backend. So the LuaJIT LÖVE ships by default is off the table, and
+the question is what replaces it.
+
+- **Option A — PUC Lua 5.4.** The current reference interpreter. Compiles
+  cleanly under this build's wasm-EH toolchain, and is already the vendored VM
+  (`lua.wasm`), whose `LUAW_EXTERNAL_EH` wiring makes libc++abi own exception
+  dispatch — the property the whole EH story here depends on.
+  - **Pros:** current and maintained; integers, `goto`, and 5.4's own fixes; one
+    toolchain story shared with `lua.wasm`.
+  - **Cons:** LÖVE 12's own build system produces only 5.1
+    (`CMakeLists.txt:214`: LuaJIT 2.1, or `find_package(Lua51)` when
+    `LOVE_JIT=OFF`), so 5.4 is a configuration upstream compiles for but does
+    not ship. Game Lua written for 5.1 can need edits — see "The Lua dialect"
+    in `readme.md` for the surface.
+- **Option B — PUC Lua 5.1.** What LuaJIT implements, and what LÖVE's non-JIT
+  build uses.
+  - **Pros:** the dialect every existing LÖVE game was written against.
+  - **Cons:** an end-of-life interpreter; no integers; and the wasm work is
+    5.4-shaped — `onelua.c` is a 5.4 amalgamation, and `LUAW_EXTERNAL_EH` plus
+    the vendored `setjmp` shim would need redoing against a 5.1 tree.
+- **DECIDED — Option A, PUC Lua 5.4.** Deliberate, on two grounds the Human
+  set: 5.4 fits wasm better, and Lua's 5.x line is incremental by design — this
+  is why there is no Lua 6. It pairs with LÖVE 12 for the same reason: 12 is
+  where LÖVE is going, so the engine and the VM are both chosen forward rather
+  than backward.
+
+  What this decision is *not*: a claim that 5.1 game code runs untouched. It
+  does not always, and `readme.md` states the surface. Porting a game's Lua into
+  5.4 leaves it a LÖVE game — the compatibility question that matters is whether
+  a LÖVE **feature** works, not how a game's Lua was wired up.
+
+  **Reopen if** the porting surface turns out to be wide rather than the handful
+  of library and coercion differences observed so far, or if a LÖVE 12 feature
+  is found that 5.4 cannot express.
 
 ## Resolved by the reload invariant (recorded as decided, not open)
 

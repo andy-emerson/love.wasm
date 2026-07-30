@@ -56,10 +56,28 @@ So each decision is judged by *"what does a correct browser game do?"*, not *"do
 
 The semantically hard code stays verbatim: physics, decoders, render math, module logic, the Lua bindings. The platform-adjacent plumbing gets touched: backend selection, internal thread usage (audio pump, timers) massaged into a single-threaded frame-pump model, and the build system. Expect the diff against upstream to be the evidence — small, seam-shaped, and reviewable — rather than a "95% unmodified" slogan.
 
+## The Lua dialect
+
+Desktop LÖVE 12 runs **Lua 5.1** — LuaJIT 2.1 by default, or PUC Lua 5.1 with `LOVE_JIT=OFF`, which is the default on macOS (`CMakeLists.txt:214`). LuaJIT cannot target wasm, so this build runs **PUC Lua 5.4**, deliberately: it is the current reference interpreter, it compiles cleanly under this toolchain's wasm-EH, and it pairs with LÖVE 12 on the same reasoning — both chosen forward. Recorded as D8 in `wasi/platform/DESIGN.md`.
+
+The engine is unaffected: LÖVE's C++ carries the `LUA_VERSION_NUM >= 504` branches it needs, and the `love.*` modules behave identically. Game *Lua* is where the dialect shows. A game written for 5.1 can need edits — that is a language port, not a lost LÖVE feature, and a ported game is still a LÖVE game. **The compatibility question this project measures is whether a LÖVE feature works, not how a game's Lua was wired up.**
+
+Observed so far, running one 11.5 game (Legend of Lua) to a playable state:
+
+| 5.1 idiom | Under 5.4 | Portable form — runs on both |
+|---|---|---|
+| `newFont(path, 4.5*scale)` | errors, "number has no integer representation": LÖVE takes sizes with `luaL_optinteger`, which truncates on 5.1 and raises on 5.4 | `newFont(path, math.floor(4.5*scale))` |
+| `unpack(t)` | removed, it is `table.unpack` | `local unpack = table.unpack or unpack` |
+| `math.atan2(y, x)` | removed, it is `math.atan(y, x)` | `local atan2 = math.atan2 or math.atan` |
+
+The right-hand column is the point: each portable form runs under 5.1 *and* 5.4, so porting a game forward costs it nothing on desktop — the source still runs there, and the `.love` pillar holds.
+
+**Evidence: observed**, on one game. This is not a survey of the 5.1↔5.4 delta, and the list should be expected to grow as more games run.
+
 ## Toolchain
 
 - `clang-20+` + `wasi-libc`, C++ with **`-fwasm-exceptions`** and the *standardized* wasm-EH encoding — matching lua.wasm's toolchain, which is mandatory: the VM and this engine share one EH machinery, so the LLVM major and EH encoding must agree. Caution, probed 2026-07-07: clang-20's bare `-fwasm-exceptions` **defaults to the legacy encoding**; the standardized one needs an explicit `-mllvm -wasm-use-legacy-eh=false`, which is baked into `wasi/toolchain/build-libcxx-eh.sh` and every build script here — and enforced per artifact by `wasi/toolchain/check-eh-encoding.sh` (disassembly must show `try_table` and zero legacy forms; engines accept both encodings, so only a build-time gate can catch a lost flag). LÖVE's own error path requires full C++ EH — typed catches and exception-object destructors — so the build vendors **LLVM libc++ + libc++abi compiled with wasm-EH** (wasi-sdk's stock libc++ is built without exception support). Wasm `setjmp`/`longjmp` — which Ubuntu's `wasi-libc` omits entirely but FreeType needs — is vendored into the same sysroot (`wasi/toolchain/setjmp`, from wasi-libc); on wasm it is implemented *on top of* wasm-EH, so it rides on the one encoding and needs only the per-TU flag `-mllvm -wasm-enable-sjlj` (single-sourced as `$SJLJ_FLAGS`).
-- **Lua VM:** [andy-emerson/lua.wasm](https://github.com/andy-emerson/lua.wasm) (the stock Lua 5.4 reference interpreter — formerly Lua2D/lua-wasi; 0.2.0 sunset the earlier selective-AOT path, which this build never linked), consumed as a **source drop at a pinned commit**, compiled in-tree with this build's own flags, with `LUAW_EXTERNAL_EH` so the real libc++abi owns exception dispatch. LÖVE 12 supports Lua 5.4 natively (`LUA_VERSION_NUM >= 504` paths in `love.cpp`, `common/runtime.cpp`); LuaJIT is not an option under wasm (no runtime codegen; no wasm interpreter backend).
+- **Lua VM:** [andy-emerson/lua.wasm](https://github.com/andy-emerson/lua.wasm) (the stock Lua 5.4 reference interpreter — formerly Lua2D/lua-wasi; 0.2.0 sunset the earlier selective-AOT path, which this build never linked), consumed as a **source drop at a pinned commit**, compiled in-tree with this build's own flags, with `LUAW_EXTERNAL_EH` so the real libc++abi owns exception dispatch. LuaJIT is not an option under wasm (no runtime codegen; no wasm interpreter backend), so 5.4 is the deliberate choice — see **The Lua dialect** below and D8 in `wasi/platform/DESIGN.md`. What upstream provides is *build-time* portability: `LUA_VERSION_NUM >= 504` branches in `src/love.cpp` and `common/runtime.cpp` let the engine compile against 5.4, which is what this build stands on.
 - **No Emscripten anywhere.** The browser side is a small hand-written WASI preview1 shim (`fd_write`, clocks, `proc_exit` — a few dozen lines) plus the import surface defined by the seams below.
 
 ## The three seams (new code)
@@ -79,7 +97,7 @@ Everything else the host supplies as imports, which is the same role an OS plays
 | Toolchain | system clang/gcc/MSVC per platform | `clang-20+` + `wasi-libc`, target `wasm32-wasi` (standardized wasm-EH encoding, matched with lua.wasm) |
 | C runtime | system libc | wasi-libc (+ a few-dozen-line WASI preview1 shim in the host) |
 | C++ runtime & exceptions | system libc++/libstdc++, native unwinding | vendored LLVM libc++ + libc++abi built with `-fwasm-exceptions` (wasm-EH) |
-| Lua VM | LuaJIT (or vendored `lua53`) | [lua.wasm](https://github.com/andy-emerson/lua.wasm) — stock Lua 5.4 reference interpreter, source-drop at a pinned commit, `LUAW_EXTERNAL_EH` |
+| Lua VM | LuaJIT 2.1, or PUC Lua 5.1 with `LOVE_JIT=OFF` — both Lua 5.1 | [lua.wasm](https://github.com/andy-emerson/lua.wasm) — stock Lua 5.4 reference interpreter, source-drop at a pinned commit, `LUAW_EXTERNAL_EH` |
 | Window & GL context | SDL3 | `<canvas>` + WebGL2 context via host imports (`love_win`), created by `love.window.setMode`; `t.window.*` drives the canvas |
 | GL function loading | glad (runtime loader) | none — static WebGL2 import shim *is* the GL surface |
 | Graphics API | OpenGL / Vulkan / Metal backends | WebGL2 — the `opengl` backend **reused**, its GL loader reseamed to static imports (not a new backend; only the loader changes) |
@@ -105,7 +123,7 @@ Everything else the host supplies as imports, which is the same role an OS plays
 
 ## Dependency disposition (the build map)
 
-**Replaced at the seams (not compiled):** SDL3 · OpenAL · PhysFS (`src/libraries/physfs` — replaced by the host-import VFS backend `wasi/platform/fs-backend.cpp`; read path landed at step 6.2, write + save-dir path at step 6.7) · glad (GL loader — the WebGL import shim takes its place) · LuaJIT / vendored `lua53` (→ lua.wasm 5.4).
+**Replaced at the seams (not compiled):** SDL3 · OpenAL · PhysFS (`src/libraries/physfs` — replaced by the host-import VFS backend `wasi/platform/fs-backend.cpp`; read path landed at step 6.2, write + save-dir path at step 6.7) · glad (GL loader — the WebGL import shim takes its place) · LuaJIT (→ lua.wasm 5.4) · `lua53/lutf8lib` (5.4 has `utf8` natively). Note `lua53/lstrlib` **is** compiled: `love.data.pack`/`unpack`/`getPackedSize` call into it unconditionally.
 
 **Kept, real, already in-tree:** `box2d` · `dr` (flac/mp3) · `stb` (stb_image) · `lodepng` · `ddsparse` · `tinyexr` · `Wuff` (wav) · `lz4` · `xxHash` · `noise1234` · `utf8` · `glslang` (LÖVE's GLSL parser + shader reflector, used by `graphics/Shader.cpp` for all backends — **compiled into the wasi graphics build** with two carried portability patches; see step 4) · the `sound/lullaby` decoder layer · `src/scripts` (boot Lua).
 

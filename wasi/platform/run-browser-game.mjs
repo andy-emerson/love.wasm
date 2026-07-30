@@ -61,6 +61,23 @@ const gameMain = `
 local world, body, startY, frames
 function love.load()
   print("UNION-GAME-LOAD")
+  -- Module disposition, the way a real game meets it. This project sets no
+  -- t.modules, so LOVE enabled all twenty and boot.lua required every one; that
+  -- this line is reached at all is the proof that require was satisfied for the
+  -- three this build does not link.
+  --
+  -- love.joystick is LINKED, so it must be a real table and must stay silent.
+  -- love.video is NOT, so it must be nil (the shape desktop has with
+  -- t.modules.video = false, so a game's own 'if love.video then' takes the
+  -- absent path) and must announce itself ONCE, on the read — the
+  -- preview-warn contract (#27).
+  print("UNION-MODULE-LINKED type=" .. type(love.joystick) .. "," .. type(love.sensor))
+  print("UNION-MODULE-BEFORE-READ")
+  local v = love.video
+  print("UNION-MODULE-ABSENT type=" .. type(v))
+  local v2 = love.video
+  local t2 = love.touch
+  print("UNION-MODULE-AFTER-READ")
   -- love.sound decodes a real Ogg asset read through love.filesystem; love.audio
   -- plays it. Passing a filepath string exercises the real filesystem File path.
   local sd = love.sound.newSoundData("sound.ogg")
@@ -164,6 +181,27 @@ async function gamePageFn({ b64, boot, gameConf, gameMain, oggB64, shimSrc, winH
     const soundOk = !!soundMatch && Number(soundMatch[1]) > 0;
     const physicsSeen = stdout.indexOf('UNION-PHYSICS-FELL') !== -1;
 
+    // Absent-module reporting (the boot wrapper, wasi/platform/witness-frame.lua).
+    // A linked module is a real table and says nothing; an unlinked one is nil and
+    // names itself exactly once, on the read — never at require time, which would
+    // fire for every game on every boot and say nothing about what the game used.
+    const linkedMatch = stdout.match(/UNION-MODULE-LINKED type=(\w+),(\w+)/);
+    const linkedOk = !!linkedMatch && linkedMatch[1] === 'table' && linkedMatch[2] === 'table';
+    const absentMatch = stdout.match(/UNION-MODULE-ABSENT type=(\w+)/);
+    const absentNil = !!absentMatch && absentMatch[1] === 'nil';
+    const notices = stdout.match(/\[love\.wasm preview\] love\.video [^\n]*/g) || [];
+    const noticeOnce = notices.length === 1;
+    // Ordering is the whole claim: nothing before the read, the notice after it.
+    const before = stdout.indexOf('UNION-MODULE-BEFORE-READ');
+    const after = stdout.indexOf('UNION-MODULE-AFTER-READ');
+    const noticeAt = stdout.indexOf('[love.wasm preview] love.video');
+    const noticeOnRead = noticeAt > before && noticeAt < after;
+    // A linked module must never be reported, and no notice may precede the read.
+    const strayNotices = (stdout.match(/\[love\.wasm preview\] love\.(joystick|sensor)\b/g) || []).length;
+    const quietBeforeUse = stdout.slice(0, before).indexOf('[love.wasm preview]') === -1;
+    // love.touch is read too, and reports separately — one mechanism, per module.
+    const touchNotices = (stdout.match(/\[love\.wasm preview\] love\.touch\b/g) || []).length;
+
     // Scan the canvas centre column for a RED pixel (the physics body, drawn red).
     const [cw, ch] = host.canvasSize();
     let redSeen = false, redAt = null;
@@ -181,8 +219,18 @@ async function gamePageFn({ b64, boot, gameConf, gameMain, oggB64, shimSrc, winH
     log('physics fell: ' + physicsSeen);
     log('red pixel: ' + redSeen + (redAt !== null ? (' at centre-column y=' + redAt) : ''));
     log('audio host: ' + audioSources + ' source(s), ' + audioPcm + ' pcm frames captured');
+    log('linked modules are real tables (joystick, sensor): ' + linkedOk);
+    log('absent module reads nil (love.video): ' + absentNil);
+    log('no notice before the read: ' + quietBeforeUse);
+    log('notice fires on the read, exactly once: ' + noticeOnRead + ', count=' + notices.length);
+    log('linked modules are never reported: ' + (strayNotices === 0));
+    log('a second absent module reports separately (love.touch): count=' + touchNotices);
+    if (notices.length) log('  notice: ' + notices[0]);
 
-    const ok = loadSeen && soundOk && physicsSeen && redSeen && st >= 0;
+    const modulesOk = linkedOk && absentNil && noticeOnce && noticeOnRead
+      && quietBeforeUse && strayNotices === 0 && touchNotices === 1;
+
+    const ok = loadSeen && soundOk && physicsSeen && redSeen && modulesOk && st >= 0;
     return { ok, lines, stdout };
   } catch (e) {
     const error = (e && typeof e.wasiExit === 'number') ? ('proc_exit(' + e.wasiExit + ')') : String(e);

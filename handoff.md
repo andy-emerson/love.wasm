@@ -75,7 +75,7 @@ itch.io does not resolve, so itch-only games need the Human to supply them.
 
 - `conf.lua` declares `t.version = "11.5"`, and the code uses **no API removed in
   12** — checked against every removal and rename in `changes.txt`.
-- Every module it touches is inside the sixteen the union artifact links:
+- Every module it touches is inside the eighteen the union artifact links:
   `audio`, `data`, `event`, `filesystem`, `graphics`, `image`, `keyboard`,
   `math`, `mouse`, `physics`, `system`, `timer`, `window`.
 - Assets are 167 loose `.png`/`.ogg`/`.wav`/`.ttf` files, no archives — so D7
@@ -179,11 +179,19 @@ size draws rectangles and text exactly as the 96x64 fixtures do, and the game
 fills the canvas. The earlier worry that nothing above 96x64 had ever been tried
 is closed.
 
-**Evidence:** the GL fix is **tested** — 4.5b is CI-enforced and demonstrated to
-fail without it. The module handling is **observed**: both witness projects now
-take the default path in CI, so a boot regression would be caught, but nothing
-asserts the use-time notice itself. That assertion is the obvious next witness —
-a fixture that reads `love.video` and expects the named line.
+**Evidence: both fixes are tested, and both witnesses are demonstrated able to
+fail.** The GL fix is 4.5b — reverting the host change makes it read back the
+clear colour and FAIL, while the pre-existing 4.5 passes either way. The module
+handling is the union game witness, which now asserts seven things about a
+project that sets no `t.modules`: linked modules are real tables, an unlinked one
+reads `nil`, nothing is reported before the read, the notice fires on the read
+exactly once, linked modules are never reported, and a second unlinked module
+reports separately. Two adverse cases, both run:
+
+| Regression | What the witness says |
+|---|---|
+| joystick/sensor stubbed instead of linked | `linked modules are real tables: false`, `linked modules are never reported: false` |
+| the notice moved back to `require` time | `no notice before the read: false`, `notice fires on the read: false` |
 
 [lol]: https://github.com/challacade/legend-of-lua
 

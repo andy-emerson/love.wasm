@@ -24,7 +24,7 @@ and **re-runnable** — `wasi/games/run.sh` fetches the pin, applies our port
 patch, plays it and asserts. Its Lua needs a 5.1 → 5.4 port; every LÖVE feature
 it uses works. See step 2, and **The Lua dialect** in `readme.md`.
 
-The `testing/` corpus now runs — **297 pass / 43 fail / 15 skip** across 21
+The `testing/` corpus now runs — **298 pass / 42 fail / 15 skip** across 21
 suites, up from 236/92 when it first ran. All three infrastructure blockers the
 census found are fixed; `love.audio`, `love.window` and `love.filesystem` are
 triaged. See step 3.
@@ -251,7 +251,7 @@ three fixes below:**
 | | pass | fail | skip |
 |---|---|---|---|
 | first run | 236 | 92 | 15 |
-| **now** | **297** | **43** | **15** |
+| **now** | **298** | **42** | **15** |
 
 Per suite, as it stands now (▲ marks what the three fixes moved):
 
@@ -262,7 +262,7 @@ Per suite, as it stands now (▲ marks what the three fixes moved):
 | event | 4 | 0 | | sensor | 1 | 0 |
 | filesystem ▲ | 27 | 6 | | sound | 3 | 1 |
 | font | 7 | 0 | | system | 7 | 1 |
-| graphics ▲ | 97 | 8 | | timer | 4 | 2 |
+| graphics ▲ | 98 | 7 | | timer | 4 | 2 |
 | image | 5 | 0 | | touch | 3 | 0 |
 | joystick | 4 | 2 | | window | 23 | 12 |
 | keyboard | 10 | 0 | | love | 4 | 2 |
@@ -422,7 +422,7 @@ gesture**, and **4 implementable-but-unbuilt** (wake lock, icon). None of them
 should be made to pass by storing a value the browser never applied — that is
 the line between a declared divergence and a fake.
 
-**What is left: 43 failures, and graphics is now signal rather than noise.**
+**What is left: 42 failures, and graphics is now signal rather than noise.**
 Its remaining 8 are worth naming because they set the shape of the triage:
 
 | test | shape |
@@ -433,11 +433,20 @@ Its remaining 8 are worth naming because they set the shape of the triage:
 | `circle()` | 1022/1024 |
 | `ellipse()` | 1023/1024 |
 | `setLineStyle()` | 224/256 |
-| `Shader()` | 520/776 — the one real gap |
+| `Shader()` | **FIXED** — see below |
 
 Four of those are near-miss rasterisation edges, which is what a different
-rasteriser looks like and probably a declared divergence rather than a bug;
-`Shader()` is the one that looks like a genuine defect. The rest of the residual
+rasteriser looks like and probably a declared divergence rather than a bug.
+
+**`Shader()` was a genuine defect, and a much wider one than the test.**
+`glReadPixels` allocated a `Uint8Array` whatever the pixel type was. WebGL2
+requires the destination view to MATCH the type — `BYTE` needs an `Int8Array`,
+`FLOAT` a `Float32Array` — and a mismatch is not a silent widening: it raises
+`INVALID_OPERATION` and reads **nothing**, so the caller gets zeros. The size was
+wrong for the same reason, `w*h*4` being true of RGBA8 and little else. So every
+readback that was not `UNSIGNED_BYTE` came back as zeros — an integer render
+target, and a float one too. Only the corpus's integer-canvas case happened to
+exercise it. Both hosts fixed, view and size chosen from format and type. The rest of the residual
 — audio 12, window 12, filesystem 7, mouse 3, joystick 2, timer 2, love 2,
 system 1, sound 1 — is still unexamined, and that triage is step 3's actual
 cost.

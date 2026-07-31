@@ -143,9 +143,23 @@ double Source::tell(Source::Unit)
 	return 0.0f;
 }
 
-double Source::getDuration(Unit)
+double Source::getDuration(Unit unit)
 {
-	return -1.0f;
+	// A static Source holds its whole PCM buffer, so its length is arithmetic —
+	// there is nothing to ask the host. Reporting -1 (LOVE's "unknown") made
+	// every duration query a lie for the one case that is knowable.
+	//
+	// A STREAM or QUEUE Source genuinely has no fixed length here: the host is
+	// fed as it goes, so -1 stays the honest answer for those.
+	if (sourceType != TYPE_STATIC)
+		return -1.0;
+
+	const int bytesPerSample = (bitDepth / 8) * channels;
+	if (bytesPerSample <= 0 || sampleRate <= 0)
+		return -1.0;
+
+	const double samples = (double) (staticData.size() / (size_t) bytesPerSample);
+	return unit == UNIT_SAMPLES ? samples : samples / (double) sampleRate;
 }
 
 void Source::setPosition(float *)

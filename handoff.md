@@ -24,9 +24,9 @@ and **re-runnable** — `wasi/games/run.sh` fetches the pin, applies our port
 patch, plays it and asserts. Its Lua needs a 5.1 → 5.4 port; every LÖVE feature
 it uses works. See step 2, and **The Lua dialect** in `readme.md`.
 
-The `testing/` corpus now runs — **290 pass / 50 fail / 15 skip** across 21
+The `testing/` corpus now runs — **296 pass / 44 fail / 15 skip** across 21
 suites, up from 236/92 when it first ran. All three infrastructure blockers the
-census found are fixed; what is left is triage. See step 3.
+census found are fixed, and `love.audio` is triaged. See step 3.
 
 `love.thread` is the one major module still stubbed (build-order step 7).
 
@@ -250,13 +250,13 @@ three fixes below:**
 | | pass | fail | skip |
 |---|---|---|---|
 | first run | 236 | 92 | 15 |
-| **now** | **290** | **50** | **15** |
+| **now** | **296** | **44** | **15** |
 
 Per suite, as it stands now (▲ marks what the three fixes moved):
 
 | module | pass | fail | | module | pass | fail |
 |---|---|---|---|---|---|---|
-| audio | 19 | 12 | | mouse | 15 | 3 |
+| audio ▲ | 25 | 6 | | mouse | 15 | 3 |
 | data ▲ | 12 | 0 | | physics | 26 | 0 |
 | event | 4 | 0 | | sensor | 1 | 0 |
 | filesystem ▲ | 26 | 7 | | sound | 3 | 1 |
@@ -339,7 +339,50 @@ Two parts, and the second was a defect in its own right:
 **Result: 236 pass / 92 fail → 278 pass / 50 fail.** graphics went 58/47 to
 **97/8**, filesystem 23/10 to 26/7, and zero `tempoutput` failures remain.
 
-**What is left: 50 failures, and graphics is now signal rather than noise.**
+### Triage so far
+
+**`love.audio`: 19/12 → 25 pass / 6 fail.** Four defects, all fork-authored code
+(`src/modules/audio/webaudio/` is ours — it is absent from the upstream mirror):
+
+- **`Audio` kept no registry of playing sources.** `love.audio.stop()` was
+  literally an empty function and `getActiveSourceCount()` returned a constant
+  `0`, because there was nothing to answer from. Sources are now tracked while
+  playing — and *retained* while tracked, as the OpenAL backend does, or
+  stopping "all" would walk pointers the collector had already freed.
+  `pause()` returns exactly the Sources it paused, which is what lets
+  `love.audio.play(list)` resume them.
+- **`Source:getDuration()` returned -1 for everything.** A static Source holds
+  its whole PCM buffer, so its length is arithmetic; -1 ("unknown") was a lie
+  for the one case that is knowable. STREAM and QUEUE keep -1 honestly.
+- **`setDopplerScale` discarded its argument** while `setDistanceModel` stored
+  its own — an inconsistency against this backend's stated convention, which is
+  that unappliable spatialization state is *stored and reported* (Source.h).
+- **The distance-model default was `DISTANCE_NONE`**, where desktop's is
+  `DISTANCE_INVERSE_CLAMPED`.
+
+The remaining **6 are declared divergences**, not defects: the mic's sample rate
+is not settable in a browser; EFX effects and per-source filters have no
+WebAudio equivalent in LÖVE's OpenAL-shaped model (`setEffect`, `getEffect`,
+`getActiveEffects`, `Source:setFilter`); and output-device selection is gated.
+
+**`love.window`: 12 fail, and this is the honest shape of a page.** Nothing here
+was implemented, because none of it can be done faithfully and the ones that
+could be are gesture-gated:
+
+| tests | what a page can do |
+|---|---|
+| `setPosition`, `getPosition` | nothing — a page cannot move its window |
+| `maximize`, `minimize`, `isMaximized`, `isMinimized` | nothing |
+| `setFullscreen`, `getFullscreen` | the Fullscreen API is real but needs a **user gesture**, so a game calling it from a keypress could work while this test never can |
+| `setDisplaySleepEnabled`, `isDisplaySleepEnabled` | the Screen Wake Lock API is real, async and permission-gated — implementable, currently not |
+| `setIcon`, `getIcon` | a favicon is the host document's business, not the canvas's |
+
+So window's 12 divide into **6 impossible**, **2 possible only under a user
+gesture**, and **4 implementable-but-unbuilt** (wake lock, icon). None of them
+should be made to pass by storing a value the browser never applied — that is
+the line between a declared divergence and a fake.
+
+**What is left: 44 failures, and graphics is now signal rather than noise.**
 Its remaining 8 are worth naming because they set the shape of the triage:
 
 | test | shape |

@@ -95,7 +95,23 @@ public:
 
 private:
 	float volume = 1.0f;
-	DistanceModel distanceModel = DISTANCE_NONE;
+	// Desktop's default (openal/Audio.cpp). It is stored and reported but not
+	// applied, like the rest of the spatialization state — see Source.h.
+	DistanceModel distanceModel = DISTANCE_INVERSE_CLAMPED;
+	float dopplerScale = 1.0f;
+
+	// Sources that are currently playing. love.audio.stop() / pause() /
+	// getActiveSourceCount() are ABOUT this set, so without it they had nothing
+	// to answer from: stop() was an empty function and getActiveSourceCount()
+	// returned a constant 0.
+	//
+	// Retained while tracked, as the OpenAL backend does: a played Source must
+	// outlive the last Lua reference to it, or stopping "all" would walk
+	// pointers the collector has already freed.
+	std::vector<love::audio::Source*> playingSources;
+
+	void trackPlaying(love::audio::Source *source);
+	void untrack(love::audio::Source *source);
 	std::vector<love::audio::RecordingDevice*> capture;
 
 }; // Audio

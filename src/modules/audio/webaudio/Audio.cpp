@@ -69,7 +69,31 @@ love::audio::Source *Audio::newSource(int sampleRate, int bitDepth, int channels
 
 int Audio::getActiveSourceCount() const
 {
-	return 0;
+	return (int) playingSources.size();
+}
+
+void Audio::trackPlaying(love::audio::Source *source)
+{
+	for (auto *s : playingSources)
+	{
+		if (s == source)
+			return;
+	}
+	source->retain();
+	playingSources.push_back(source);
+}
+
+void Audio::untrack(love::audio::Source *source)
+{
+	for (auto it = playingSources.begin(); it != playingSources.end(); ++it)
+	{
+		if (*it == source)
+		{
+			(*it)->release();
+			playingSources.erase(it);
+			return;
+		}
+	}
 }
 
 int Audio::getMaxSources() const
@@ -79,32 +103,56 @@ int Audio::getMaxSources() const
 
 bool Audio::play(love::audio::Source *source)
 {
-	return source != nullptr && source->play();
+	if (source == nullptr || !source->play())
+		return false;
+	trackPlaying(source);
+	return true;
 }
 
 bool Audio::play(const std::vector<love::audio::Source*> &sources)
 {
 	bool any = false;
 	for (auto *s : sources)
-		any = (s != nullptr && s->play()) || any;
+	{
+		if (s != nullptr && s->play())
+		{
+			trackPlaying(s);
+			any = true;
+		}
+	}
 	return any;
 }
 
 void Audio::stop(love::audio::Source *source)
 {
 	if (source != nullptr)
+	{
 		source->stop();
+		untrack(source);
+	}
 }
 
 void Audio::stop(const std::vector<love::audio::Source*> &sources)
 {
 	for (auto *s : sources)
+	{
 		if (s != nullptr)
+		{
 			s->stop();
+			untrack(s);
+		}
+	}
 }
 
 void Audio::stop()
 {
+	// Copy first: stopping releases, and releasing may run a destructor that
+	// reaches back in here.
+	std::vector<love::audio::Source*> all = playingSources;
+	for (auto *s : all)
+		s->stop();
+	for (auto *s : all)
+		untrack(s);
 }
 
 void Audio::pause(love::audio::Source *source)
@@ -122,7 +170,14 @@ void Audio::pause(const std::vector<love::audio::Source*> &sources)
 
 std::vector<love::audio::Source*> Audio::pause()
 {
-	return {};
+	// LOVE's contract: pause everything currently playing and hand back exactly
+	// those Sources, so love.audio.play(list) can resume them.
+	std::vector<love::audio::Source*> paused = playingSources;
+	for (auto *s : paused)
+		s->pause();
+	for (auto *s : paused)
+		untrack(s);
+	return paused;
 }
 
 void Audio::setVolume(float volume)
@@ -159,13 +214,14 @@ void Audio::setVelocity(float *)
 {
 }
 
-void Audio::setDopplerScale(float)
+void Audio::setDopplerScale(float scale)
 {
+	dopplerScale = scale;
 }
 
 float Audio::getDopplerScale() const
 {
-	return 1.0f;
+	return dopplerScale;
 }
 
 const std::vector<love::audio::RecordingDevice*> &Audio::getRecordingDevices()

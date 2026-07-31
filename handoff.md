@@ -24,9 +24,10 @@ and **re-runnable** — `wasi/games/run.sh` fetches the pin, applies our port
 patch, plays it and asserts. Its Lua needs a 5.1 → 5.4 port; every LÖVE feature
 it uses works. See step 2, and **The Lua dialect** in `readme.md`.
 
-The `testing/` corpus now runs — **296 pass / 44 fail / 15 skip** across 21
+The `testing/` corpus now runs — **297 pass / 43 fail / 15 skip** across 21
 suites, up from 236/92 when it first ran. All three infrastructure blockers the
-census found are fixed, and `love.audio` is triaged. See step 3.
+census found are fixed; `love.audio`, `love.window` and `love.filesystem` are
+triaged. See step 3.
 
 `love.thread` is the one major module still stubbed (build-order step 7).
 
@@ -250,7 +251,7 @@ three fixes below:**
 | | pass | fail | skip |
 |---|---|---|---|
 | first run | 236 | 92 | 15 |
-| **now** | **296** | **44** | **15** |
+| **now** | **297** | **43** | **15** |
 
 Per suite, as it stands now (▲ marks what the three fixes moved):
 
@@ -259,7 +260,7 @@ Per suite, as it stands now (▲ marks what the three fixes moved):
 | audio ▲ | 25 | 6 | | mouse | 15 | 3 |
 | data ▲ | 12 | 0 | | physics | 26 | 0 |
 | event | 4 | 0 | | sensor | 1 | 0 |
-| filesystem ▲ | 26 | 7 | | sound | 3 | 1 |
+| filesystem ▲ | 27 | 6 | | sound | 3 | 1 |
 | font | 7 | 0 | | system | 7 | 1 |
 | graphics ▲ | 97 | 8 | | timer | 4 | 2 |
 | image | 5 | 0 | | touch | 3 | 0 |
@@ -365,6 +366,45 @@ is not settable in a browser; EFX effects and per-source filters have no
 WebAudio equivalent in LÖVE's OpenAL-shaped model (`setEffect`, `getEffect`,
 `getActiveEffects`, `Source:setFilter`); and output-device selection is gated.
 
+**`love.filesystem`: 23/10 → 27 pass / 6 fail.** `mountFullPath` (blocker C)
+took three of them; `remove` took a fourth:
+
+- **`remove` could not delete a directory, and would delete a non-empty one.**
+  Two host-side causes. `fs_mkdir` did not create intermediate directories,
+  where physfs's does — so `createDirectory("foo/bar")` left no `foo` at all,
+  and `remove("foo")` could never succeed. And `fs_remove` did not check
+  emptiness, so removing a directory with a file still in it reported success.
+  Both fixed in `fs-host.mjs`; no rebuild, since it is host JavaScript.
+
+The remaining 6 divide into declared divergences and one defect worth naming:
+
+| test | verdict |
+|---|---|
+| `mount`, `unmount` | archive mounting — **#48 (D7)**, open by decision |
+| `mountCommonPath` | userdesktop / userhome / appdocuments / userappdata / userdocuments — a browser has no such paths |
+| `getRealDirectory` | there are no real directories; the store is virtual |
+| **`getInfo().readonly`** | **a real defect** — reported `true` for everything, including files in the writable save namespace |
+| **`isFused`** | **a real defect, and not a one-liner** |
+
+`getInfo().readonly` needs a seam change: `fs_stat` carries no per-file
+read-only bit, and the backend cannot tell which store answered because the host
+resolves save-first internally. Fixing it means an extra out-param on `fs_stat`
+across the backend and both hosts — small, but a wire-contract change, so it is
+recorded rather than rushed.
+
+`isFused` is more interesting than it looks. `isFused()` returns true because
+`boot.lua:77` infers "fused" from `pcall(love.filesystem.setSource, exepath)`
+SUCCEEDING, and ours succeeds for anything — it only records the path. A desktop
+physfs `setSource` fails on a plain executable, which is what makes a normal game
+non-fused. And the inference is read at `boot.lua:92`, *before* the non-fused
+branch reassigns `can_has_game`, so the only way to be honestly non-fused is for
+that first call to fail and the game to arrive via the `--game` argument. That
+means changing `setSource`'s contract (succeed only where a game actually lives)
+AND the `arg` the boot wrapper seeds — which every witness that boots would go
+through. Worth doing, too big to slip in here. The visible cost today is that
+`love.setDeprecationOutput` is off and a game branching on `isFused()` is told
+the wrong thing.
+
 **`love.window`: 12 fail, and this is the honest shape of a page.** Nothing here
 was implemented, because none of it can be done faithfully and the ones that
 could be are gesture-gated:
@@ -382,7 +422,7 @@ gesture**, and **4 implementable-but-unbuilt** (wake lock, icon). None of them
 should be made to pass by storing a value the browser never applied — that is
 the line between a declared divergence and a fake.
 
-**What is left: 44 failures, and graphics is now signal rather than noise.**
+**What is left: 43 failures, and graphics is now signal rather than noise.**
 Its remaining 8 are worth naming because they set the shape of the triage:
 
 | test | shape |

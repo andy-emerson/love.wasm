@@ -204,17 +204,36 @@ export function makeFsHost() {
       saves[p] = bytes;
       return len;
     },
-    // fs_remove(path, path_len) -> 0 removed / -1 if not present in the save
-    // namespace (the read-only project cannot be deleted).
+    // fs_remove(path, path_len) -> 0 removed / -1 refused. Only the save
+    // namespace can be deleted from (the read-only project cannot), and a
+    // NON-EMPTY directory is refused, which is physfs's rule and what
+    // love.filesystem.remove promises: it returns false rather than deleting a
+    // tree out from under the game.
     fs_remove(pathPtr, pathLen) {
       const p = readPath(pathPtr, pathLen);
+      const prefix = p.replace(/\/+$/, "") + "/";
+      for (const store of [files, saves]) {
+        for (const key of Object.keys(store)) {
+          if (key.startsWith(prefix)) return -1;   // something still lives under it
+        }
+      }
       if (!has(saves, p)) return -1;
       delete saves[p];
       return 0;
     },
-    // fs_mkdir(path, path_len) -> 0. Records a directory in the save namespace.
+    // fs_mkdir(path, path_len) -> 0. Records a directory in the save namespace,
+    // AND its parents: physfs's mkdir creates intermediate directories, so
+    // love.filesystem.createDirectory("foo/bar") has to leave "foo" behind as a
+    // directory too. Without that, removing "foo/bar" left "foo" as nothing at
+    // all and love.filesystem.remove("foo") could not succeed.
     fs_mkdir(pathPtr, pathLen) {
-      saves[readPath(pathPtr, pathLen)] = DIR;
+      const p = readPath(pathPtr, pathLen).replace(/\/+$/, "");
+      const parts = p.split("/").filter((seg) => seg.length > 0);
+      let acc = "";
+      for (const seg of parts) {
+        acc = acc === "" ? seg : acc + "/" + seg;
+        if (!has(saves, acc)) saves[acc] = DIR;
+      }
       return 0;
     },
     // fs_list(path, path_len, buf, cap) -> total bytes of the NUL-separated child

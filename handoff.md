@@ -24,7 +24,9 @@ and **re-runnable** — `wasi/games/run.sh` fetches the pin, applies our port
 patch, plays it and asserts. Its Lua needs a 5.1 → 5.4 port; every LÖVE feature
 it uses works. See step 2, and **The Lua dialect** in `readme.md`.
 
-What is still unproven: the `testing/` corpus has not been run under this build.
+The `testing/` corpus now runs — 236 pass / 92 fail / 15 skip across 21 suites.
+Three infrastructure blockers account for most of the failures; one is fixed. See
+step 3.
 
 `love.thread` is the one major module still stubbed (build-order step 7).
 
@@ -234,14 +236,84 @@ reports separately. Two adverse cases, both run:
 
 [lol]: https://github.com/challacade/legend-of-lua
 
-### 3. Sliced corpus parity
+### 3. Corpus parity — CENSUSED, work sized
 
-Run the `testing/` `love.test.*` suites for the linked modules and diff.
-Reference is the committed `testing/**/expected/` outputs, with version skew
-noted. The full corpus cannot run in one shot — it exercises unlinked `thread`
-and `video` — so run it **by module slice**. **Evidence:** every linked-module
-suite passes, with each divergence marked expected-fail and listed explicitly.
-Never silently failing.
+**It does not need slicing.** `testing/main.lua` already gates every suite on
+`if love.<module> ~= nil then require(...)`, so `video` and `thread` skip
+themselves — which works precisely *because* the boot wrapper leaves an absent
+module `nil` rather than a truthy stub. The recorded plan to "run it by module
+slice" was wrong; the whole corpus runs in one shot.
+
+**The census (this session), 21 suites in one run:**
+
+| | pass | fail | skip |
+|---|---|---|---|
+| **total** | **236** | **92** | **15** |
+
+| module | pass | fail | | module | pass | fail |
+|---|---|---|---|---|---|---|
+| audio | 19 | 12 | | mouse | 15 | 3 |
+| data | — | — (traps, see B) | | physics | 26 | 0 |
+| event | 4 | 0 | | sensor | 1 | 0 |
+| filesystem | 23 | 10 | | sound | 3 | 1 |
+| font | 7 | 0 | | system | 7 | 1 |
+| graphics | 58 | 47 | | timer | 4 | 2 |
+| image | 5 | 0 | | touch | 3 | 0 |
+| joystick | 4 | 2 | | window | 23 | 12 |
+| keyboard | 10 | 0 | | love | 4 | 2 |
+| math | 20 | 0 | | | | |
+
+**Three infrastructure blockers account for most of it. The residual is small.**
+
+**A. `setMode` recreated the GL context every call — FIXED this session.**
+`window_setmode` built a new canvas and a new WebGL2 context on every call, so
+the *second* one orphaned every shader, buffer and texture LÖVE had made in the
+first. The corpus died on line 39 of `love.load` — `love.window.updateMode` —
+with "Cannot link shader program object". This was never corpus-specific: a
+resolution change or a fullscreen toggle in any real game hit it. A repeat call
+now resizes the drawing buffer in place and keeps the context, and depth+stencil
+are requested unconditionally at creation so a later request can always be
+honoured. Witnesses re-run: win, frame, game, shell — all pass.
+
+**B. `love.data.pack` traps the module — diagnosed, NOT fixed.** Minimal repro:
+`love.data.pack('string', '>I4', 9999)` traps ("null function or function
+signature mismatch"; sometimes "memory access out of bounds"). Native
+`string.pack`/`unpack` are fine and `love.data.getPackedSize` is fine, so it is
+not the format machinery.
+
+The cause is `src/libraries/lua53/lstrlib.c`, the Kepler 5.3 backport LÖVE
+vendors so LuaJIT gets `string.pack`. Its buffer layer branches on
+`LUA_VERSION_NUM == 501`: on 5.1 it uses its own `ptr`/`nelems`/`capacity`/`L2`
+fields; on anything else `luaL_buffinit_53` initialises the **native**
+`luaL_Buffer` — but `luaL_addsize_53` and `lua53_pushresult` still read the
+shim's own fields, which nobody set. So `lua53_pushresult` calls
+`lua_pushlstring(B->L2, B->ptr, B->nelems)` on garbage. Someone added a
+`>= 504` arm to one macro, which made it *compile* under 5.4 without making it
+*work*; upstream never runs this path because upstream is 5.1.
+
+The fix does not need `src/`: Lua 5.4 has `string.pack`/`unpack`/`packsize`
+natively, and the backport's whole interface is five symbols
+(`lua53_str_pack`/`_unpack`/`_packsize`, `lua53_pushresult`,
+`lua53_cleanupbuffer`). Implement those over the native functions in `wasi/` and
+stop compiling `lstrlib.c`. Note `love.data.pack` is a real LÖVE 12 API — this
+is not corpus-only.
+
+**C. `mountFullPath` returns false — 44 of graphics' 47 failures.** The harness
+mounts `<source>/output` as `tempoutput` and `compareImg` reads its reference
+PNGs from there, so nearly every graphics test fails with "Could not open file
+tempoutput/expected/….png" — one missing capability, not 44 defects. Note this
+is a **directory** mount; #48 (D7) is about who unzips an *archive*, so this
+looks independent of that decision and much smaller. Confirm before assuming.
+
+**What is left after A–C, and it is genuinely small.** Only 3 of graphics' 47
+failures are substantive: DXT1 unsupported (a real WebGL2 divergence) and two
+`love.video` absences (expected). The rest of the residual — audio 12,
+filesystem 10, window 12, mouse 3, joystick 2, timer 2, love 2, system 1,
+sound 1 — is unexamined and is step 3's actual triage work: ours-to-fix versus
+declared divergence.
+
+**Evidence:** every linked-module suite passes, with each divergence marked
+expected-fail and listed explicitly. Never silently failing.
 
 ### 4. `love.thread` (build-order step 7)
 

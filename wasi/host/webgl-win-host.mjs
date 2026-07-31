@@ -281,14 +281,35 @@ export function makeWebGLWinHost(newCanvas) {
     // closures target. depth + stencil per the requested settings (always on for
     // the witness), preserveDrawingBuffer so the presented backbuffer survives
     // until glReadPixels (Graphics::present's screenshot readback of FBO 0).
+    // love.window.setMode is not once-only: updateMode, a resolution change and
+    // a fullscreen toggle all come back through here, and LOVE calls it again
+    // itself (testing/main.lua's love.load does, on its second line).
+    //
+    // So a REPEAT call resizes the drawing buffer of the canvas we already have
+    // and keeps its context. Creating a second context would orphan every
+    // shader, buffer and texture LOVE made in the first one — and LOVE's very
+    // next act after setMode is to link a shader, so it fails immediately with
+    // "Cannot link shader program object". Nothing in the engine is wrong there;
+    // a browser simply has no notion of moving GL objects between contexts, and
+    // resizing in place is what a canvas is for.
     window_setmode(w, h, stencil, depth, _msaa, _vsync) {
+      if (gl && canvas) {
+        if (canvas.width !== w) canvas.width = w;
+        if (canvas.height !== h) canvas.height = h;
+        return 1;
+      }
       canvas = newCanvas ? newCanvas(w, h) : new OffscreenCanvas(w, h);
+      // depth + stencil are requested unconditionally, matching webgl-host.mjs:
+      // context attributes are fixed at creation and a later setMode asking for
+      // them could not be honoured without a new context, which is exactly what
+      // the reuse above exists to avoid. The cost is backbuffer memory; the
+      // alternative is a request we would have to silently drop.
       gl = canvas.getContext('webgl2', {
         preserveDrawingBuffer: true,
         alpha: true,
         antialias: false,
-        depth: !!depth,
-        stencil: !!stencil,
+        depth: true,
+        stencil: true,
       });
       return gl ? 1 : 0;
     },

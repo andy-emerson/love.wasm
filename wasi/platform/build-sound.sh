@@ -62,7 +62,7 @@ LOVE_SOURCES="
 C_SOURCES="
   $SRC/libraries/lz4/lz4.c
   $SRC/libraries/lz4/lz4hc.c
-  $SRC/libraries/lua53/lstrlib.c
+  $ROOT/wasi/platform/lua53-strlib.c
   $SRC/libraries/Wuff/wuff.c $SRC/libraries/Wuff/wuff_convert.c
   $SRC/libraries/Wuff/wuff_internal.c $SRC/libraries/Wuff/wuff_memory.c
   $ZLIB/adler32.c $ZLIB/compress.c $ZLIB/crc32.c $ZLIB/deflate.c $ZLIB/infback.c

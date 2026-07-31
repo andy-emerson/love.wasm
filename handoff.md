@@ -24,9 +24,9 @@ and **re-runnable** — `wasi/games/run.sh` fetches the pin, applies our port
 patch, plays it and asserts. Its Lua needs a 5.1 → 5.4 port; every LÖVE feature
 it uses works. See step 2, and **The Lua dialect** in `readme.md`.
 
-The `testing/` corpus now runs — 236 pass / 92 fail / 15 skip across 21 suites.
-Three infrastructure blockers account for most of the failures; one is fixed. See
-step 3.
+The `testing/` corpus now runs — **290 pass / 50 fail / 15 skip** across 21
+suites, up from 236/92 when it first ran. All three infrastructure blockers the
+census found are fixed; what is left is triage. See step 3.
 
 `love.thread` is the one major module still stubbed (build-order step 7).
 
@@ -244,24 +244,28 @@ themselves — which works precisely *because* the boot wrapper leaves an absent
 module `nil` rather than a truthy stub. The recorded plan to "run it by module
 slice" was wrong; the whole corpus runs in one shot.
 
-**The census (this session), 21 suites in one run:**
+**The census (this session), 21 suites in one run — first run, then after the
+three fixes below:**
 
 | | pass | fail | skip |
 |---|---|---|---|
-| **total** | **236** | **92** | **15** |
+| first run | 236 | 92 | 15 |
+| **now** | **290** | **50** | **15** |
+
+Per suite, as it stands now (▲ marks what the three fixes moved):
 
 | module | pass | fail | | module | pass | fail |
 |---|---|---|---|---|---|---|
 | audio | 19 | 12 | | mouse | 15 | 3 |
-| data | — | — (traps, see B) | | physics | 26 | 0 |
+| data ▲ | 12 | 0 | | physics | 26 | 0 |
 | event | 4 | 0 | | sensor | 1 | 0 |
-| filesystem | 23 | 10 | | sound | 3 | 1 |
+| filesystem ▲ | 26 | 7 | | sound | 3 | 1 |
 | font | 7 | 0 | | system | 7 | 1 |
-| graphics | 58 | 47 | | timer | 4 | 2 |
+| graphics ▲ | 97 | 8 | | timer | 4 | 2 |
 | image | 5 | 0 | | touch | 3 | 0 |
 | joystick | 4 | 2 | | window | 23 | 12 |
 | keyboard | 10 | 0 | | love | 4 | 2 |
-| math | 20 | 0 | | | | |
+| math | 20 | 0 | | thread/video | — | skipped |
 
 **Three infrastructure blockers account for most of it. The residual is small.**
 
@@ -275,7 +279,7 @@ now resizes the drawing buffer in place and keeps the context, and depth+stencil
 are requested unconditionally at creation so a later request can always be
 honoured. Witnesses re-run: win, frame, game, shell — all pass.
 
-**B. `love.data.pack` traps the module — diagnosed, NOT fixed.** Minimal repro:
+**B. `love.data.pack` trapped the module — FIXED this session.** Minimal repro:
 `love.data.pack('string', '>I4', 9999)` traps ("null function or function
 signature mismatch"; sometimes "memory access out of bounds"). Native
 `string.pack`/`unpack` are fine and `love.data.getPackedSize` is fine, so it is
@@ -291,12 +295,23 @@ shim's own fields, which nobody set. So `lua53_pushresult` calls
 `>= 504` arm to one macro, which made it *compile* under 5.4 without making it
 *work*; upstream never runs this path because upstream is 5.1.
 
-The fix does not need `src/`: Lua 5.4 has `string.pack`/`unpack`/`packsize`
-natively, and the backport's whole interface is five symbols
-(`lua53_str_pack`/`_unpack`/`_packsize`, `lua53_pushresult`,
-`lua53_cleanupbuffer`). Implement those over the native functions in `wasi/` and
-stop compiling `lstrlib.c`. Note `love.data.pack` is a real LÖVE 12 API — this
-is not corpus-only.
+The fix needed no `src/` change. Lua 5.4 has `string.pack`/`unpack`/`packsize`
+natively and the backport's whole interface is five symbols, so
+`wasi/platform/lua53-strlib.c` implements those over the native functions and
+all fourteen build scripts link it instead of `lstrlib.c`. It includes upstream's
+header, so a drift in the struct layout or a prototype is a compile error rather
+than a trap. The functions come from the registry's loaded-module table, not the
+`string` global, so a game reassigning `string.pack` cannot change what
+`love.data.pack` does.
+
+`love.data` is now **12 pass / 0 fail**, and the total is **290 pass / 50 fail**.
+`love.data.pack` is a real LÖVE 12 API, so this was never corpus-only.
+
+One bug of my own on the way in, worth recording because the shape recurs:
+`posidx` was read *after* pushing the function and its arguments. It is an
+absolute stack index, so with no position argument supplied it pointed at the
+pushed function — "bad argument #3 to 'string.unpack' (number expected, got
+function)". Read the caller's optional arguments before pushing anything.
 
 **C. `mountFullPath` — FIXED this session.** It returned false, so `compareImg`
 could not read its reference PNGs and 44 of graphics' 47 failures were one

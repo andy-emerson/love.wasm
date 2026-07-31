@@ -78,7 +78,7 @@ GLSLANG_SOURCES="
 C_SOURCES="
   $SRC/libraries/lz4/lz4.c $SRC/libraries/lz4/lz4hc.c
   $SRC/libraries/xxHash/xxhash.c
-  $SRC/libraries/lua53/lstrlib.c
+  $ROOT/wasi/platform/lua53-strlib.c
   $ZLIB/adler32.c $ZLIB/compress.c $ZLIB/crc32.c $ZLIB/deflate.c $ZLIB/infback.c
   $ZLIB/inffast.c $ZLIB/inflate.c $ZLIB/inftrees.c $ZLIB/trees.c $ZLIB/uncompr.c $ZLIB/zutil.c
 "

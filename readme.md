@@ -6,15 +6,17 @@ This is a fork of [love2d/love](https://github.com/love2d/love) (the `main` / 12
 
 **Base pin:** upstream `main` @ `81eb4dbcaf2f1d31c10268340e995a5c4a8270af` (2026-07-18) — reached via a GitHub *sync-merge* of `love2d/love:main` into `wasi`, not the deliberate rebase the swap below describes. It pulled in the QOI image format plus minor fixes with no seam conflicts, and the witnesses stayed green. Previous base: `540e681` (2026-07-05). The clean, rebase-based adoption (which flattens this sync-merge away and sheds the lane-2 patches) remains planned for the 12.0 release; base bumps stay deliberate, recorded events.
 
-**Status — what runs today.** Real LÖVE, compiled to `wasm32-wasi`, runs an actual game end to end in real Chromium: `conf.lua` sizes the canvas, `love.window.setMode` opens a real WebGL2 context, `love.load` decodes and plays an Ogg asset read through `love.filesystem` and builds a physics world, and `love.update`/`love.draw` step and draw it once per `requestAnimationFrame` tick. Graphics, filesystem (read, write, enumerate), event/keyboard/mouse, joystick, timer, system, audio, sound and physics are all real engine code over browser seams. `love.thread` is the one major module still stubbed — build-order step 7. Every behavioral claim below carries a witness, and CI re-runs all of them on every push to `wasi`.
+**Status — what runs today.** Real LÖVE, compiled to `wasm32-wasi`, runs an actual game end to end in real Chromium: `conf.lua` sizes the canvas, `love.window.setMode` opens a real WebGL2 context, `love.load` decodes and plays an Ogg asset read through `love.filesystem` and builds a physics world, and `love.update`/`love.draw` step and draw it once per `requestAnimationFrame` tick. Graphics, filesystem (read, write, enumerate), event/keyboard/mouse, joystick, touch, timer, system, audio, sound and physics are all real engine code over browser seams. `love.thread` is the one major module still stubbed — build-order step 7. Every behavioral claim below carries a witness, and CI re-runs them on every push to `wasi` — with one deliberate exception, `wasi/games/run.sh`, which depends on a third party's repository staying reachable and so is run on demand rather than in the per-push gate.
 
-There is an **interactive shell**: a page that loads a LÖVE project from disk, runs it on `requestAnimationFrame`, forwards real keyboard and mouse events into `love.event`, and applies a module edit to the running game without a reload (`wasi/shell/`, witnessed by `wasi/shell/run.sh`). It is a game player, not an editor — the downstream consumer this engine is built for is a separate concern.
+There is an **interactive shell**: a page that loads a LÖVE project from disk, runs it on `requestAnimationFrame`, forwards real keyboard, mouse and touch events into `love.event`, and applies a module edit to the running game without a reload (`wasi/shell/`, witnessed by `wasi/shell/run.sh`). It is a game player, not an editor — the downstream consumer this engine is built for is a separate concern.
 
-**What is not proven yet.** No third-party `.love` game has been run — only a real, desktop-compatible project written as a fixture — and the `testing/` conformance corpus has not been run under this build, so desktop parity rests on per-seam witnesses rather than on the corpus. Those two are what stand between here and Beta.
+**A third-party game runs.** [Legend of Lua](https://github.com/challacade/legend-of-lua), an open-source game written for LÖVE 11.5 and **not bundled here**, boots from its own `conf.lua`, opens a 1920x1080 canvas and plays — tilemap, sprites, shadows, UI and text. Every LÖVE feature it uses works; what it needed was a Lua 5.1 → 5.4 port, and nothing else (see **The Lua dialect**). Re-runnable: `wasi/games/run.sh` clones the pinned commit into a scratch directory, applies `wasi/games/legend-of-lua.patch` — 59 lines, our port, the only part of this that lives in the repository — plays it in real Chromium and asserts. Evidence: tested, on one game.
 
-A project has to stay inside the **linked envelope** of the artifact running it: `boot.lua` requires every module its `conf.lua` enables. The union artifact the shell loads links sixteen; `joystick`, `touch`, `sensor`, `video` and `thread` are not among them, so a project must disable those or it will not boot. `love.joystick` is real and witnessed — it is simply on its own build, not this one.
+**What is not proven yet.** The `testing/` conformance corpus has not been run under this build, so desktop parity rests on per-seam witnesses rather than on the corpus. That is what stands between here and Beta.
 
-**Ten guarded seams.** Edits to shared engine source are ten small guarded seams, each byte-unchanged for default builds and shaped to be offered upstream. Everything else this fork adds lives outside `src/`.
+**Modules a game may use.** LÖVE enables all twenty modules by default and `boot.lua` hard-errors on a missing one, so a build shipping a subset has to answer for the rest. The union artifact links nineteen — everything except `video` and `thread`. Those two are supplied by the boot wrapper (`wasi/platform/witness-frame.lua`) as absent modules: `require` succeeds so a game boots, `love.<name>` stays `nil` exactly as it is on desktop with `t.modules.<name> = false`, and reading it emits one `[love.wasm preview]` notice naming the module. A game therefore needs no `conf.lua` edit to boot, and a game that genuinely uses one of the two says so in the log rather than failing anonymously.
+
+**Eleven guarded seams.** Edits to shared engine source are eleven small guarded seams, each byte-unchanged for default builds and shaped to be offered upstream. Everything else this fork adds lives outside `src/`.
 
 | Seam | Shared source it touches | What the guard selects |
 |---|---|---|
@@ -26,6 +28,7 @@ A project has to stay inside the **linked envelope** of the artifact running it:
 | Input | `modules/event/wrap_Event.cpp`, `keyboard/wrap_Keyboard.cpp`, `mouse/wrap_Mouse.cpp` | the host-import backends instead of SDL, plus a version-guarded `lua_cpcall`→`lua_pcall` shim (Lua 5.2 removed `lua_cpcall`) |
 | Joystick | `modules/joystick/wrap_JoystickModule.cpp` | the browser Gamepad API backend instead of SDL's controller subsystem |
 | Sensor | `modules/sensor/wrap_Sensor.cpp` | the preview-limited warned stub instead of SDL (issue #27) |
+| Touch | `modules/touch/wrap_Touch.cpp` | the browser TouchEvent backend instead of SDL; touch rides the existing `love_input` record, so it adds no host import |
 | Timer | `modules/timer/Timer.cpp` | a `LOVE_WASM` arm of the POSIX `#if` — `clock_gettime(CLOCK_MONOTONIC)`/`gettimeofday` — and an honest no-op `love::sleep`, since the main thread must not block |
 | System | `modules/system/System.cpp`, `system/wrap_System.cpp` | `getOS()` returning `"Web"`, and the host-import `love.system` backend instead of SDL |
 
@@ -56,10 +59,30 @@ So each decision is judged by *"what does a correct browser game do?"*, not *"do
 
 The semantically hard code stays verbatim: physics, decoders, render math, module logic, the Lua bindings. The platform-adjacent plumbing gets touched: backend selection, internal thread usage (audio pump, timers) massaged into a single-threaded frame-pump model, and the build system. Expect the diff against upstream to be the evidence — small, seam-shaped, and reviewable — rather than a "95% unmodified" slogan.
 
+## The Lua dialect
+
+Desktop LÖVE 12 runs **Lua 5.1** — LuaJIT 2.1 by default, or PUC Lua 5.1 with `LOVE_JIT=OFF`, which is the default on macOS (`CMakeLists.txt:214`). LuaJIT cannot target wasm, so this build runs **PUC Lua 5.4**, deliberately: it is the current reference interpreter, it compiles cleanly under this toolchain's wasm-EH, and it pairs with LÖVE 12 on the same reasoning — both chosen forward. Recorded as D8 in `wasi/platform/DESIGN.md`.
+
+The engine is unaffected: LÖVE's C++ carries the `LUA_VERSION_NUM >= 504` branches it needs, and the `love.*` modules behave identically. Game *Lua* is where the dialect shows. A game written for 5.1 can need edits — that is a language port, not a lost LÖVE feature, and a ported game is still a LÖVE game. **The compatibility question this project measures is whether a LÖVE feature works, not how a game's Lua was wired up.**
+
+Three names moved between the two versions, and they are what a port has to deal with. Observed running one 11.5 game (Legend of Lua) to a playable state — **41 call sites** across the game and the four libraries it vendors, plus 8 font sizes:
+
+| 5.1 idiom | Under 5.4 | Portable form — runs on both |
+|---|---|---|
+| `newFont(path, 4.5*scale)` | errors, "number has no integer representation": LÖVE takes sizes with `luaL_optinteger`, which truncates on 5.1 and raises on 5.4 | `newFont(path, math.floor(4.5*scale))` |
+| `unpack(t)` | removed, it is `table.unpack` | `local unpack = table.unpack or unpack` |
+| `math.atan2(y, x)` | removed, it is `math.atan(y, x)` | `local atan2 = math.atan2 or math.atan` |
+
+The right-hand column is the point: each portable form runs under 5.1 *and* 5.4, so porting a game forward costs it nothing on desktop — the source still runs there, and the `.love` pillar holds.
+
+Scale matters more than count. The three *names* were 41 call sites, 29 of them inside vendored libraries (hump, windfield, sti, mlib) — so the port restores the names once in a three-line prelude rather than forking four third-party libraries. Only the font sizes need editing where they are written, because a wrong *value* has no prelude fix. `wasi/games/legend-of-lua.patch` is the whole port, and it is 59 lines.
+
+**Evidence: observed**, on one game. This is not a survey of the 5.1↔5.4 delta, and the list should be expected to grow as more games run.
+
 ## Toolchain
 
 - `clang-20+` + `wasi-libc`, C++ with **`-fwasm-exceptions`** and the *standardized* wasm-EH encoding — matching lua.wasm's toolchain, which is mandatory: the VM and this engine share one EH machinery, so the LLVM major and EH encoding must agree. Caution, probed 2026-07-07: clang-20's bare `-fwasm-exceptions` **defaults to the legacy encoding**; the standardized one needs an explicit `-mllvm -wasm-use-legacy-eh=false`, which is baked into `wasi/toolchain/build-libcxx-eh.sh` and every build script here — and enforced per artifact by `wasi/toolchain/check-eh-encoding.sh` (disassembly must show `try_table` and zero legacy forms; engines accept both encodings, so only a build-time gate can catch a lost flag). LÖVE's own error path requires full C++ EH — typed catches and exception-object destructors — so the build vendors **LLVM libc++ + libc++abi compiled with wasm-EH** (wasi-sdk's stock libc++ is built without exception support). Wasm `setjmp`/`longjmp` — which Ubuntu's `wasi-libc` omits entirely but FreeType needs — is vendored into the same sysroot (`wasi/toolchain/setjmp`, from wasi-libc); on wasm it is implemented *on top of* wasm-EH, so it rides on the one encoding and needs only the per-TU flag `-mllvm -wasm-enable-sjlj` (single-sourced as `$SJLJ_FLAGS`).
-- **Lua VM:** [andy-emerson/lua.wasm](https://github.com/andy-emerson/lua.wasm) (the stock Lua 5.4 reference interpreter — formerly Lua2D/lua-wasi; 0.2.0 sunset the earlier selective-AOT path, which this build never linked), consumed as a **source drop at a pinned commit**, compiled in-tree with this build's own flags, with `LUAW_EXTERNAL_EH` so the real libc++abi owns exception dispatch. LÖVE 12 supports Lua 5.4 natively (`LUA_VERSION_NUM >= 504` paths in `love.cpp`, `common/runtime.cpp`); LuaJIT is not an option under wasm (no runtime codegen; no wasm interpreter backend).
+- **Lua VM:** [andy-emerson/lua.wasm](https://github.com/andy-emerson/lua.wasm) (the stock Lua 5.4 reference interpreter — formerly Lua2D/lua-wasi; 0.2.0 sunset the earlier selective-AOT path, which this build never linked), consumed as a **source drop at a pinned commit**, compiled in-tree with this build's own flags, with `LUAW_EXTERNAL_EH` so the real libc++abi owns exception dispatch. LuaJIT is not an option under wasm (no runtime codegen; no wasm interpreter backend), so 5.4 is the deliberate choice — see **The Lua dialect** below and D8 in `wasi/platform/DESIGN.md`. What upstream provides is *build-time* portability: `LUA_VERSION_NUM >= 504` branches in `src/love.cpp` and `common/runtime.cpp` let the engine compile against 5.4, which is what this build stands on.
 - **No Emscripten anywhere.** The browser side is a small hand-written WASI preview1 shim (`fd_write`, clocks, `proc_exit` — a few dozen lines) plus the import surface defined by the seams below.
 
 ## The three seams (new code)
@@ -79,7 +102,7 @@ Everything else the host supplies as imports, which is the same role an OS plays
 | Toolchain | system clang/gcc/MSVC per platform | `clang-20+` + `wasi-libc`, target `wasm32-wasi` (standardized wasm-EH encoding, matched with lua.wasm) |
 | C runtime | system libc | wasi-libc (+ a few-dozen-line WASI preview1 shim in the host) |
 | C++ runtime & exceptions | system libc++/libstdc++, native unwinding | vendored LLVM libc++ + libc++abi built with `-fwasm-exceptions` (wasm-EH) |
-| Lua VM | LuaJIT (or vendored `lua53`) | [lua.wasm](https://github.com/andy-emerson/lua.wasm) — stock Lua 5.4 reference interpreter, source-drop at a pinned commit, `LUAW_EXTERNAL_EH` |
+| Lua VM | LuaJIT 2.1, or PUC Lua 5.1 with `LOVE_JIT=OFF` — both Lua 5.1 | [lua.wasm](https://github.com/andy-emerson/lua.wasm) — stock Lua 5.4 reference interpreter, source-drop at a pinned commit, `LUAW_EXTERNAL_EH` |
 | Window & GL context | SDL3 | `<canvas>` + WebGL2 context via host imports (`love_win`), created by `love.window.setMode`; `t.window.*` drives the canvas |
 | GL function loading | glad (runtime loader) | none — static WebGL2 import shim *is* the GL surface |
 | Graphics API | OpenGL / Vulkan / Metal backends | WebGL2 — the `opengl` backend **reused**, its GL loader reseamed to static imports (not a new backend; only the loader changes) |
@@ -105,7 +128,7 @@ Everything else the host supplies as imports, which is the same role an OS plays
 
 ## Dependency disposition (the build map)
 
-**Replaced at the seams (not compiled):** SDL3 · OpenAL · PhysFS (`src/libraries/physfs` — replaced by the host-import VFS backend `wasi/platform/fs-backend.cpp`; read path landed at step 6.2, write + save-dir path at step 6.7) · glad (GL loader — the WebGL import shim takes its place) · LuaJIT / vendored `lua53` (→ lua.wasm 5.4).
+**Replaced at the seams (not compiled):** SDL3 · OpenAL · PhysFS (`src/libraries/physfs` — replaced by the host-import VFS backend `wasi/platform/fs-backend.cpp`; read path landed at step 6.2, write + save-dir path at step 6.7) · glad (GL loader — the WebGL import shim takes its place) · LuaJIT (→ lua.wasm 5.4) · `lua53/lutf8lib` (5.4 has `utf8` natively). Note `lua53/lstrlib` **is** compiled: `love.data.pack`/`unpack`/`getPackedSize` call into it unconditionally.
 
 **Kept, real, already in-tree:** `box2d` · `dr` (flac/mp3) · `stb` (stb_image) · `lodepng` · `ddsparse` · `tinyexr` · `Wuff` (wav) · `lz4` · `xxHash` · `noise1234` · `utf8` · `glslang` (LÖVE's GLSL parser + shader reflector, used by `graphics/Shader.cpp` for all backends — **compiled into the wasi graphics build** with two carried portability patches; see step 4) · the `sound/lullaby` decoder layer · `src/scripts` (boot Lua).
 
@@ -130,11 +153,11 @@ Exclusion happens in the build, not with `rm`: deleting upstream files would blo
 
 | Tier | Meaning | Modules |
 |---|---|---|
-| **Kept + seamed (real)** | real engine code over a browser seam | `data`, `math`, `filesystem` (read 6.2, write + save-dir 6.7, enumerate via `fs_list`), `graphics` (4), `window` (6.3), `event`/`keyboard`/`mouse` (6.4), `joystick`/`gamepad` (browser Gamepad API, 6.5), `timer`/`system` (6.6), `image`, `font`, `audio` (5), `sound` (lullaby decoders linked), `physics` (Box2D, linked); and — faithful, link/seam pending — `thread` (Web Workers, step 7) |
-| **Warned stub (preview-limited, non-fatal)** | no faithful browser primitive; **first use** emits a one-time `[love.wasm preview] …` notice (via `preview_warn_once`, `wasi/platform/preview-warn.{h,cpp}`) and returns a safe default — never fatal | **`sensor`** (accelerometer/gyro — built, #27), **networking** (`enet`/`luasocket`/`luahttps` — no raw TCP/UDP in a browser), **`video`** (Theora dropped — CPU-decoding single-threaded in wasm would stutter, which is *lower* fidelity than a clean "not in preview" notice; a future `<video>` seam is the right path) |
+| **Kept + seamed (real)** | real engine code over a browser seam | `data`, `math`, `filesystem` (read 6.2, write + save-dir 6.7, enumerate via `fs_list`), `graphics` (4), `window` (6.3), `event`/`keyboard`/`mouse` (6.4), `joystick`/`gamepad` (browser Gamepad API, 6.5), `touch` (browser TouchEvent, on the `love_input` record), `timer`/`system` (6.6), `image`, `font`, `audio` (5), `sound` (lullaby decoders linked), `physics` (Box2D, linked); and — faithful, link/seam pending — `thread` (Web Workers, step 7) |
+| **Warned stub (preview-limited, non-fatal)** | no faithful browser primitive; **first use** emits a one-time `[love.wasm preview] …` notice and never a silent wrong answer. Two mechanisms, same contract: a *compiled* module warns from C++ (`preview_warn_once`, `wasi/platform/preview-warn.{h,cpp}`) and returns a safe default; a module not compiled at all is supplied by the boot wrapper, which satisfies `require` and reports on the read of `love.<name>` | **`sensor`** (accelerometer/gyro — compiled and linked, #27), **networking** (`enet`/`luasocket`/`luahttps` — no raw TCP/UDP in a browser), **`video`** (Theora dropped — CPU-decoding single-threaded in wasm would stutter, which is *lower* fidelity than a clean "not in preview" notice; a future `<video>` seam is the right path) |
 | **Fatal until ported** | essential; a loud hard error at the seam until built — a transient tier | *(empty; `filesystem` was the last to leave it)* |
 
-The warned-stub tier is the graphics ceiling's cousin (#36): report unsupported honestly, never emulate. Keeping `love.sensor` enabled as a warned stub also moots the upstream joystick/sensor `#ifdef` bug (#23) by config.
+The warned-stub tier is the graphics ceiling's cousin (#36): report unsupported honestly, never emulate. Keeping `love.sensor` enabled as a warned stub also moots the upstream joystick/sensor `#ifdef` bug (#23) by config — and is why the union build links `sensor` alongside `joystick` rather than leaving either to the boot wrapper: stubbing a module whose backend exists and is CI-enforced would hide a working feature.
 
 **Found treasure:** `testing/` is a runnable LÖVE-project test suite — a ready-made conformance corpus. Running it under this build and under desktop LÖVE, and diffing the outcomes, is the parity witness for every claim this README makes.
 

@@ -28,6 +28,15 @@
 
 #include "common/Object.h"
 
+#ifdef LOVE_ENABLE_TOUCH
+// Touch records update the live-touch list as they are converted, which is where
+// upstream does it too (event/sdl/Event.cpp calls touch::sdl::Touch::onEvent for
+// the reason given in touch/sdl/Touch.h). Guarded, so a build without love.touch
+// — the 6.4 input and 6.5 joystick witnesses — is unchanged.
+#include "touch-backend.h"
+#include "common/Module.h"
+#endif
+
 #include <cstdint>
 #include <cstring>
 
@@ -58,6 +67,13 @@ INPUT_IMPORT("input_set_text_input") void win_input_set_text_input(int32_t enabl
 //   [44] int32  i2   wheel flipped (0/1)
 //   [48] char   code[40]  DOM event.code (key events)
 //   [88] char   key[40]   DOM event.key, or the textinput UTF-8 payload
+//
+// Touch events reuse the record as a tagged union — the two string fields carry
+// nothing for them, so:
+//   [0]  double a    touch x (canvas pixels)      [8]  double b   touch y
+//   [16] double c    touch dx                     [24] double d  touch dy
+//   [36] int32  i0   touch identifier
+//   [48] double p    pressure in [0, 1]           (overlays code[])
 static const int32_t REC_SIZE = 128;
 
 enum EventType : int32_t
@@ -74,6 +90,9 @@ enum EventType : int32_t
 	EV_MOUSEFOCUS = 10,
 	EV_VISIBLE = 11,
 	EV_QUIT = 12,
+	EV_TOUCHPRESSED = 13,
+	EV_TOUCHMOVED = 14,
+	EV_TOUCHRELEASED = 15,
 };
 
 namespace love
@@ -322,6 +341,49 @@ void Event::pump(float /*waitTimeout*/)
 		case EV_QUIT:
 			msg = new Message("quit", vargs);
 			break;
+#ifdef LOVE_ENABLE_TOUCH
+		case EV_TOUCHPRESSED:
+		case EV_TOUCHMOVED:
+		case EV_TOUCHRELEASED:
+		{
+			touch::Touch::TouchInfo info = {};
+			info.id = (int64) recInt(rec, 36);
+			info.x = recDouble(rec, 0);
+			info.y = recDouble(rec, 8);
+			info.dx = recDouble(rec, 16);
+			info.dy = recDouble(rec, 24);
+			info.pressure = recDouble(rec, 48);
+			// A browser TouchEvent is always a direct touch on the surface; it
+			// has no indirect/trackpad kind to report, and mouse input arrives as
+			// MouseEvent instead, never synthesized into this path.
+			info.deviceType = touch::Touch::DEVICE_TOUCHSCREEN;
+			info.mouse = false;
+
+			auto *touchmodule = (touch::wasm::Touch *) Module::getInstance("love.touch.wasm");
+			if (touchmodule)
+				touchmodule->onEvent(type == EV_TOUCHPRESSED ? touch::wasm::TOUCH_DOWN
+					: type == EV_TOUCHMOVED ? touch::wasm::TOUCH_MOVED
+					: touch::wasm::TOUCH_UP, info);
+
+			const char *devicetxt = "touchscreen";
+			touch::Touch::getConstant(info.deviceType, devicetxt);
+
+			// The id reaches Lua as lightuserdata, not a number — upstream's
+			// choice (event/sdl/Event.cpp), because a double cannot represent
+			// every id, and love.touch.getPosition takes it back the same way.
+			vargs.emplace_back((void *) (intptr_t) info.id);
+			vargs.emplace_back(info.x);
+			vargs.emplace_back(info.y);
+			vargs.emplace_back(info.dx);
+			vargs.emplace_back(info.dy);
+			vargs.emplace_back(info.pressure);
+			vargs.emplace_back(devicetxt, std::strlen(devicetxt));
+			vargs.emplace_back(info.mouse);
+			msg = new Message(type == EV_TOUCHPRESSED ? "touchpressed"
+				: type == EV_TOUCHMOVED ? "touchmoved" : "touchreleased", vargs);
+			break;
+		}
+#endif
 		default:
 			continue;
 		}

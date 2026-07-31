@@ -13,6 +13,7 @@
 //                         conf.lua + main.lua + the real clickmono.ogg asset
 //   love_audio         -> audio-host (source_* + mic_*; taps queued PCM)
 //   love_input         -> an empty queue; love_system -> system-host
+//   love_gamepad       -> gamepad-host (the union build links love.joystick)
 //
 // After pumping the driver asserts the union worked, by transcript + one pixel:
 //   (1) stdout has UNION-GAME-LOAD           -> love.load ran through real boot
@@ -31,6 +32,7 @@ import { makeWebGLWinHost } from '../host/webgl-win-host.mjs';
 import { makeFsHost } from '../host/fs-host.mjs';
 import { makeSystemHost } from '../host/system-host.mjs';
 import { makeAudioHost } from '../host/audio-host.mjs';
+import { makeGamepadHost } from '../host/gamepad-host.mjs';
 import { runInChromium } from '../host/witness-harness.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -44,24 +46,39 @@ const boot = readFileSync(join(here, 'witness-frame.lua'), 'utf8');
 
 // The game — a normal LÖVE 12 project (runs identically on desktop LÖVE). It
 // reads its sound asset through love.filesystem, decodes + plays it, and draws a
-// physics-simulated body. conf.lua disables the modules this build does not link.
+// physics-simulated body. Its conf.lua sets NO t.modules, exactly like a real
+// game: LOVE enables all twenty by default, so leaving them alone is what
+// exercises the boot wrapper's handling of the ones this build does not link.
 const gameConf = `
 function love.conf(t)
   t.identity = "uniongame"
   t.window.width = 64
   t.window.height = 64
   t.window.title = "love.wasm union game"
-  t.modules.joystick = false
-  t.modules.touch = false
-  t.modules.sensor = false
-  t.modules.video = false
-  t.modules.thread = false
 end
 `;
 const gameMain = `
 local world, body, startY, frames
 function love.load()
   print("UNION-GAME-LOAD")
+  -- Module disposition, the way a real game meets it. This project sets no
+  -- t.modules, so LOVE enabled all twenty and boot.lua required every one; that
+  -- this line is reached at all is the proof that require was satisfied for the
+  -- two this build does not link.
+  --
+  -- love.joystick and love.touch are LINKED, so they must be real tables and
+  -- must stay silent.
+  -- love.video is NOT, so it must be nil (the shape desktop has with
+  -- t.modules.video = false, so a game's own 'if love.video then' takes the
+  -- absent path) and must announce itself ONCE, on the read — the
+  -- preview-warn contract (#27).
+  print("UNION-MODULE-LINKED type=" .. type(love.joystick) .. "," .. type(love.sensor) .. "," .. type(love.touch))
+  print("UNION-MODULE-BEFORE-READ")
+  local v = love.video
+  print("UNION-MODULE-ABSENT type=" .. type(v))
+  local v2 = love.video
+  local t2 = love.thread
+  print("UNION-MODULE-AFTER-READ")
   -- love.sound decodes a real Ogg asset read through love.filesystem; love.audio
   -- plays it. Passing a filepath string exercises the real filesystem File path.
   local sd = love.sound.newSoundData("sound.ogg")
@@ -95,7 +112,7 @@ function love.draw()
 end
 `;
 
-async function gamePageFn({ b64, boot, gameConf, gameMain, oggB64, shimSrc, winHostSrc, fsHostSrc, systemHostSrc, audioHostSrc }) {
+async function gamePageFn({ b64, boot, gameConf, gameMain, oggB64, shimSrc, winHostSrc, fsHostSrc, systemHostSrc, audioHostSrc, gamepadHostSrc }) {
   const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   const te = new TextEncoder(), td = new TextDecoder();
   const shim = (new Function('return ' + shimSrc)())();
@@ -103,6 +120,9 @@ async function gamePageFn({ b64, boot, gameConf, gameMain, oggB64, shimSrc, winH
   const fs = (new Function('return ' + fsHostSrc)())();
   const system = (new Function('return ' + systemHostSrc)())();
   const audio = (new Function('return ' + audioHostSrc)())();
+  // The union build links love.joystick, so love_gamepad must be satisfied at
+  // instantiate even though this witness drives no controller.
+  const gamepad = (new Function('return ' + gamepadHostSrc)())();
   const lines = [];
   const log = (s) => lines.push(s);
 
@@ -130,6 +150,7 @@ async function gamePageFn({ b64, boot, gameConf, gameMain, oggB64, shimSrc, winH
       love_input: input,
       love_system: system.imports,
       love_audio: audio.imports,
+      love_gamepad: gamepad.imports,
     });
     const x = instance.exports;
     shim.bind(x.memory);
@@ -137,6 +158,7 @@ async function gamePageFn({ b64, boot, gameConf, gameMain, oggB64, shimSrc, winH
     fs.bind(x.memory);
     system.bind(x.memory);
     audio.bind(x.memory);
+    gamepad.bind(x.memory);
     x._initialize();
 
     const put = (s) => { const b = te.encode(s); const p = x.pump_in(b.length); new Uint8Array(x.memory.buffer).set(b, p); return b.length; };
@@ -160,6 +182,27 @@ async function gamePageFn({ b64, boot, gameConf, gameMain, oggB64, shimSrc, winH
     const soundOk = !!soundMatch && Number(soundMatch[1]) > 0;
     const physicsSeen = stdout.indexOf('UNION-PHYSICS-FELL') !== -1;
 
+    // Absent-module reporting (the boot wrapper, wasi/platform/witness-frame.lua).
+    // A linked module is a real table and says nothing; an unlinked one is nil and
+    // names itself exactly once, on the read — never at require time, which would
+    // fire for every game on every boot and say nothing about what the game used.
+    const linkedMatch = stdout.match(/UNION-MODULE-LINKED type=(\w+),(\w+),(\w+)/);
+    const linkedOk = !!linkedMatch && linkedMatch[1] === 'table' && linkedMatch[2] === 'table' && linkedMatch[3] === 'table';
+    const absentMatch = stdout.match(/UNION-MODULE-ABSENT type=(\w+)/);
+    const absentNil = !!absentMatch && absentMatch[1] === 'nil';
+    const notices = stdout.match(/\[love\.wasm preview\] love\.video [^\n]*/g) || [];
+    const noticeOnce = notices.length === 1;
+    // Ordering is the whole claim: nothing before the read, the notice after it.
+    const before = stdout.indexOf('UNION-MODULE-BEFORE-READ');
+    const after = stdout.indexOf('UNION-MODULE-AFTER-READ');
+    const noticeAt = stdout.indexOf('[love.wasm preview] love.video');
+    const noticeOnRead = noticeAt > before && noticeAt < after;
+    // A linked module must never be reported, and no notice may precede the read.
+    const strayNotices = (stdout.match(/\[love\.wasm preview\] love\.(joystick|sensor|touch)\b/g) || []).length;
+    const quietBeforeUse = stdout.slice(0, before).indexOf('[love.wasm preview]') === -1;
+    // love.thread is read too, and reports separately — one mechanism, per module.
+    const touchNotices = (stdout.match(/\[love\.wasm preview\] love\.thread\b/g) || []).length;
+
     // Scan the canvas centre column for a RED pixel (the physics body, drawn red).
     const [cw, ch] = host.canvasSize();
     let redSeen = false, redAt = null;
@@ -177,8 +220,18 @@ async function gamePageFn({ b64, boot, gameConf, gameMain, oggB64, shimSrc, winH
     log('physics fell: ' + physicsSeen);
     log('red pixel: ' + redSeen + (redAt !== null ? (' at centre-column y=' + redAt) : ''));
     log('audio host: ' + audioSources + ' source(s), ' + audioPcm + ' pcm frames captured');
+    log('linked modules are real tables (joystick, sensor, touch): ' + linkedOk);
+    log('absent module reads nil (love.video): ' + absentNil);
+    log('no notice before the read: ' + quietBeforeUse);
+    log('notice fires on the read, exactly once: ' + noticeOnRead + ', count=' + notices.length);
+    log('linked modules are never reported: ' + (strayNotices === 0));
+    log('a second absent module reports separately (love.thread): count=' + touchNotices);
+    if (notices.length) log('  notice: ' + notices[0]);
 
-    const ok = loadSeen && soundOk && physicsSeen && redSeen && st >= 0;
+    const modulesOk = linkedOk && absentNil && noticeOnce && noticeOnRead
+      && quietBeforeUse && strayNotices === 0 && touchNotices === 1;
+
+    const ok = loadSeen && soundOk && physicsSeen && redSeen && modulesOk && st >= 0;
     return { ok, lines, stdout };
   } catch (e) {
     const error = (e && typeof e.wasiExit === 'number') ? ('proc_exit(' + e.wasiExit + ')') : String(e);
@@ -193,6 +246,7 @@ const result = await runInChromium(gamePageFn, {
   fsHostSrc: makeFsHost.toString(),
   systemHostSrc: makeSystemHost.toString(),
   audioHostSrc: makeAudioHost.toString(),
+  gamepadHostSrc: makeGamepadHost.toString(),
 });
 
 console.log('--- browser transcript ---');

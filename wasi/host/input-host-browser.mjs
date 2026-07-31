@@ -49,7 +49,8 @@ export function makeBrowserInputHost() {
   // Event type tags — must match EventType in wasi/platform/input-backend.cpp.
   const KEYDOWN = 1, KEYUP = 2, TEXTINPUT = 3, MOUSEMOVED = 4,
         MOUSEPRESSED = 5, MOUSERELEASED = 6, WHEEL = 7, RESIZE = 8,
-        FOCUS = 9, MOUSEFOCUS = 10, VISIBLE = 11, QUIT = 12;
+        FOCUS = 9, MOUSEFOCUS = 10, VISIBLE = 11, QUIT = 12,
+        TOUCHPRESSED = 13, TOUCHMOVED = 14, TOUCHRELEASED = 15;
 
   const queue = [];
   let target = null;
@@ -111,6 +112,9 @@ export function makeBrowserInputHost() {
       dv.setInt32(recPtr + 44, ev.i2 | 0, true);
       writeStr(dv, recPtr + 48, ev.code);
       writeStr(dv, recPtr + 88, ev.key);
+      // Touch pressure overlays the (unused) code[] field — see the record
+      // layout in input-backend.cpp. Written after the strings, so it wins.
+      if (ev.p !== undefined) dv.setFloat64(recPtr + 48, ev.p, true);
       return 1;
     },
     input_set_cursor_visible(v) {
@@ -178,6 +182,35 @@ export function makeBrowserInputHost() {
         const div = e.deltaMode === 0 ? 100 : 1;   // pixels -> notches; lines/pages pass through
         push({ type: WHEEL, a: -e.deltaX / div, b: -e.deltaY / div, i2: 0 });
       }, { passive: false });
+
+      // Touch. A browser reports the whole live set on every TouchEvent plus a
+      // changedTouches list of what actually moved, and gives no per-touch delta
+      // — so the last position of each identifier is remembered here and dx/dy
+      // computed from it, which is the shape love.touch reports. preventDefault
+      // stops the page scrolling, pinch-zooming, or synthesizing a delayed
+      // mouse click on top of a touch the game already handled.
+      const lastTouch = new Map();
+      const pushTouches = (e, type) => {
+        e.preventDefault();
+        for (const t of e.changedTouches) {
+          const p = toCanvas(t);
+          const prev = lastTouch.get(t.identifier);
+          const dx = type === TOUCHPRESSED || !prev ? 0 : p.x - prev.x;
+          const dy = type === TOUCHPRESSED || !prev ? 0 : p.y - prev.y;
+          if (type === TOUCHRELEASED) lastTouch.delete(t.identifier);
+          else lastTouch.set(t.identifier, p);
+          // force is 0 on hardware that cannot measure it, which is not the same
+          // as "not touching"; LÖVE's contract is 1 for a plain press.
+          push({ type, a: p.x, b: p.y, c: dx, d: dy, i0: t.identifier | 0,
+                 p: t.force > 0 ? t.force : 1 });
+        }
+      };
+      on(el, 'touchstart', (e) => pushTouches(e, TOUCHPRESSED), { passive: false });
+      on(el, 'touchmove', (e) => pushTouches(e, TOUCHMOVED), { passive: false });
+      on(el, 'touchend', (e) => pushTouches(e, TOUCHRELEASED), { passive: false });
+      // A cancelled touch (the browser taking over the gesture) ends it as far as
+      // the game is concerned; leaving it live would strand it in getTouches().
+      on(el, 'touchcancel', (e) => pushTouches(e, TOUCHRELEASED), { passive: false });
 
       on(el, 'mouseenter', () => push({ type: MOUSEFOCUS, i0: 1 }));
       on(el, 'mouseleave', () => push({ type: MOUSEFOCUS, i0: 0 }));

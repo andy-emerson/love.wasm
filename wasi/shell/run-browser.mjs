@@ -57,7 +57,11 @@ try {
   // installed browser — the harness's rule, and what CI relies on.
   const exe = process.env.CHROMIUM && existsSync(process.env.CHROMIUM) ? process.env.CHROMIUM : null;
   browser = await chromium.launch(exe ? { executablePath: exe } : {});
-  const page = await browser.newPage();
+  // hasTouch so Chromium exposes a real touchscreen: page.touchscreen.tap()
+  // then dispatches genuine TouchEvents at the canvas, which is the half of
+  // love.touch the 6.4 witness cannot reach (its host bakes records directly).
+  const context = await browser.newContext({ hasTouch: true });
+  const page = await context.newPage();
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));
 
@@ -147,6 +151,69 @@ try {
   log('after holding ArrowLeft: ' + JSON.stringify(back));
   if (back.x >= stopped.x)
     fail(`the rectangle did not move left under ArrowLeft (${stopped.x} -> ${back.x})`);
+
+  // (2b) LIVE TOUCH: real DOM TouchEvents at the canvas must reach love.touch.
+  //
+  //      HELD across frames rather than tapped. A tap puts touchstart and
+  //      touchend in the queue together, so one love.event.pump() drains both
+  //      and the touch is already gone by the time the touchpressed CALLBACK
+  //      runs — which is desktop's behaviour too (event/sdl/Event.cpp updates
+  //      the touch module during pump, and love.run polls afterwards). Holding
+  //      the finger down over a frame boundary is what makes the live-touch
+  //      list observable, and it is also the only way to get a real touchmove.
+  //
+  //      Dispatched over CDP because Playwright's touchscreen.tap() cannot hold.
+  const cdp = await context.newCDPSession(page);
+  const touch = (type, points) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points });
+  // Re-measured before each dispatch rather than cached: a witness must aim at
+  // where the canvas IS, not where it was, so a layout change can never be
+  // mistaken for a coordinate-mapping bug.
+  const centre = async () => {
+    const b = await page.locator('#stage canvas').boundingBox();
+    return { x: b.x + b.width / 2, y: b.y + b.height / 2, scale: b.width / 96 };
+  };
+  let c0 = await centre();
+  await touch('touchStart', [{ x: c0.x, y: c0.y, id: 1, force: 1 }]);
+  await page.waitForTimeout(400);
+  c0 = await centre();
+  // +12 CANVAS pixels, converted through the element's on-screen scale.
+  await touch('touchMove', [{ x: c0.x + 12 * c0.scale, y: c0.y, id: 1, force: 1 }]);
+  await page.waitForTimeout(400);
+  await touch('touchEnd', []);
+  await page.waitForTimeout(400);
+
+  const touchLog = await shellLog();
+  const pressed = touchLog.match(/SHELL-TOUCHPRESSED x=([\d.]+) y=([\d.]+) dx=([\d.-]+) dy=([\d.-]+) p=([\d.]+) live=(\d+)/);
+  const touchMoved = touchLog.match(/SHELL-TOUCHMOVED x=([\d.]+) y=([\d.]+) dx=([\d.-]+) dy=([\d.-]+) live=(\d+)/);
+  const released = touchLog.match(/SHELL-TOUCHRELEASED x=([\d.]+) y=([\d.]+) live=(\d+)/);
+  log('touch pressed:  ' + (pressed ? pressed[0] : 'NOT SEEN'));
+  log('touch moved:    ' + (touchMoved ? touchMoved[0] : 'NOT SEEN'));
+  log('touch released: ' + (released ? released[0] : 'NOT SEEN'));
+
+  if (!pressed) fail('a real DOM TouchEvent did not reach love.touchpressed');
+  else {
+    // The canvas is 96x64, so its centre is 48,32 in the pixels love.graphics
+    // draws in. Asserting the POSITION is what proves the host's client-rect ->
+    // backing-store mapping, not merely that an event arrived.
+    const tx = Number(pressed[1]), ty = Number(pressed[2]);
+    if (!(Math.abs(tx - 48) <= 6 && Math.abs(ty - 32) <= 6))
+      fail(`touch reported ${tx},${ty}, expected the canvas centre ~48,32 — the client -> canvas-pixel mapping is wrong`);
+    if (Number(pressed[3]) !== 0 || Number(pressed[4]) !== 0)
+      fail(`a press reported a delta (${pressed[3]},${pressed[4]}), expected 0,0`);
+    if (Number(pressed[5]) <= 0) fail(`touch pressure was ${pressed[5]}, expected > 0`);
+    if (pressed[6] !== '1') fail(`getTouches() reported ${pressed[6]} live touches during the press, expected 1`);
+  }
+  if (!touchMoved) fail('a real DOM touchmove did not reach love.touchmoved');
+  else {
+    // The host computes dx/dy itself: a browser gives absolute positions only.
+    if (!(Number(touchMoved[3]) > 0)) fail(`touchmoved reported dx=${touchMoved[3]}, expected the finger's rightward delta`);
+    // A whole canvas pixel of slack: the on-screen box is scaled, so a dispatch
+    // aimed at the same row can land a fraction of a canvas pixel away.
+    if (Math.abs(Number(touchMoved[4])) > 1) fail(`touchmoved reported dy=${touchMoved[4]}, expected ~0`);
+    if (touchMoved[5] !== '1') fail(`getTouches() reported ${touchMoved[5]} live touches during the move, expected 1`);
+  }
+  if (!released) fail('a real DOM touchend did not reach love.touchreleased');
+  else if (released[3] !== '0') fail(`getTouches() reported ${released[3]} live touches after the lift, expected 0`);
 
   // (3) LIVE EDIT: rewrite a module on disk; the running instance must change.
   log('editing colour.lua on disk: green -> blue');

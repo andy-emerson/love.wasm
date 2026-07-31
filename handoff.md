@@ -19,9 +19,12 @@ keyboard and mouse events into `love.event`, and applies a module edit to the
 running game without a reload. Beta step 1 is done, witnessed by
 `wasi/shell/run.sh` and CI-enforced.
 
-What is still unproven: no third-party `.love` has run — the projects so far are
-real, desktop-compatible LÖVE, but written here — and the `testing/` corpus has
-not been run under this build.
+A third-party game runs too: `challacade/legend-of-lua`, at 1920x1080, playable,
+and **re-runnable** — `wasi/games/run.sh` fetches the pin, applies our port
+patch, plays it and asserts. Its Lua needs a 5.1 → 5.4 port; every LÖVE feature
+it uses works. See step 2, and **The Lua dialect** in `readme.md`.
+
+What is still unproven: the `testing/` corpus has not been run under this build.
 
 `love.thread` is the one major module still stubbed (build-order step 7).
 
@@ -56,17 +59,180 @@ subdirectory); real DOM key events move the game, it stops on keyup, and it move
 back on the opposite key; a module edited on disk reaches the running instance,
 and a `main.lua` edit is reported restart-only rather than silently ignored.
 
-### 2. Real third-party games — the next step
+### 2. Real third-party games — ONE GAME DONE, RE-RUNNABLE
 
-Run actual open-source LÖVE 12 games rather than the fixture. The shell already
-loads any directory: `wasi/shell/serve.sh 8080 ~/love-games/mygame`. **Do not bundle a
-game in the repository** — keep a local folder of a few small free ones.
-Selection: pure LÖVE inside the linked envelope, which is now concrete — the
-union artifact links sixteen modules, and `boot.lua` requires every module a
-`conf.lua` enables, so a game must disable `joystick`, `touch`, `sensor`, `video`
-and `thread` or it will not boot. Prefer games with corpus `expected/` outputs
-where possible. **Evidence:** boots, playable, no crash, visually
-plausible. Pixel parity is step 3's job.
+Run actual open-source LÖVE games rather than a fixture. **Do not bundle a game
+in the repository.**
+
+**Games are reachable after all.** `add_repo` refuses cross-owner adds and
+`github.com` returns 403 to unauthenticated browsing, but **`git clone` of a
+public repository works through the session proxy** — verified on two repos. So
+any public GitHub LÖVE game can be fetched into a scratch directory and run.
+itch.io does not resolve, so itch-only games need the Human to supply them.
+
+**The chosen game: [challacade/legend-of-lua][lol]**, pinned at
+`351f2456` (2026-07-01), 12 MB. Why it is the right first candidate:
+
+- `conf.lua` declares `t.version = "11.5"`, and the code uses **no API removed in
+  12** — checked against every removal and rename in `changes.txt`.
+- Every module it touches is inside the nineteen the union artifact links:
+  `audio`, `data`, `event`, `filesystem`, `graphics`, `image`, `keyboard`,
+  `math`, `mouse`, `physics`, `system`, `timer`, `window`.
+- Assets are 167 loose `.png`/`.ogg`/`.wav`/`.ttf` files, no archives — so D7
+  (#48) archive mounting is not in the way.
+- It has **already been ported to love.js**, and its `conf.lua` carries the scars:
+  an explicit canvas size because "web builds need an explicit canvas size since
+  there is no desktop to query", and `resizable = false` because resizing
+  "breaks love.js (canvas collapses to ~1x1)". A game pre-shaped around web
+  constraints is a fairer first test, and gives a reference for whether we hit
+  the same edges love.js did.
+
+Rejected candidate: `besnoi/arkanoid` — clean on the 12 API scan and inside the
+envelope, but it ships **no `conf.lua`** and its assets are a **split RAR** with
+no extractor available here.
+
+**It runs, and the run is repeatable.** Legend of Lua boots from its own
+`conf.lua`, opens a 1920x1080 canvas, and plays: tilemap, trees, water, shadows,
+sprites, the equip UI and text all draw, keys move the game, GL reports no error,
+and there are no preview notices at all. The union artifact links **nineteen**
+modules — everything but `video` and `thread`.
+
+**`wasi/games/run.sh`** is the reproducer, and it is what makes this a claim
+rather than an anecdote: it clones the pinned commit into a scratch directory,
+applies `wasi/games/legend-of-lua.patch`, plays it in real Chromium, asserts, and
+deletes the clone. The game is not bundled and must not be; what this repository
+owns is the patch — our port — at 59 lines.
+
+**Deliberately not in CI.** Every other witness depends only on this repository
+and its pinned toolchain; this one depends on a third party's repository staying
+reachable and a commit staying alive. Wiring that into the per-push gate would
+turn somebody else's force-push into our red CI. `readme.md` states the exception
+rather than letting "CI re-runs all of them" quietly become false.
+
+**The port was bigger than first reported.** Three *names* moved between 5.1 and
+5.4, but across **41 call sites**, 29 of them inside the four libraries the game
+vendors (hump, windfield, sti, mlib) — so the patch restores the names once in a
+three-line prelude instead of forking four third-party libraries. Only the 8
+computed font sizes are edited where they are written, because a wrong *value*
+has no prelude fix. The earlier "three one-line edits" undercounted it.
+
+**The witness is demonstrated able to fail.** Run against the same game with the
+patch NOT applied, it fails with "the game crashed — the canvas is LÖVE's error
+screen". That assertion is the load-bearing one: LÖVE's error screen renders a
+traceback, so it has 229 distinct colours and would sail past a "something is
+drawn" check. Recognising the screen by its colour is what separates *ran* from
+*crashed*.
+
+Three findings, in the order they were hit:
+
+**1. Module defaults — fixed, then fixed properly (was step 2a).** `boot.lua:204` defaults every one
+of the twenty modules to `true`, then loads them with a bare
+`require("love." .. v)` that hard-errors on a missing module. So `t.modules.*` has
+never been required of any game, on 11 or 12 — omitting it is idiomatic, and on
+desktop the default is always satisfiable because desktop links everything. It
+becomes unsatisfiable only on a build shipping a subset, which is ours.
+
+**`joystick` and `sensor` are now linked for real**, not stubbed. Both had real,
+CI-enforced backends already (`witness.yml` covers `joystickadded/removed`,
+`joystickpressed/released/axis`, `isGamepad`, `isGamepadDown`, `getGamepadAxis`,
+`getName`), so the first version of this fix stubbed over a working feature: a
+game's `if love.joystick then` took the absent path and silently lost gamepad
+support. Linking them is a `config-game` + `build-game.sh` change; the stub
+retires itself, because linked-ness is read from `package.preload` rather than
+listed.
+
+`video` and `thread` remain unlinked and are supplied by the boot wrapper. `love.<name>` stays **nil**, which is the shape desktop has with
+`t.modules.<name> = false`, so a feature test takes the absent path; the report
+rides on a metatable on `love` itself, so the same read both reports and
+correctly evaluates false.
+
+**The notice fires on USE, not on enable** — the `preview-warn.cpp` contract
+(#27) every other preview limitation here follows. The first version reported at
+`require` time, which is exactly backwards: LÖVE enables all twenty modules for
+every game, so it printed five lines on every boot whether or not the game cared,
+and printed *nothing* in the one case worth knowing about. The question this
+build has to answer is "did a game need a feature we do not have?", so the notice
+belongs where that question is answered.
+
+Two things it deliberately does not do. Making every game declare `t.modules.*`
+would push our packaging gap onto game authors for no benefit to them. Changing
+`boot.lua`'s defaults is a fork-private edit to shared engine source (lane 3,
+forbidden) and would make `love.conf` report something desktop does not.
+
+**2. `glGetIntegerv` unbound the shader program — fixed.** Desktop GL names
+objects with integers; WebGL hands out opaque objects, and both GL hosts
+converted the answer with `v | 0`, which is `0` for an object — and `0` is also
+the GL name for *nothing bound*. `Shader::loadVolatile` saves
+`GL_CURRENT_PROGRAM`, binds its new program to inspect uniforms, and restores
+what it saved. So creating **any** Shader, even one never used, left no program
+bound, and every draw after it failed with `GL_INVALID_OPERATION`. The clear
+colour still reached the screen, so the symptom was a game that looked like it
+was running while drawing nothing at all — the hardest shape of bug to read from
+the outside. Both hosts now keep a reverse object → name map, which fixes every
+`*_BINDING` query rather than just this one.
+
+**Witnessed, and the witness is shown able to fail.** New graphics leg **4.5b**
+(`wasi/graphics/witness-shader-unused.lua`): draw, create a shader and never
+attach it, draw again — both draws must land. With the host fix reverted it
+reads back the clear colour and FAILS; with the fix it PASSES. The existing 4.5
+shader leg passes **either way**, which is exactly why it never caught this: 4.5
+draws *with* its shader, so `setShader()` re-binds a program immediately after
+`newShader()` and repairs the damage before the draw. The uncovered case was
+every real game's `love.load` — create shaders for later, keep drawing with the
+default one.
+
+**3. The Lua dialect — settled, and it is a porting cost, not a defect.** The
+game's Lua is written for 5.1; three idioms do not survive 5.4 (`unpack`,
+`math.atan2`, and a non-integer font size). Each has a portable form that runs on
+both, so the port is cheap and costs the game nothing on desktop. No LÖVE feature
+it uses is missing. Documented in `readme.md`; the choice itself is D8.
+
+**Both witness projects now set NO `t.modules`**, exactly like a real game, so
+the boot-wrapper path is CI-enforced rather than sidestepped. That change caught
+a real regression on the way in: linking `joystick` adds a `love_gamepad` import,
+which `run-browser-game.mjs` did not provide, and the union witness failed at
+instantiate until it was wired.
+
+**`love.touch` is now built.** A browser has real touch events, so `touch` was
+unbuilt rather than impossible — the third reason in a list of three, and the
+only one that was just a gap. `wasi/platform/touch-backend.{h,cpp}` is the
+browser-TouchEvent sibling of `touch/sdl/Touch.cpp`, keeping upstream's division:
+the live-touch list lives in the module and the event pump updates it as it
+converts, which is exactly where `event/sdl/Event.cpp` does it.
+
+It needs **no host import of its own**. Touch arrives as three more record types
+on the existing `love_input` seam (13/14/15), next to the mouse and keyboard
+ones, the same way finger events sit next to them in an SDL queue — so the host
+count is unchanged and only the guarded-seam count moves, ten to eleven.
+`love.thread` and `love.video` are what remain absent, for their own reasons.
+
+**Measured, not assumed:** 1920x1080 renders correctly. A minimal project at that
+size draws rectangles and text exactly as the 96x64 fixtures do, and the game
+fills the canvas. The earlier worry that nothing above 96x64 had ever been tried
+is closed.
+
+**Evidence: both fixes are tested, and both witnesses are demonstrated able to
+fail.** love.touch is witnessed twice, both legs green: the 6.4 input witness
+drives two fingers through a baked record queue (node AND Chromium) and asserts
+the message args, the live-touch LIST, and that a released finger is gone; the
+shell witness dispatches REAL DOM TouchEvents over CDP — held across frames, not
+tapped — and asserts the press lands on the canvas centre, the move carries a
+host-computed delta, and getTouches() goes 1 then 0.
+
+The GL fix is 4.5b — reverting the host change makes it read back the
+clear colour and FAIL, while the pre-existing 4.5 passes either way. The module
+handling is the union game witness, which now asserts seven things about a
+project that sets no `t.modules`: linked modules are real tables, an unlinked one
+reads `nil`, nothing is reported before the read, the notice fires on the read
+exactly once, linked modules are never reported, and a second unlinked module
+reports separately. Two adverse cases, both run:
+
+| Regression | What the witness says |
+|---|---|
+| joystick/sensor stubbed instead of linked | `linked modules are real tables: false`, `linked modules are never reported: false` |
+| the notice moved back to `require` time | `no notice before the read: false`, `notice fires on the read: false` |
+
+[lol]: https://github.com/challacade/legend-of-lua
 
 ### 3. Sliced corpus parity
 
@@ -108,7 +274,27 @@ These gate work, and only the Human closes them (`AGENTS.md`, "Records").
 `DESIGN.md` records D1–D3, D5 and D6 as closed, carrying the alternatives that
 lost. D4 and D7 are open, so under `CONTRIBUTING.md` §3.3 they live in the
 tracker — #47 and #48 — and `DESIGN.md` keeps only what is settled about each
-and points at the issue.
+and points at the issue. D8 (Lua dialect) closed this session and is recorded in
+`DESIGN.md` in full.
+
+### The Lua dialect — CLOSED, and where it now lives
+
+Settled by the Human: **PUC Lua 5.4 stays, LÖVE 12 stays.** Both are deliberate
+choices, not accidents to be corrected — 5.4 fits wasm, Lua's 5.x line is
+incremental by design, and 12 is where LÖVE is going. Recorded as **D8** in
+`wasi/platform/DESIGN.md` with the alternative that lost and its reopen
+conditions; the game-facing surface is **The Lua dialect** in `readme.md`.
+
+The framing that was wrong, and is corrected in both documents: a game whose Lua
+is ported into 5.4 is still a LÖVE game. What this project measures is whether a
+LÖVE **feature** works, not how a game's Lua was wired up. And the `.love`
+pillar is *outbound* — "the same source runs unmodified **on desktop LÖVE**; a
+game made here can go to desktop and back" — so it was never a promise that
+arbitrary 5.1-era source runs here untouched. Earlier entries in this file cited
+it the wrong way round.
+
+No compatibility shim ships. The probe build (`-DLUA_FLOORN2I=F2Ifloor`) and the
+boot-wrapper preamble were reverted and stay reverted.
 
 ## Practical notes
 

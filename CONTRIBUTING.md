@@ -613,6 +613,14 @@ pass**. A witness that cannot run on a leg says so and why, in the script's own
 header. Witnesses are wired into `.github/workflows/witness.yml`; one that is
 green only by hand is a limitation to state plainly (§3.6).
 
+One kind is deliberately kept out of that workflow: a witness that depends on
+something **outside this repository** — a third party's repository, a network
+service — belongs in `wasi/games/`-style on-demand scripts, not in the per-push
+gate, because a stranger's force-push must not turn our CI red. Pin what it
+fetches, delete what it clones, and say in both the script header and
+`readme.md` that CI does not run it. The evidence is still executable, which is
+the point; it is just earned on demand.
+
 ### 7.4 The oracle is desktop LÖVE, where it reaches
 
 Applying §4.2: desktop LÖVE is the independent implementation, and the

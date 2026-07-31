@@ -298,19 +298,51 @@ natively, and the backport's whole interface is five symbols
 stop compiling `lstrlib.c`. Note `love.data.pack` is a real LÖVE 12 API — this
 is not corpus-only.
 
-**C. `mountFullPath` returns false — 44 of graphics' 47 failures.** The harness
-mounts `<source>/output` as `tempoutput` and `compareImg` reads its reference
-PNGs from there, so nearly every graphics test fails with "Could not open file
-tempoutput/expected/….png" — one missing capability, not 44 defects. Note this
-is a **directory** mount; #48 (D7) is about who unzips an *archive*, so this
-looks independent of that decision and much smaller. Confirm before assuming.
+**C. `mountFullPath` — FIXED this session.** It returned false, so `compareImg`
+could not read its reference PNGs and 44 of graphics' 47 failures were one
+missing capability rather than 44 defects. Confirmed independent of #48: this is
+a **directory** mount, and #48 is about who unzips an *archive*.
 
-**What is left after A–C, and it is genuinely small.** Only 3 of graphics' 47
-failures are substantive: DXT1 unsupported (a real WebGL2 divergence) and two
-`love.video` absences (expected). The rest of the residual — audio 12,
-filesystem 10, window 12, mouse 3, joystick 2, timer 2, love 2, system 1,
-sound 1 — is unexamined and is step 3's actual triage work: ours-to-fix versus
-declared divergence.
+Two parts, and the second was a defect in its own right:
+
+- The store behind the seam has no host filesystem — only the loaded project and
+  the writable save namespace. So a mount here cannot open an unrelated
+  directory on a machine; what it can do, and all LÖVE actually asks for, is
+  make a directory ALREADY in the store visible under a second name. A target
+  that does not resolve inside the store is refused, not faked. The rewrite sits
+  in wrappers around the `love_fs` imports, so read/stat/size/write/remove/
+  mkdir/list all see mounts identically and there is no cost while no mount
+  exists.
+- **Project directories did not exist to `getInfo`.** The store is a flat
+  path→bytes map, so only an `fs_mkdir`'d directory in the save namespace ever
+  stat'ed. `love.filesystem.getInfo("<a directory of the game's own source>")`
+  returned nil while `getDirectoryItems` happily listed its children — the two
+  halves of one store disagreeing. A directory is now implicit: it exists when
+  some key lives beneath it. That is what let the mount verify its target, and
+  it fixes `getInfo` on directories for every game.
+
+**Result: 236 pass / 92 fail → 278 pass / 50 fail.** graphics went 58/47 to
+**97/8**, filesystem 23/10 to 26/7, and zero `tempoutput` failures remain.
+
+**What is left: 50 failures, and graphics is now signal rather than noise.**
+Its remaining 8 are worth naming because they set the shape of the triage:
+
+| test | shape |
+|---|---|
+| `Image()` | DXT1 pixel format unsupported — a real WebGL2 divergence |
+| `Video()`, `newVideo()` | `love.video` absent — expected |
+| `arc()` | 3069/3072 pixels match |
+| `circle()` | 1022/1024 |
+| `ellipse()` | 1023/1024 |
+| `setLineStyle()` | 224/256 |
+| `Shader()` | 520/776 — the one real gap |
+
+Four of those are near-miss rasterisation edges, which is what a different
+rasteriser looks like and probably a declared divergence rather than a bug;
+`Shader()` is the one that looks like a genuine defect. The rest of the residual
+— audio 12, window 12, filesystem 7, mouse 3, joystick 2, timer 2, love 2,
+system 1, sound 1 — is still unexamined, and that triage is step 3's actual
+cost.
 
 **Evidence:** every linked-module suite passes, with each divergence marked
 expected-fail and listed explicitly. Never silently failing.

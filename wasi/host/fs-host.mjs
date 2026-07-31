@@ -108,6 +108,27 @@ export function makeFsHost() {
 
   const has = (obj, k) => Object.prototype.hasOwnProperty.call(obj, k);
 
+  // A flat key->bytes store has no directory ENTRIES, so a directory of the
+  // project is implicit: it exists exactly when some key lives beneath it. Only
+  // an fs_mkdir'd directory in the save namespace is explicit (the DIR
+  // sentinel).
+  //
+  // Without this, getInfo() on a real directory of the game's own source
+  // reported nil while getDirectoryItems() happily listed its children — the
+  // two halves of the same store disagreeing. It is also what
+  // love.filesystem.mountFullPath needs to verify its target before accepting
+  // a mount.
+  const isImplicitDir = (p) => {
+    if (p === "" || p === "/" || p === ".") return true;
+    const prefix = p.replace(/\/+$/, "") + "/";
+    for (const store of [files, saves]) {
+      for (const key of Object.keys(store)) {
+        if (key.startsWith(prefix)) return true;
+      }
+    }
+    return false;
+  };
+
   // Resolve a path SAVE-FIRST, then the read-only project (physfs mount order:
   // the save dir shadows the game source on read). Returns { dir, bytes } or null.
   const resolve = (p) => {
@@ -116,6 +137,7 @@ export function makeFsHost() {
       return v === DIR ? { dir: true } : { dir: false, bytes: v };
     }
     if (has(files, p)) return { dir: false, bytes: files[p] };
+    if (isImplicitDir(p)) return { dir: true };
     return null;
   };
 

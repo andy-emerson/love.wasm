@@ -68,7 +68,7 @@ beneath. Writes **never** touch the project.
 |---|---|
 | `fs_size(path, len) -> i32` | byte length, or `-1` if absent (directory → `0`) |
 | `fs_read(path, len, buf, cap) -> i32` | bytes copied (≤ `cap`) into `buf`, or `-1`; consults **both** namespaces, save-first |
-| `fs_stat(path, len, *type, *size, *mtime) -> i32` | `0` ok / `-1` absent; writes little-endian out-params. `type`: `0` file, `1` dir, `2` symlink, `3` other |
+| `fs_stat(path, len, *type, *size, *mtime, *readonly) -> i32` | `0` ok / `-1` absent; writes little-endian out-params. `type`: `0` file, `1` dir, `2` symlink, `3` other. `readonly`: `1` for the read-only project, `0` for the writable save namespace — only the host can tell, since it resolves the two |
 | `fs_write(path, len, buf, n) -> i32` | writes `n` bytes to the **save** namespace, returns `n` (or `-1`); replaces the whole file |
 | `fs_remove(path, len) -> i32` | `0` removed / `-1` absent — save namespace only (the project is immutable) |
 | `fs_mkdir(path, len) -> i32` | `0` — records a directory in the save namespace |
@@ -195,6 +195,7 @@ the write/invalidate handshake.
   ordering or listing extends the seam.
 - **D4 hotswap** (function-body, state-preserving) is not built; D5=A's
   whole-chunk re-eval + restart fallback is the shipped mechanism.
-- Per-file **read-only** reporting: `getInfo(...).readonly` reflects the read-only
-  project posture; the save layer's writability is not yet surfaced per-file (the
-  `fs_stat` ABI carries no readonly out-param). Not witness-critical.
+- Directory **mounting** is limited to a directory already in the host store
+  (`mountFullPath` gives it a second name); there is no host filesystem behind
+  the seam to reach anything else, and a path that does not resolve inside the
+  store is refused rather than faked. Archive mounting is #48.

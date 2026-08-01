@@ -129,15 +129,30 @@ export function makeFsHost() {
     return false;
   };
 
+  // A directory is writable when anything of the save namespace lives in it —
+  // that is where a write to it would land.
+  const dirHasSaveChild = (p) => {
+    const prefix = p === "" || p === "/" || p === "." ? "" : p.replace(/\/+$/, "") + "/";
+    for (const key of Object.keys(saves)) {
+      if (prefix === "" || key.startsWith(prefix)) return true;
+    }
+    return false;
+  };
+
   // Resolve a path SAVE-FIRST, then the read-only project (physfs mount order:
   // the save dir shadows the game source on read). Returns { dir, bytes } or null.
+  //
+  // `readonly` says WHICH store answered, because that is the only thing that
+  // decides whether a write to this path can succeed: the save namespace is
+  // writable, the project is not. The backend cannot work this out for itself —
+  // resolution happens here — so fs_stat reports it.
   const resolve = (p) => {
     if (has(saves, p)) {
       const v = saves[p];
-      return v === DIR ? { dir: true } : { dir: false, bytes: v };
+      return v === DIR ? { dir: true, readonly: false } : { dir: false, bytes: v, readonly: false };
     }
-    if (has(files, p)) return { dir: false, bytes: files[p] };
-    if (isImplicitDir(p)) return { dir: true };
+    if (has(files, p)) return { dir: false, bytes: files[p], readonly: true };
+    if (isImplicitDir(p)) return { dir: true, readonly: !dirHasSaveChild(p) };
     return null;
   };
 
@@ -184,14 +199,18 @@ export function makeFsHost() {
     // The out-params are written into wasm linear memory (little-endian, same
     // convention fs_read's buf uses). outType is the FileType enum order the
     // 6.2 backend maps from: 0=file 1=dir 2=symlink 3=other. mtime is a fixed
-    // stand-in (the IDE host will report real project timestamps).
-    fs_stat(pathPtr, pathLen, outType, outSize, outMtime) {
+    // stand-in (the IDE host will report real project timestamps). outReadonly
+    // is 1 when the entry came from the read-only project and 0 when it came
+    // from the writable save namespace — which only this side can tell, since
+    // resolution happens here.
+    fs_stat(pathPtr, pathLen, outType, outSize, outMtime, outReadonly) {
       const r = resolve(readPath(pathPtr, pathLen));
       if (!r) return -1;
       const dv = new DataView(memory.buffer);
       dv.setInt32(outType, r.dir ? 1 : 0, true);   // 1=DIRECTORY, 0=FILE
       dv.setBigInt64(outSize, BigInt(r.dir ? 0 : r.bytes.length), true);
       dv.setBigInt64(outMtime, 0n, true);
+      dv.setInt32(outReadonly, r.readonly ? 1 : 0, true);
       return 0;
     },
     // ── write path (6.7): every write targets the SAVE namespace ──

@@ -28,9 +28,14 @@
 // addition that backs getInfo/exists:
 //   fs_size(path,len)                    -> byte length, or -1 if absent
 //   fs_read(path,len, buf,cap)           -> bytes copied (<= cap), or -1
-//   fs_stat(path,len, *type,*size,*mtime)-> 0 ok / -1 absent; type is the
-//                                           FileType enum order (0 file, 1 dir,
-//                                           2 symlink, 3 other).
+//   fs_stat(path,len, *type,*size,*mtime,  -> 0 ok / -1 absent; type is the
+//           *readonly)                        FileType enum order (0 file, 1
+//                                             dir, 2 symlink, 3 other), and
+//                                             readonly is 1 for the read-only
+//                                             project, 0 for the writable save
+//                                             namespace. Only the host can say
+//                                             which store answered, because it
+//                                             is the one that resolves them.
 
 #include "fs-backend.h"
 
@@ -46,7 +51,7 @@ extern "C" {
 FS_IMPORT("fs_size") int32_t wfs_size_raw(const char *path, int32_t path_len);
 FS_IMPORT("fs_read") int32_t wfs_read_raw(const char *path, int32_t path_len, uint8_t *buf, int32_t cap);
 FS_IMPORT("fs_stat") int32_t wfs_stat_raw(const char *path, int32_t path_len,
-	int32_t *out_type, int64_t *out_size, int64_t *out_mtime);
+	int32_t *out_type, int64_t *out_size, int64_t *out_mtime, int32_t *out_readonly);
 // 6.7 write path. Every write targets the host's SEPARATE save namespace (never
 // the read-only project); the read imports above consult BOTH, save-dir first,
 // so a written file shadows a project file of the same name and reads it back.
@@ -147,11 +152,11 @@ static inline int32_t wfs_read(const char *p, int32_t n, uint8_t *buf, int32_t c
 	                             : wfs_read_raw(p, n, buf, cap);
 }
 
-static inline int32_t wfs_stat(const char *p, int32_t n, int32_t *t, int64_t *sz, int64_t *mt)
+static inline int32_t wfs_stat(const char *p, int32_t n, int32_t *t, int64_t *sz, int64_t *mt, int32_t *ro)
 {
 	std::string r;
-	return mountRewrite(p, n, r) ? wfs_stat_raw(r.c_str(), (int32_t) r.size(), t, sz, mt)
-	                             : wfs_stat_raw(p, n, t, sz, mt);
+	return mountRewrite(p, n, r) ? wfs_stat_raw(r.c_str(), (int32_t) r.size(), t, sz, mt, ro)
+	                             : wfs_stat_raw(p, n, t, sz, mt, ro);
 }
 
 static inline int32_t wfs_write(const char *p, int32_t n, const uint8_t *buf, int32_t len)
@@ -505,12 +510,38 @@ const char *Filesystem::getIdentity() const
 
 bool Filesystem::setSource(const char *source)
 {
-	// Settable once, like physfs. The host store is the source, so this only
-	// records the path for getSource()/getSourceBaseDirectory().
-	if (!gameSource.empty())
+	// Settable once, like physfs.
+	if (!gameSource.empty() || source == nullptr)
 		return false;
-	if (source != nullptr)
-		gameSource = source;
+
+	// A source is a place a game actually lives, and saying so matters beyond
+	// tidiness. boot.lua:77 decides whether this is a FUSED game by whether
+	// setSource(<the executable>) succeeds — desktop physfs refuses to mount a
+	// plain executable, which is what makes an ordinary game non-fused. This
+	// accepted anything, so every game was reported fused, which turns
+	// love.setDeprecationOutput off and lies to any game that branches on
+	// love.filesystem.isFused().
+	//
+	// The host store has no executables and no directories outside the project,
+	// so the honest test is whether a game is there: main.lua or conf.lua, the
+	// two files boot.lua goes on to look for.
+	std::string rel = source;
+	while (!rel.empty() && (rel[0] == '/' || rel[0] == '\\'))
+		rel.erase(0, 1);
+	while (!rel.empty() && (rel.back() == '/' || rel.back() == '\\'))
+		rel.pop_back();
+
+	const std::string prefix = rel.empty() ? std::string() : rel + "/";
+	auto present = [](const std::string &p) {
+		int32_t type = 0, readonly = 1;
+		int64_t size = 0, mtime = 0;
+		return wfs_stat_raw(p.c_str(), (int32_t) p.size(), &type, &size, &mtime, &readonly) == 0;
+	};
+
+	if (!present(prefix + "main.lua") && !present(prefix + "conf.lua"))
+		return false;
+
+	gameSource = source;
 	return true;
 }
 
@@ -552,7 +583,8 @@ bool Filesystem::mountFullPath(const char *fullpath, const char *mountpoint, Mou
 	{
 		int32_t type = 0;
 		int64_t size = 0, mtime = 0;
-		if (wfs_stat_raw(target.c_str(), (int32_t) target.size(), &type, &size, &mtime) != 0)
+		int32_t readonly = 1;
+		if (wfs_stat_raw(target.c_str(), (int32_t) target.size(), &type, &size, &mtime, &readonly) != 0)
 			return false;
 		// 1 == directory in the fs_stat wire contract at the top of this file.
 		// Compared as the wire value, not as FILETYPE_DIRECTORY: the two agree
@@ -655,22 +687,24 @@ bool Filesystem::exists(const char *filepath) const
 {
 	int32_t type = 0;
 	int64_t size = 0, mtime = 0;
-	return wfs_stat(filepath, (int32_t) strlen(filepath), &type, &size, &mtime) == 0;
+	int32_t readonly = 1;
+	return wfs_stat(filepath, (int32_t) strlen(filepath), &type, &size, &mtime, &readonly) == 0;
 }
 
 bool Filesystem::getInfo(const char *filepath, Info &info) const
 {
 	int32_t type = 0;
 	int64_t size = 0, mtime = 0;
-	if (wfs_stat(filepath, (int32_t) strlen(filepath), &type, &size, &mtime) != 0)
+	int32_t readonly = 1;
+	if (wfs_stat(filepath, (int32_t) strlen(filepath), &type, &size, &mtime, &readonly) != 0)
 		return false;
 
 	info.size = (int64) size;
 	info.modtime = (int64) mtime;
-	// Reports the read-only project posture: fs_stat carries no per-file readonly
-	// out-param, so the writable save layer (6.7) is not surfaced here (declared
-	// deferral, EMBEDDING.md §5).
-	info.readonly = true;
+	// Whether a write to this path could succeed. The host reports which store
+	// answered — the read-only project or the writable save namespace — because
+	// it is the side that resolves them, and the two shadow each other.
+	info.readonly = (readonly != 0);
 
 	switch (type)
 	{

@@ -17,7 +17,15 @@
 -- fresh Lua state has none, so seed the minimal one desktop love.cpp would pass;
 -- getLow picks index 0 ("love") as arg0, which love.filesystem.init anchors on
 -- (getExecutablePath is "" on wasi, so boot falls back to arg0).
-arg = { [0] = "love" }
+--
+-- "/" is the GAME argument, and it is what makes this an ordinary game rather
+-- than a fused one. boot.lua tries setSource(<the executable>) first and treats
+-- success as "this executable has a game fused into it"; that call now fails,
+-- because arg0 is not a place a game lives, so boot falls through to the --game
+-- path — the same route a desktop `love /path/to/game` takes. Without the
+-- argument there would be no game at all once setSource stopped saying yes to
+-- everything.
+arg = { [0] = "love", "/" }
 
 -- require("love") first: pump-ext only PRELOADS luaopen_love as "love"; running
 -- it (this require) is what registers the love.* submodules — including love.boot

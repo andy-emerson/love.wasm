@@ -31,9 +31,19 @@ check("require 'love.filesystem' SUCCEEDS (step-3 stop-line gone)",
 -- init + setSource: the boot read call surface, unguarded on this path.
 local iok = pcall(love.filesystem.init, "love")
 check("love.filesystem.init(arg0)", iok)
-local sok = pcall(love.filesystem.setSource, "/project")
-check("love.filesystem.setSource", sok)
-check("love.filesystem.getSource round-trips", love.filesystem.getSource() == "/project",
+
+-- setSource must REFUSE a path where no game lives, and this is load-bearing
+-- rather than tidiness: boot.lua decides a game is FUSED by whether
+-- setSource(<the executable>) succeeds. While this accepted anything, every
+-- game booted here was reported fused. Tested before the accepting call below,
+-- because setSource is settable-once and every later call fails anyway.
+local nogame = pcall(love.filesystem.setSource, "/nowhere")
+check("setSource REFUSES a path with no game in it", not nogame, nogame)
+
+-- The canned project's game is at the root, so "/" is where it lives.
+local sok = pcall(love.filesystem.setSource, "/")
+check("love.filesystem.setSource accepts the directory the game IS in", sok)
+check("love.filesystem.getSource round-trips", love.filesystem.getSource() == "/",
   love.filesystem.getSource())
 
 -- getInfo: type and size, straight from the host fs_stat.

@@ -24,10 +24,10 @@ and **re-runnable** — `wasi/games/run.sh` fetches the pin, applies our port
 patch, plays it and asserts. Its Lua needs a 5.1 → 5.4 port; every LÖVE feature
 it uses works. See step 2, and **The Lua dialect** in `readme.md`.
 
-The `testing/` corpus now runs — **302 pass / 38 fail / 15 skip** across 21
-suites, up from 236/92 when it first ran. All three infrastructure blockers the
-census found are fixed; `love.audio`, `love.window` and `love.filesystem` are
-triaged. See step 3.
+The `testing/` corpus now runs — **303 pass / 37 fail / 15 skip** across 21
+suites, up from 236/92 when it first ran. All three infrastructure blockers are
+fixed and **every failure has now been examined**: what remains is 37 declared
+divergences, plus one open design call on rasterisation tolerance. See step 3.
 
 `love.thread` is the one major module still stubbed (build-order step 7).
 
@@ -251,7 +251,7 @@ three fixes below:**
 | | pass | fail | skip |
 |---|---|---|---|
 | first run | 236 | 92 | 15 |
-| **now** | **302** | **38** | **15** |
+| **now** | **303** | **37** | **15** |
 
 Per suite, as it stands now (▲ marks what the three fixes moved):
 
@@ -264,7 +264,7 @@ Per suite, as it stands now (▲ marks what the three fixes moved):
 | font | 7 | 0 | | system | 7 | 1 |
 | graphics ▲ | 98 | 7 | | timer | 4 | 2 |
 | image | 5 | 0 | | touch | 3 | 0 |
-| joystick | 4 | 2 | | window | 23 | 12 |
+| joystick ▲ | 5 | 1 | | window | 23 | 12 |
 | keyboard | 10 | 0 | | love ▲ | 6 | 0 |
 | math | 20 | 0 | | thread/video | — | skipped |
 
@@ -414,6 +414,33 @@ was the old permissive behaviour written down. Updated to the new contract, and
 made *stronger* while there: it now asserts the refusal as well as the
 acceptance, tested in that order because `setSource` is settable-once.
 
+**The scattered nine, examined.** One defect, eight declared divergences:
+
+- **`love.joystick.loadGamepadMappings` accepted anything — FIXED.** The wrap
+  passes the argument through as mapping CONTENT when it does not name a file,
+  so a mistyped filename arrived here as a mapping string and we returned
+  happily; desktop rejects it while parsing. "Ignored" must not slide into
+  "anything is accepted" — that hides the user's mistake instead of declaring a
+  limitation. The shape is now checked (SDL mapping data is `GUID,name,binding,…`
+  — at least two commas on a real line), and only the shape: it is still not
+  parsed and still not applied, which is what the warning now says.
+- `love.joystick.setGamepadMapping` (24 asserts) — no controller DB in a
+  browser; the W3C standard mapping is fixed. Already declared in DESIGN.md 6.5.
+- `love.mouse.setRelativeMode` / `getRelativeMode` — pointer lock is real but
+  needs a **user gesture**, the same shape as `setFullscreen`: a game calling it
+  from a click could work where a test never can.
+- `love.mouse.setGrabbed` — cursor confinement has no browser API at all.
+- `love.timer.sleep` and `getTime` — both are the same fact: `love::sleep` is an
+  honest no-op because blocking the main thread is forbidden here, so no time
+  passes across the test's sleep. `getTime` itself is fine; it is measuring a
+  sleep that did not happen.
+- `love.system.getOS` — returns `"Web"`, deliberately (readme's seam table). The
+  corpus asserts membership of a desktop-only list, which has no Web entry.
+- `love.sound.SoundData:getSample(0.001)` — **a D8 consequence, not a sound
+  defect**: LÖVE takes a sample index with `luaL_checkinteger`, which truncates
+  under 5.1 and raises under 5.4. Exactly the class the Lua-dialect decision
+  named, showing up inside the corpus rather than in a game.
+
 **`love.window`: 12 fail, and this is the honest shape of a page.** Nothing here
 was implemented, because none of it can be done faithfully and the ones that
 could be are gesture-gated:
@@ -431,7 +458,7 @@ gesture**, and **4 implementable-but-unbuilt** (wake lock, icon). None of them
 should be made to pass by storing a value the browser never applied — that is
 the line between a declared divergence and a fake.
 
-**What is left: 38 failures, and graphics is now signal rather than noise.**
+**What is left: 37 failures, every one examined.**
 Its remaining 8 are worth naming because they set the shape of the triage:
 
 | test | shape |

@@ -26,6 +26,7 @@
 #include "joystick-backend.h"
 #include "preview-warn.h"
 
+#include "common/Exception.h"
 #include "common/Module.h"
 #include "common/Object.h"
 #include "event/Event.h"
@@ -455,11 +456,47 @@ bool JoystickModule::setGamepadMapping(const std::string & /*guid*/, Joystick::G
 	return false;
 }
 
-void JoystickModule::loadGamepadMappings(const std::string & /*mappings*/)
+void JoystickModule::loadGamepadMappings(const std::string &mappings)
 {
+	// The mapping cannot be USED here — the W3C standard-gamepad mapping is
+	// fixed and there is no controller DB — but "ignored" must not slide into
+	// "anything is accepted". wrap_JoystickModule passes the argument through as
+	// CONTENT when it does not name an existing file, so a mistyped filename
+	// arrives here as a mapping string; desktop rejects that while parsing it,
+	// and swallowing it silently would hide the user's mistake rather than
+	// declare a limitation.
+	//
+	// So the shape is checked, and only the shape: SDL mapping data is
+	// GUID,name,binding,… — at least two commas on some real line. It is
+	// deliberately NOT parsed and NOT applied, which is what the warning says.
+	bool wellformed = false;
+	size_t start = 0;
+	while (start <= mappings.size() && !wellformed)
+	{
+		size_t end = mappings.find('\n', start);
+		if (end == std::string::npos)
+			end = mappings.size();
+
+		std::string line = mappings.substr(start, end - start);
+		start = end + 1;
+
+		if (!line.empty() && line.back() == '\r')
+			line.pop_back();
+		if (line.empty() || line[0] == '#')
+			continue;
+
+		if (line.find(',') != std::string::npos
+			&& line.find(',', line.find(',') + 1) != std::string::npos)
+			wellformed = true;
+	}
+
+	if (!wellformed)
+		throw love::Exception("Invalid gamepad mappings.");
+
 	preview_warn_once("joystick.loadGamepadMappings",
 		"love.joystick.loadGamepadMappings is ignored in the browser (no "
-		"controller DB; the W3C standard-gamepad mapping is implicit).");
+		"controller DB; the W3C standard-gamepad mapping is implicit); the "
+		"mappings are checked for shape but never applied.");
 }
 
 std::string JoystickModule::saveGamepadMappings() { return ""; }

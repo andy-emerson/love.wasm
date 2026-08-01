@@ -26,8 +26,14 @@ it uses works. See step 2, and **The Lua dialect** in `readme.md`.
 
 The `testing/` corpus now runs — **303 pass / 37 fail / 15 skip** across 21
 suites, up from 236/92 when it first ran. All three infrastructure blockers are
-fixed and **every failure has now been examined**: what remains is 37 declared
-divergences, plus one open design call on rasterisation tolerance. See step 3.
+fixed and **every failure has now been examined**. See step 3.
+
+**`wasi/COMPATIBILITY.md` is the new durable home for what works where**: every
+LÖVE feature against desktop and against this build, ✓ / ✗ / blank. It replaces
+the flat failure count with the question that actually matters — does the target
+have the feature at all — and it resolves the 37 into **28 blanks** (the browser
+does not have it), **4 gesture-gated**, and **5 real gaps**, one of which is an
+outright defect. It also surfaced four ✗ cells the corpus never probes.
 
 `love.thread` is the one major module still stubbed (build-order step 7).
 
@@ -487,8 +493,45 @@ exercise it. Both hosts fixed, view and size chosen from format and type. The re
 system 1, sound 1 — is still unexamined, and that triage is step 3's actual
 cost.
 
-**Evidence:** every linked-module suite passes, with each divergence marked
-expected-fail and listed explicitly. Never silently failing.
+**The 37 are now classified, in `wasi/COMPATIBILITY.md`.** The reframing is the
+Human's: correctness is judged against the system a game is deployed to, not
+against one universal bar — a browser game works in a browser, a Windows game
+works on Windows. So the table puts every LÖVE feature on the y axis and the
+deployment targets on the x axis, and marks ✓ where the target has the feature
+and this build does it, ✗ where the target has it and we do not, and **blank**
+where the target does not have it. A blank is a declared divergence, and it is
+the cell that does the work: it separates "`setPosition` is broken" from "a page
+cannot move its window".
+
+The 37 resolve as **28 blank, 4 gesture-gated (`~`), 5 real gaps** — archive
+mount (D7, open), the wake lock (unbuilt), and DXT1 (the extension-enumeration
+defect). Four of the 28 are the rasterisation near-misses, and they are the only
+group a decision could still move.
+
+Two columns, not more: **Desktop** (read out of upstream's source, which `main`
+carries byte-for-byte) and **Web** (ours, the only column carrying our own
+evidence). **Mobile was deliberately left out** — `love-ios` and `love-android`
+are outside this tree, so that column would be guesswork. Worth adding by
+whoever can ground it; it would show most of the blanks are not a browser
+peculiarity.
+
+**It also found four ✗ cells the corpus does not probe**, which no failure count
+would have surfaced: `hasFocus`/`hasMouseFocus` return a constant `true` where a
+page genuinely knows (`document.hasFocus()`, `blur`/`focus`); `getSystemTheme`
+reports `unknown` where `prefers-color-scheme` is real; custom image cursors
+(a data-URL CSS cursor) are unbuilt; gamepad vibration (`vibrationActuator`) is
+unbuilt. None is in the 37.
+
+**Evidence: observed, not tested.** Every ✓ traces to a witness run or to the
+corpus at 303/37/15, and every blank to a named platform fact — but nothing
+re-checks the mapping on each change. The table is prose, and prose rots
+silently.
+
+**What closes step 3 is making the Web column executable.** It *is* the
+expected-fail list: feed it to a corpus runner that fails three ways — a ✓ that
+fails, a ✗ or blank that starts *passing* (the table is stale), and a test not
+classified at all. Then the mapping rots loudly. Not built yet; this is the next
+piece of work.
 
 ### 4. `love.thread` (build-order step 7)
 
@@ -517,6 +560,7 @@ These gate work, and only the Human closes them (`AGENTS.md`, "Records").
 | #48 (D7) | who unzips a runtime-mounted archive: host JS vs a guest zip reader over the in-tree zlib | archive mounting; enumeration shipped without needing it |
 | step-7 divergences | which desktop `love.thread` behaviors we accept losing | enumerated when the thread design document is written |
 | #7 | packaging: single `.js` vs `.js` + `.wasm` | step 8, decided by measurement, post-Beta |
+| rasterisation tolerance | pixel-exact vs a stated tolerance for `compareImg` — `arc` 3069/3072, `circle` 1022/1024, `ellipse` 1023/1024, `setLineStyle` 224/256 | whether those four corpus tests are a **blank** (a different rasteriser, declared) or a **✗** (a defect) in `wasi/COMPATIBILITY.md`, and therefore whether they enter the expected-fail list |
 
 `DESIGN.md` records D1–D3, D5 and D6 as closed, carrying the alternatives that
 lost. D4 and D7 are open, so under `CONTRIBUTING.md` §3.3 they live in the

@@ -55,6 +55,8 @@ Two use-cases share this one engine, and they set the priority order every seam 
 
 So each decision is judged by *"what does a correct browser game do?"*, not *"does it byte-match desktop?"* — desktop is the reference, browser-native correctness is the standard. This generalizes the audio seam's principle (`wasi/audio/DESIGN.md`, Decision 3: *"the bar is device-agnostic fidelity, not desktop parity"*) to the whole engine.
 
+**`wasi/COMPATIBILITY.md` is that standard written out one feature at a time** — every LÖVE feature against desktop and against this build, marked ✓ where the browser has it and we do it, ✗ where the browser has it and we do not, and blank where the browser does not have it at all. A blank is a declared divergence, not a gap: it is the difference between "`love.window.setPosition` is broken" and "a page cannot move its window". Read it before reading a failure count.
+
 ## What stays real, what gets touched — the honest claim
 
 The semantically hard code stays verbatim: physics, decoders, render math, module logic, the Lua bindings. The platform-adjacent plumbing gets touched: backend selection, internal thread usage (audio pump, timers) massaged into a single-threaded frame-pump model, and the build system. Expect the diff against upstream to be the evidence — small, seam-shaped, and reviewable — rather than a "95% unmodified" slogan.

@@ -19,7 +19,12 @@
  **/
 
 #include "Source.h"
+#include "Audio.h"
 #include "Imports.h"
+
+#include "common/Module.h"
+
+#include <ctime>
 
 namespace love
 {
@@ -27,6 +32,25 @@ namespace audio
 {
 namespace webaudio
 {
+
+// The audio module, when there is one. play()/stop() report themselves to it so
+// love.audio.stop() / getActiveSourceCount() see sources started the ordinary
+// way (`source:play()`), which never passes through the module.
+// The monotonic clock, read directly rather than through love.timer: the
+// audio-only build does not link the timer module, and this is the same source
+// Timer.cpp reads under LOVE_WASM.
+static double nowSeconds()
+{
+	struct timespec ts;
+	if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+		return 0.0;
+	return (double) ts.tv_sec + (double) ts.tv_nsec / 1.0e9;
+}
+
+static Audio *audioModule()
+{
+	return (Audio *) Module::getInstance<love::audio::Audio>(Module::M_AUDIO);
+}
 
 Source::Source(Type type, int sampleRate, int bitDepth, int channels)
 	: love::audio::Source(type)
@@ -79,6 +103,12 @@ bool Source::play()
 	}
 
 	playing = wa_source_play(h) != 0;
+	if (playing)
+	{
+		playStartTime = nowSeconds();
+		if (Audio *audio = audioModule())
+			audio->trackPlaying(this);
+	}
 	return playing;
 }
 
@@ -87,11 +117,20 @@ void Source::stop()
 	if (handle >= 0)
 		wa_source_stop(handle);
 	playing = false;
+
+	// Last, because untracking drops the module's reference and this may be the
+	// only one left — nothing below may touch `this`.
+	if (Audio *audio = audioModule())
+		audio->untrack(this);
 }
 
 void Source::pause()
 {
 	// A distinct pause voice-state is a later refinement; stop for now.
+	//
+	// A paused Source stays TRACKED (openal keeps it in the Pool): love.audio
+	// .pause() hands the set back to Lua so love.audio.play(list) can resume it,
+	// and untracking here would free it out from under that list.
 	if (handle >= 0)
 		wa_source_stop(handle);
 	playing = false;
@@ -99,12 +138,27 @@ void Source::pause()
 
 bool Source::isPlaying() const
 {
-	return playing;
+	if (!playing)
+		return false;
+	// A looping Source never ends on its own, and STREAM/QUEUE have no known
+	// length (getDuration is honestly -1 for them), so `playing` is the whole
+	// answer for both.
+	if (looping)
+		return true;
+	double duration = const_cast<Source *>(this)->getDuration(UNIT_SECONDS);
+	if (duration < 0)
+		return true;
+	// A STATIC Source's length IS knowable, so run it against the clock: the
+	// host gives us no "ended" callback, and treating a finished clip as still
+	// playing is what made love.audio.pause() report Sources nobody is hearing.
+	// Pitch scales playback rate, so it scales the wall-clock length too.
+	double rate = pitch > 0.0f ? (double) pitch : 1.0;
+	return (nowSeconds() - playStartTime) < (duration / rate);
 }
 
 bool Source::isFinished() const
 {
-	return !playing;
+	return !isPlaying();
 }
 
 bool Source::update()

@@ -291,6 +291,21 @@ bool File::open(Mode mode)
 	if (size < 0)
 		throw love::Exception("Could not open file %s. Does not exist.", filename.c_str());
 
+	// A DIRECTORY answers fs_size with 0, not -1 — it exists, it just has no
+	// bytes. Without this it would open as an empty file and love.filesystem
+	// .read("somedir") would hand back "" instead of failing, which is neither
+	// what physfs does nor what a caller walking getDirectoryItems() can tell
+	// apart from a genuinely empty file. Only asked when the size is 0, so the
+	// ordinary read costs nothing extra.
+	if (size == 0)
+	{
+		int32_t type = 0, readonly = 1;
+		int64_t statsize = 0, mtime = 0;
+		if (wfs_stat(filename.c_str(), (int32_t) filename.size(), &type, &statsize, &mtime, &readonly) == 0
+			&& type == 1) // 1 == directory in the fs_stat wire contract at the top of this file.
+			throw love::Exception("Could not open file %s. Does not exist.", filename.c_str());
+	}
+
 	data.resize((size_t) size);
 	if (size > 0)
 	{

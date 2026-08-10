@@ -541,11 +541,41 @@ corpus at 303/37/15, and every blank to a named platform fact — but nothing
 re-checks the mapping on each change. The table is prose, and prose rots
 silently.
 
-**What closes step 3 is making the Web column executable.** It *is* the
-expected-fail list: feed it to a corpus runner that fails three ways — a ✓ that
-fails, a ✗ or blank that starts *passing* (the table is stale), and a test not
-classified at all. Then the mapping rots loudly. Not built yet; this is the next
-piece of work.
+### Step 3 — DONE. The classification is executable and in CI.
+
+`wasi/corpus/run.sh` + `run-browser-corpus.mjs` + `expected.txt`. The corpus runs
+as an ordinary game — `testing/` IS the project, its own conf.lua sizes the
+canvas, boot.lua loads its main.lua — and the driver pumps until the suite calls
+`love.event.quit`, then reads the JUnit report **out of the save namespace** the
+engine wrote it to. Per-test names come from that XML, so nothing is scraped from
+a console.
+
+**The comparison is the witness**, and all three modes are demonstrated able to
+fail: a failure classified nowhere, an expected-fail entry that starts passing,
+and an entry naming a test the corpus does not have (a renamed or deleted test
+cannot hide a real failure behind a dead line).
+
+**305 pass / 35 fail / 15 skip**, deterministic across three back-to-back runs,
+**~18s** on a reused artifact — so it is in the per-push gate, not on demand.
+The 35 are 30 divergence / 2 gesture / 3 defect.
+
+Two numbers moved from the recorded census (303/37): `mouse.setRelativeMode` and
+`getRelativeMode` now pass. The earlier ad-hoc census ran with the 6.4 input
+host's **baked event script** replaying, which polluted mouse state — and whose
+last record is a QUIT, which is why the first corpus run here died after one
+frame. The driver silences `input_poll`, which is the honest shape for a run
+with no user. Worth remembering: that fixture is a trap for any driver that
+reuses the input host.
+
+**The corpus immediately earned its keep.** Run against the rebuilt artifact it
+caught a regression this session's code review had just introduced: moving
+tracking into `Source::play()` was right, but it exposed that `playing` never
+clears when a clip ends on its own, so `love.audio.pause()` handed back every
+Source ever played (`audio/pause`: "check nothing paused, expected 0 got 1").
+Fixed properly rather than reverted — `isPlaying()` now runs a non-looping STATIC
+Source against the clock, since its duration is knowable, and `pause()` /
+`getActiveSourceCount()` reap before answering. STREAM and QUEUE keep the old
+behaviour, honestly, because their length is not known.
 
 ### 4. `love.thread` (build-order step 7)
 

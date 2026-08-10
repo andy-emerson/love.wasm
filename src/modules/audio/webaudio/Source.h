@@ -120,6 +120,11 @@ private:
 	int bitDepth = 16;
 	int channels = 1;
 	bool playing = false;
+	// When play() last started this Source, so a STATIC one can tell that it has
+	// run past its own length. The host reports no "ended" event, so without this
+	// `playing` would stay true forever after a clip finished on its own —
+	// love.audio.pause() would hand back Sources nobody is hearing.
+	double playStartTime = 0.0;
 
 	std::vector<unsigned char> staticData;   // static source PCM, flushed on play
 	bool staticFlushed = false;

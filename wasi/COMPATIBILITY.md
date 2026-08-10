@@ -154,7 +154,7 @@ These are pure computation. They are the same code, compiled.
 | system cursors, `setVisible` | ✓ | ✓ | CSS cursors |
 | custom image cursors (`newCursor`) | ✓ | **✗** | a data-URL CSS cursor is a real browser capability; unbuilt |
 | `setPosition` (cursor warp) | ✓ | | a page cannot move the pointer; reported as a failure rather than faked |
-| relative mode (pointer lock) | ✓ | **~** | the Pointer Lock API is real and requires a **user gesture** — same shape as fullscreen |
+| relative mode (pointer lock) | ✓ | **~** | the Pointer Lock API is real and requires a **user gesture**. The corpus *passes* it, but only because the reference host answers yes — the test proves the call is wired, not that a browser locked the pointer |
 | `setGrabbed` (cursor confinement) | ✓ | | no browser API at all |
 | touch — press, move, release, `getTouches`, pressure | ✓ | ✓ | the browser TouchEvent API, arriving as three more record types on the existing `love_input` seam. `dx`/`dy` are computed host-side, because a browser gives absolute positions and no per-touch delta |
 | `t.trackpadtouch` | ✓ | | a page cannot ask the OS to deliver a trackpad as touch. `false` — the default — is exactly what a browser already does |
@@ -214,16 +214,17 @@ See **The Lua dialect** in `readme.md`, and D8 in `wasi/platform/DESIGN.md`.
 
 ## What this says about the corpus
 
-The sliced `testing/` corpus stands at **303 pass / 37 fail / 15 skip** across 21
-suites. Read through this table, the 37 stop being one number:
+The `testing/` corpus stands at **305 pass / 35 fail / 15 skip** across 21 suites
+— measured by `wasi/corpus/run.sh`, which is where these counts now come from.
+Read through this table, the 35 stop being one number:
 
 | | count | |
 |---|:--:|---|
 | *(blank)* — not supposed to work here | **30** | declared divergences. A test asserting them here is asserting something about a desktop, and it should be marked expected-fail rather than fixed |
-| **~** — real, but needs a user gesture | **4** | `setFullscreen`/`getFullscreen`, `setRelativeMode`/`getRelativeMode`. A game can reach these from a click or a keypress; a test driving them cold cannot |
+| **~** — real, but needs a user gesture | **2** | `setFullscreen` / `getFullscreen`. A game can reach these from a click or a keypress; a test driving them cold cannot |
 | **✗** — the browser has it and we do not | **3** | `setDisplaySleepEnabled`/`isDisplaySleepEnabled` (wake lock, unbuilt) and `Image()` DXT1 (**#51**, extension enumeration — the one outright defect) |
 
-The 30, by suite, so the arithmetic is checkable:
+The 30, by suite — and `wasi/corpus/expected.txt` is the same list, executable:
 
 | suite | n | |
 |---|:--:|---|
@@ -249,13 +250,17 @@ table out feature by feature bought.
 
 ## Keeping it true
 
-This table is prose, and prose rots silently. The Web column is exactly the
-**expected-fail list** the corpus runner needs, so the way to make it rot loudly
-is to give the runner this data and have it fail three ways: a ✓ that fails, a ✗
-or blank that starts *passing* (the table is stale — a good problem, but a
-problem), and a test not classified at all. That is what would close Beta step 3,
-and it is not built yet.
+Prose rots silently, so the Web column is not only prose. Its failing half is
+`wasi/corpus/expected.txt`, and `wasi/corpus/run.sh` — in CI on every push —
+fails three ways: a test expected to pass that failed, a test on the
+expected-fail list that starts **passing** (this table is stale, which is a good
+problem and still a failure, because an unearned divergence is a lie), and a
+test that failed while classified nowhere. All three are demonstrated able to
+fail. So a divergence that quietly becomes supported, and a fix that quietly
+regresses, both turn CI red instead of ageing in a document.
 
-Until then this document is **observed**, not tested: every ✓ traces to a witness
-run or a corpus pass at 303/37/15, and every blank traces to a named platform
-fact — but nothing re-checks the mapping on each change.
+This document is therefore **tested** where the corpus reaches it — 305/35/15,
+re-earned on every push — and **observed** elsewhere: the ✗ and blank rows the
+corpus does not probe (`hasFocus`, `getSystemTheme`, custom image cursors,
+gamepad vibration) still rest on reading the code, and the Desktop column
+remains a reading of upstream's source rather than a run.

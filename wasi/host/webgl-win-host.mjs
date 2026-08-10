@@ -99,6 +99,17 @@ export function makeWebGLWinHost(newCanvas) {
     0x1405: [Uint32Array, 4],   // UNSIGNED_INT
     0x1406: [Float32Array, 4],  // FLOAT
     0x140B: [Uint16Array, 2],   // HALF_FLOAT
+    // The packed types below need an entry here too: they are as strict about
+    // the view as the unpacked ones, and defaulting them to Uint8Array is the
+    // very mismatch this table exists to avoid. LÖVE reaches them through real
+    // pixel formats — rgb565, rgb10a2, rg11b10f, depth24stencil8 (OpenGL.cpp).
+    0x8033: [Uint16Array, 2],   // UNSIGNED_SHORT_4_4_4_4
+    0x8034: [Uint16Array, 2],   // UNSIGNED_SHORT_5_5_5_1
+    0x8363: [Uint16Array, 2],   // UNSIGNED_SHORT_5_6_5
+    0x8368: [Uint32Array, 4],   // UNSIGNED_INT_2_10_10_10_REV
+    0x8C3B: [Uint32Array, 4],   // UNSIGNED_INT_10F_11F_11F_REV
+    0x8C3E: [Uint32Array, 4],   // UNSIGNED_INT_5_9_9_9_REV
+    0x84FA: [Uint32Array, 4],   // UNSIGNED_INT_24_8
   };
   // Components per pixel, by format. The packed types below override this with 1.
   const READ_COMPONENTS = {

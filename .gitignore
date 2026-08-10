@@ -87,3 +87,4 @@ stamp-h1
 
 # Local Claude Code overrides (per-session tool permissions, etc.)
 .claude/settings.local.json
+/wasi/corpus/*.wasm

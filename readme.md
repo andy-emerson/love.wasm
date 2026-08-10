@@ -67,17 +67,20 @@ Desktop LÖVE 12 runs **Lua 5.1** — LuaJIT 2.1 by default, or PUC Lua 5.1 with
 
 The engine is unaffected: LÖVE's C++ carries the `LUA_VERSION_NUM >= 504` branches it needs, and the `love.*` modules behave identically. Game *Lua* is where the dialect shows. A game written for 5.1 can need edits — that is a language port, not a lost LÖVE feature, and a ported game is still a LÖVE game. **The compatibility question this project measures is whether a LÖVE feature works, not how a game's Lua was wired up.**
 
-Three names moved between the two versions, and they are what a port has to deal with. Observed running one 11.5 game (Legend of Lua) to a playable state — **41 call sites** across the game and the four libraries it vendors, plus 8 font sizes:
+**Three standard-library names moved, and one value rule tightened.** That is what a port has to deal with — and note that none of the four is a LÖVE change: all are PUC Lua 5.1→5.4 language changes, so an 11.5 game needed **no** `love.*` edits to run on 12. Observed running one 11.5 game (Legend of Lua) to a playable state — **41 call sites** across the game and the four libraries it vendors, plus 8 font sizes:
 
 | 5.1 idiom | Under 5.4 | Portable form — runs on both |
 |---|---|---|
-| `newFont(path, 4.5*scale)` | errors, "number has no integer representation": LÖVE takes sizes with `luaL_optinteger`, which truncates on 5.1 and raises on 5.4 | `newFont(path, math.floor(4.5*scale))` |
-| `unpack(t)` | removed, it is `table.unpack` | `local unpack = table.unpack or unpack` |
-| `math.atan2(y, x)` | removed, it is `math.atan(y, x)` | `local atan2 = math.atan2 or math.atan` |
+| `unpack(t)` | removed in 5.2, it is `table.unpack` | `unpack = unpack or table.unpack` |
+| `table.getn(t)` | removed in 5.2, it is `#t` | `table.getn = table.getn or function(t) return #t end` |
+| `math.atan2(y, x)` | removed in 5.3, it is `math.atan(y, x)` | `math.atan2 = math.atan2 or function(y, x) return math.atan(y, x) end` |
+| `newFont(path, 4.5*scale)` | errors, "number has no integer representation": LÖVE takes sizes with `luaL_optinteger`, which truncates under 5.1's single number type and raises under 5.3+'s integer subtype | `newFont(path, math.floor(4.5*scale))` |
 
 The right-hand column is the point: each portable form runs under 5.1 *and* 5.4, so porting a game forward costs it nothing on desktop — the source still runs there, and the `.love` pillar holds.
 
-Scale matters more than count. The three *names* were 41 call sites, 29 of them inside vendored libraries (hump, windfield, sti, mlib) — so the port restores the names once in a three-line prelude rather than forking four third-party libraries. Only the font sizes need editing where they are written, because a wrong *value* has no prelude fix. `wasi/games/legend-of-lua.patch` is the whole port, and it is 59 lines.
+Scale matters more than count. The three *names* were 41 call sites, 29 of them inside vendored libraries (hump, windfield, sti, mlib) — so the port restores the names once in a small prelude (`lua54.lua`, three assignments) rather than forking four third-party libraries. Only the font sizes need editing where they are written, because a wrong *value* has no prelude fix. `wasi/games/legend-of-lua.patch` is the whole port, and it is 59 lines.
+
+**The port is not a fork, and the ported game is not a love.wasm build of it.** Every line of the prelude is `x = x or <the 5.4 spelling>`, so under 5.1 it keeps what is already there and does nothing; `math.floor` on a font size is a no-op where the value was already integral. The patched game therefore runs on desktop LÖVE 11.5 exactly as the original does — the patch is an upstreamable portability fix that costs the game nothing, and the only reason it ships as a `.patch` is that no game is bundled in this repository.
 
 **Evidence: observed**, on one game. This is not a survey of the 5.1↔5.4 delta, and the list should be expected to grow as more games run.
 

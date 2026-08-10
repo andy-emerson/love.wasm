@@ -96,8 +96,11 @@ public:
 	// Called BY Source::play()/stop(), which is where a Source actually starts
 	// and ends — `source:play()` in Lua reaches the Source directly and never
 	// passes through this module (wrap_Source.cpp), so registering on the module
-	// entry points alone would miss the common case entirely. A paused Source
-	// stays tracked, as it stays in openal's Pool.
+	// entry points alone would miss the common case entirely. pause() does NOT
+	// untrack, so the set survives the call that hands it back to Lua; the next
+	// reapFinished() then drops it, because a paused Source is not playing and
+	// nothing here distinguishes paused from finished (there is no host "ended"
+	// event and no separate pause voice-state — Source::pause() stops).
 	void trackPlaying(love::audio::Source *source);
 	void reapFinished();
 	void untrack(love::audio::Source *source);

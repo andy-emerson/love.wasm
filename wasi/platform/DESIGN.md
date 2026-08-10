@@ -457,7 +457,7 @@ prior question was never on the list, and it is the one that wins.
 
 **The evidence that closed it.** The decision named the `testing/` corpus as the
 right measure of which use case was worth building. The corpus now runs, and
-`mount`/`unmount` are 2 of its 37 expected failures — the whole demand signal.
+`mount`/`unmount` are 2 of its 35 expected failures — the whole demand signal.
 The other half of the reopen trigger never fired: Legend of Lua reached a
 playable state without a runtime mount.
 

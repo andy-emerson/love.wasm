@@ -198,10 +198,14 @@ std::vector<love::audio::Source*> Audio::pause()
 	// LOVE's contract: pause everything currently playing and hand back exactly
 	// those Sources, so love.audio.play(list) can resume them.
 	//
-	// A paused Source STAYS tracked, as it stays in openal's Pool. Untracking it
-	// here would release it, and the tracking reference is routinely the last
-	// one — a Source played and then dropped by Lua is kept alive by nothing
-	// else — so w_pause would push an already-destroyed Source to Lua.
+	// Nothing is untracked HERE, and that is what makes the returned vector safe:
+	// the tracking reference is routinely the last one — a Source played and then
+	// dropped by Lua is kept alive by nothing else — so releasing during this
+	// call would have w_pause push an already-destroyed Source to Lua. The next
+	// reapFinished() does drop them, because Source::pause() stops the voice and
+	// clears `playing`, and this backend has no way to tell paused from finished;
+	// by then w_pause has retained everything it handed to Lua.
+	//
 	// Reap first: a STATIC Source that ran to its own end is not playing, and
 	// with no host "ended" event the set only learns that by being asked. Without
 	// this, pause() hands back every Source ever played — the corpus's

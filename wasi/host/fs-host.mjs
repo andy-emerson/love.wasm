@@ -118,12 +118,16 @@ export function makeFsHost() {
   // two halves of the same store disagreeing. It is also what
   // love.filesystem.mountFullPath needs to verify its target before accepting
   // a mount.
+  // `for…in` rather than Object.keys: this runs on every resolve() MISS, and
+  // misses are the common case (Lua's `require` searcher stats `?.lua` and
+  // `?/init.lua` per require-path entry, per module). Materialising a key array
+  // of a thousand-file project each time is pure garbage.
   const isImplicitDir = (p) => {
     if (p === "" || p === "/" || p === ".") return true;
     const prefix = p.replace(/\/+$/, "") + "/";
     for (const store of [files, saves]) {
-      for (const key of Object.keys(store)) {
-        if (key.startsWith(prefix)) return true;
+      for (const key in store) {
+        if (has(store, key) && key.startsWith(prefix)) return true;
       }
     }
     return false;
@@ -133,8 +137,8 @@ export function makeFsHost() {
   // that is where a write to it would land.
   const dirHasSaveChild = (p) => {
     const prefix = p === "" || p === "/" || p === "." ? "" : p.replace(/\/+$/, "") + "/";
-    for (const key of Object.keys(saves)) {
-      if (prefix === "" || key.startsWith(prefix)) return true;
+    for (const key in saves) {
+      if (has(saves, key) && (prefix === "" || key.startsWith(prefix))) return true;
     }
     return false;
   };
@@ -232,8 +236,8 @@ export function makeFsHost() {
       const p = readPath(pathPtr, pathLen);
       const prefix = p.replace(/\/+$/, "") + "/";
       for (const store of [files, saves]) {
-        for (const key of Object.keys(store)) {
-          if (key.startsWith(prefix)) return -1;   // something still lives under it
+        for (const key in store) {
+          if (has(store, key) && key.startsWith(prefix)) return -1;   // something still lives under it
         }
       }
       if (!has(saves, p)) return -1;

@@ -128,9 +128,12 @@ void Source::pause()
 {
 	// A distinct pause voice-state is a later refinement; stop for now.
 	//
-	// A paused Source stays TRACKED (openal keeps it in the Pool): love.audio
-	// .pause() hands the set back to Lua so love.audio.play(list) can resume it,
-	// and untracking here would free it out from under that list.
+	// Deliberately does NOT untrack, unlike stop(): love.audio.pause() hands the
+	// set back to Lua so love.audio.play(list) can resume it, and releasing here
+	// would free a Source out from under that list before w_pause retains it.
+	// The module's next reapFinished() does drop it — `playing` is false and
+	// nothing here separates paused from finished — which is why this is a
+	// deferral of the release, not a promise that a paused Source stays tracked.
 	if (handle >= 0)
 		wa_source_stop(handle);
 	playing = false;

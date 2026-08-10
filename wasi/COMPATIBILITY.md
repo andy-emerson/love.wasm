@@ -35,7 +35,8 @@ divergence and a fake.
 - **Web** — the artifact this repository builds: LÖVE 12 compiled to
   `wasm32-wasi`, on WebGL2, WebAudio, OPFS and the DOM. This is the only column
   that reports our own evidence, and every ✓ in it is backed by a witness in
-  `wasi/**/run*.sh` or by the sliced `testing/` corpus.
+  `wasi/**/run*.sh` or by the `testing/` corpus, which needs no slicing — it gates
+  every suite on `if love.<module> ~= nil`, so it runs in one shot.
 
 **Mobile is deliberately absent.** LÖVE's iOS and Android ports live in
 `love-ios` and `love-android`, outside this tree, so a mobile column would be
@@ -251,8 +252,9 @@ table out feature by feature bought.
 ## Keeping it true
 
 Prose rots silently, so the Web column is not only prose. Its failing half is
-`wasi/corpus/expected.txt`, and `wasi/corpus/run.sh` — in CI on every push —
-fails three ways: a test expected to pass that failed, a test on the
+`wasi/corpus/expected.txt`, and `wasi/corpus/run.sh` — one command, and bound
+for the per-push gate though **not wired into `witness.yml` yet** — fails three
+ways: a test expected to pass that failed, a test on the
 expected-fail list that starts **passing** (this table is stale, which is a good
 problem and still a failure, because an unearned divergence is a lie), and a
 test that failed while classified nowhere. All three are demonstrated able to

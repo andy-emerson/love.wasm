@@ -24,23 +24,28 @@ and **re-runnable** — `wasi/games/run.sh` fetches the pin, applies our port
 patch, plays it and asserts. Its Lua needs a 5.1 → 5.4 port; every LÖVE feature
 it uses works. See step 2, and **The Lua dialect** in `readme.md`.
 
-The `testing/` corpus now runs — **303 pass / 37 fail / 15 skip** across 21
-suites, up from 236/92 when it first ran. All three infrastructure blockers are
-fixed and **every failure has now been examined**. See step 3.
+The `testing/` corpus runs as a **witness** — `wasi/corpus/run.sh`, **305 pass /
+35 fail / 15 skip** across 21 suites, up from 236/92 when it first ran. Every
+failure is classified, and the comparison against that classification is what the
+witness asserts. See step 3.
 
-**`wasi/COMPATIBILITY.md` is the new durable home for what works where**: every
-LÖVE feature against desktop and against this build, ✓ / ✗ / blank. It replaces
-the flat failure count with the question that actually matters — does the target
-have the feature at all — and it resolves the 37 into **28 blanks** (the browser
-does not have it), **4 gesture-gated**, and **5 real gaps**, one of which is an
-outright defect. It also surfaced four ✗ cells the corpus never probes.
+**`wasi/COMPATIBILITY.md` is the durable home for what works where**: every LÖVE
+feature against desktop and against this build, ✓ / ✗ / blank. It replaces the
+flat failure count with the question that actually matters — does the target have
+the feature at all — and it resolves the 35 into **30 blanks** (the browser does
+not have it), **2 gesture-gated**, and **3 real gaps**, one of which is an
+outright defect (#51). Its failing half is `wasi/corpus/expected.txt`, so the
+classification is executable rather than prose. It also surfaced four ✗ cells the
+corpus never probes.
 
 `love.thread` is the one major module still stubbed (build-order step 7).
 
 ## Beta
 
 **Beta = real games playable interactively from a standalone dev artifact, with
-the sliced `testing/` corpus green modulo declared divergences.** Packaging
+the `testing/` corpus green modulo declared divergences.** (It needs no slicing:
+`testing/main.lua` gates every suite on `if love.<module> ~= nil`, so the whole
+corpus runs in one shot — the recorded plan to run it by module slice was wrong.) Packaging
 (#7, build-order step 8) is post-Beta: love.wasm must be demonstrably operable
 on its own, which is not the same as building every downstream consumer.
 
@@ -488,10 +493,9 @@ requires the destination view to MATCH the type — `BYTE` needs an `Int8Array`,
 wrong for the same reason, `w*h*4` being true of RGBA8 and little else. So every
 readback that was not `UNSIGNED_BYTE` came back as zeros — an integer render
 target, and a float one too. Only the corpus's integer-canvas case happened to
-exercise it. Both hosts fixed, view and size chosen from format and type. The rest of the residual
-— audio 12, window 12, filesystem 7, mouse 3, joystick 2, timer 2, love 2,
-system 1, sound 1 — is still unexamined, and that triage is step 3's actual
-cost.
+exercise it. Both hosts fixed, view and size chosen from format and type. (The residual named
+here as "still unexamined" was examined in the same session — see the
+classification below and `wasi/corpus/expected.txt`.)
 
 **The 37 are now classified, in `wasi/COMPATIBILITY.md`.** The reframing is the
 Human's: correctness is judged against the system a game is deployed to, not
@@ -541,7 +545,7 @@ corpus at 303/37/15, and every blank to a named platform fact — but nothing
 re-checks the mapping on each change. The table is prose, and prose rots
 silently.
 
-### Step 3 — DONE. The classification is executable and in CI.
+### Step 3 — DONE, bar one loose end. The classification is executable.
 
 `wasi/corpus/run.sh` + `run-browser-corpus.mjs` + `expected.txt`. The corpus runs
 as an ordinary game — `testing/` IS the project, its own conf.lua sizes the
@@ -556,7 +560,15 @@ and an entry naming a test the corpus does not have (a renamed or deleted test
 cannot hide a real failure behind a dead line).
 
 **305 pass / 35 fail / 15 skip**, deterministic across three back-to-back runs,
-**~18s** on a reused artifact — so it is in the per-push gate, not on demand.
+**~18s** on a reused artifact — cheap enough for the per-push gate rather than
+on demand.
+
+**It is NOT in `witness.yml` yet, and that is the one loose end of step 3.** The
+workflow step is written and reviewed, but the push was rejected: this session's
+token has no `workflow` scope, so it cannot modify `.github/workflows/`. The
+step's text is in the session log; until it is committed, every document says
+"witnessed on demand" rather than "CI-enforced", because the second would be a
+claim above the evidence.
 The 35 are 30 divergence / 2 gesture / 3 defect.
 
 Two numbers moved from the recorded census (303/37): `mouse.setRelativeMode` and

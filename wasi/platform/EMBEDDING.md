@@ -70,7 +70,7 @@ beneath. Writes **never** touch the project.
 | `fs_read(path, len, buf, cap) -> i32` | bytes copied (≤ `cap`) into `buf`, or `-1`; consults **both** namespaces, save-first |
 | `fs_stat(path, len, *type, *size, *mtime, *readonly) -> i32` | `0` ok / `-1` absent; writes little-endian out-params. `type`: `0` file, `1` dir, `2` symlink, `3` other. `readonly`: `1` for the read-only project, `0` for the writable save namespace — only the host can tell, since it resolves the two |
 | `fs_write(path, len, buf, n) -> i32` | writes `n` bytes to the **save** namespace, returns `n` (or `-1`); replaces the whole file |
-| `fs_remove(path, len) -> i32` | `0` removed / `-1` absent — save namespace only (the project is immutable) |
+| `fs_remove(path, len) -> i32` | `0` removed / `-1` refused — save namespace only (the project is immutable), and a **non-empty** directory is refused, as physfs does: `love.filesystem.remove` returns false rather than deleting a tree |
 | `fs_mkdir(path, len) -> i32` | `0` — records a directory in the save namespace, creating intermediate directories as physfs does |
 | `fs_list(path, len, buf, cap) -> i32` | total bytes needed for the NUL-separated **immediate child names** of `path`, writing up to `cap` of them into `buf`. Call with `cap = 0` to size, then again to fill — the same two-step `fs_read` uses. Consults **both** namespaces, so a save file and a project file in one directory are listed together, once |
 

@@ -137,6 +137,27 @@ bool mountRewrite(const char *path, int32_t len, std::string &out)
 	return false;
 }
 
+// Reduce a game-built absolute path — getSource() .. "/output" — to the
+// store-relative path the host can address. The source prefix only counts when
+// the whole of it is followed by a separator or by nothing at all: a bare
+// std::string::compare would also strip "/game" out of "/gameassets/pack" and
+// leave "assets/pack", mounting or unmounting a directory the caller never
+// named.
+std::string storeRelative(const std::string &fullpath, const std::string &gameSource)
+{
+	std::string out = fullpath;
+	const size_t n = gameSource.size();
+	if (n != 0 && out.size() >= n && out.compare(0, n, gameSource) == 0
+		&& (out.size() == n || out[n] == '/' || out[n] == '\\'
+			|| gameSource.back() == '/' || gameSource.back() == '\\'))
+		out.erase(0, n);
+	while (!out.empty() && (out[0] == '/' || out[0] == '\\'))
+		out.erase(0, 1);
+	while (!out.empty() && (out.back() == '/' || out.back() == '\\'))
+		out.pop_back();
+	return out;
+}
+
 } // anonymous namespace
 
 static inline int32_t wfs_size(const char *p, int32_t n)
@@ -480,6 +501,11 @@ Filesystem::Filesystem()
 
 Filesystem::~Filesystem()
 {
+	// The mount table is file-static, so it outlives this module unless it is
+	// emptied here. love.event.quit("restart") tears the modules down and builds
+	// them again (D5=A's shipped reload); a surviving mount would keep rewriting
+	// paths for a game that never asked for it.
+	mountTable().clear();
 }
 
 void Filesystem::init(const char *)
@@ -580,16 +606,9 @@ bool Filesystem::mountFullPath(const char *fullpath, const char *mountpoint, Mou
 	if (fullpath == nullptr || mountpoint == nullptr || *mountpoint == 0)
 		return false;
 
-	std::string target = fullpath;
-
 	// Strip the source prefix, then any leading separator, leaving a path
 	// relative to the store — which is the only space the host can address.
-	if (!gameSource.empty() && target.compare(0, gameSource.size(), gameSource) == 0)
-		target.erase(0, gameSource.size());
-	while (!target.empty() && (target[0] == '/' || target[0] == '\\'))
-		target.erase(0, 1);
-	while (!target.empty() && target.back() == '/')
-		target.pop_back();
+	std::string target = storeRelative(fullpath, gameSource);
 
 	// It must actually be a directory in the store. An absolute host path from
 	// outside the project fails here, which is the honest answer: this seam has
@@ -646,13 +665,9 @@ bool Filesystem::unmountFullPath(const char *fullpath)
 {
 	if (fullpath == nullptr)
 		return false;
-	std::string target = fullpath;
-	if (!gameSource.empty() && target.compare(0, gameSource.size(), gameSource) == 0)
-		target.erase(0, gameSource.size());
-	while (!target.empty() && (target[0] == '/' || target[0] == '\\'))
-		target.erase(0, 1);
-	while (!target.empty() && target.back() == '/')
-		target.pop_back();
+	// The same reduction mountFullPath applied, so the two agree on what a given
+	// `fullpath` names.
+	std::string target = storeRelative(fullpath, gameSource);
 
 	auto &table = mountTable();
 	for (auto it = table.begin(); it != table.end(); ++it)

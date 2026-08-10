@@ -60,7 +60,7 @@ peculiarity — a phone cannot reposition its window either.
 | `isFused` | ✓ | ✓ | `setSource` requires a game to actually be there, as desktop physfs does |
 | `mountFullPath` a directory already in the store | ✓ | ✓ | rewrite sits in wrappers around the `love_fs` imports, so every operation sees mounts identically |
 | mount an arbitrary directory of the machine | ✓ | | there is no host filesystem behind the seam — only the project and the save namespace. A target that does not resolve inside the store is refused, not faked |
-| mount a `.love` / zip archive at runtime | ✓ | **✗** | **D7 (#48) is open**: who unzips — host JS or a guest zip reader over the in-tree zlib. Enumeration shipped without needing it |
+| mount a `.love` / zip archive at runtime | ✓ | | **D7 closed (#48): deliberately not built.** PhysFS's zip archiver went with PhysFS, and neither rebuilding it in wasm nor unzipping host-side earns its cost against the demand — two corpus tests and no observed game. A `.love` as the *boot source* needs none of this: the seam takes a path→bytes map, so a host unzips in its own JS and fills the map |
 | `getRealDirectory` | ✓ | | the store is virtual; there are no real directories to name |
 | `getCommonPath` — userhome, userdesktop, appdocuments, userappdata | ✓ | | a page has no such paths |
 | native-C `require` (the `extloader` searcher) | ✓ | | no `dlopen`, and no real on-disk path to hand one. The Lua `loader` is registered; `extloader` is not |
@@ -219,18 +219,18 @@ suites. Read through this table, the 37 stop being one number:
 
 | | count | |
 |---|:--:|---|
-| *(blank)* — the browser does not have the feature | **28** | declared divergences. A test asserting them here is asserting something about a desktop, and it should be marked expected-fail rather than fixed |
+| *(blank)* — not supposed to work here | **30** | declared divergences. A test asserting them here is asserting something about a desktop, and it should be marked expected-fail rather than fixed |
 | **~** — real, but needs a user gesture | **4** | `setFullscreen`/`getFullscreen`, `setRelativeMode`/`getRelativeMode`. A game can reach these from a click or a keypress; a test driving them cold cannot |
-| **✗** — the browser has it and we do not | **5** | `mount`/`unmount` (D7 open), `setDisplaySleepEnabled`/`isDisplaySleepEnabled` (wake lock, unbuilt), `Image()` DXT1 (extension enumeration — the one outright defect) |
+| **✗** — the browser has it and we do not | **3** | `setDisplaySleepEnabled`/`isDisplaySleepEnabled` (wake lock, unbuilt) and `Image()` DXT1 (**#51**, extension enumeration — the one outright defect) |
 
-The 28, by suite, so the arithmetic is checkable:
+The 30, by suite, so the arithmetic is checkable:
 
 | suite | n | |
 |---|:--:|---|
 | audio | 6 | mic sample rate; `setEffect`, `getEffect`, `getActiveEffects`, `Source:setFilter`; output-device selection |
 | window | 8 | `setPosition`, `getPosition`, `maximize`, `minimize`, `isMaximized`, `isMinimized`, `setIcon`, `getIcon` |
 | graphics | 6 | `Video()`, `newVideo()` (`love.video` absent); `arc`, `circle`, `ellipse`, `setLineStyle` (rasteriser) |
-| filesystem | 2 | `mountCommonPath`, `getRealDirectory` |
+| filesystem | 4 | `mountCommonPath`, `getRealDirectory`, and `mount` / `unmount` — archive mounting, **D7 closed as not-built** |
 | timer | 2 | `sleep` and `getTime` are one fact: `love::sleep` is an honest no-op, so `getTime` is measuring a sleep that did not happen |
 | mouse | 1 | `setGrabbed` |
 | joystick | 1 | `setGamepadMapping` (24 asserts) |

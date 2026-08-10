@@ -205,10 +205,12 @@ the write/invalidate handshake.
   within the last-write window — a declared cross-platform timing note. Desktop-
   exact **sync** durability needs the engine-in-Worker + OPFS sync-access-handle
   pivot, parked for a shipping variant that needs it.
-- **Real archive / `.love`-zip mounting** (`mount*`) remains unimplemented — a
-  loud `false`, not a fake. Who unzips a runtime-mounted archive is **#48 (D7)**,
-  still open. `mountFullPath` is implemented for a directory already in the
-  store; see the last entry below.
+- **Real archive / `.love`-zip mounting** (`mount*`) is unimplemented **by
+  decision** — a loud `false`, not a fake. **D7 is closed (#48): not built**, and
+  it is a declared divergence rather than a deferral. Note this does not affect
+  *`.love`-as-source*: the seam takes files, so a host with an archive unzips it
+  in its own JS (see §2). `mountFullPath` is implemented for a directory already
+  in the store; see the last entry below.
   (**Directory enumeration is no longer deferred**: `getDirectoryItems` is real,
   over the `fs_list` import in the table above, witnessed by
   `wasi/platform/run-fs-list.sh` on node and Chromium.)
@@ -217,4 +219,4 @@ the write/invalidate handshake.
 - Directory **mounting** is limited to a directory already in the host store
   (`mountFullPath` gives it a second name); there is no host filesystem behind
   the seam to reach anything else, and a path that does not resolve inside the
-  store is refused rather than faked. Archive mounting is #48.
+  store is refused rather than faked. Archive mounting is #48, closed as not built.

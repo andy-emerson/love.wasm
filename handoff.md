@@ -386,7 +386,7 @@ The remaining 6 divide into declared divergences and one defect worth naming:
 
 | test | verdict |
 |---|---|
-| `mount`, `unmount` | archive mounting — **#48 (D7)**, open by decision |
+| `mount`, `unmount` | archive mounting — **#48 (D7)**, closed as deliberately not built |
 | `mountCommonPath` | userdesktop / userhome / appdocuments / userappdata / userdocuments — a browser has no such paths |
 | `getRealDirectory` | there are no real directories; the store is virtual |
 | ~~`getInfo().readonly`~~ | **FIXED** — see below |
@@ -503,9 +503,9 @@ where the target does not have it. A blank is a declared divergence, and it is
 the cell that does the work: it separates "`setPosition` is broken" from "a page
 cannot move its window".
 
-The 37 resolve as **28 blank, 4 gesture-gated (`~`), 5 real gaps** — archive
-mount (D7, open), the wake lock (unbuilt), and DXT1 (**#51**, the
-extension-enumeration defect). Four of the 28 are the rasterisation near-misses,
+The 37 resolve as **30 blank, 4 gesture-gated (`~`), 3 real gaps** — the wake
+lock (unbuilt) and DXT1 (**#51**, the extension-enumeration defect). Archive
+mount moved from ✗ to blank when D7 closed as not-built. Four of the 30 are the rasterisation near-misses,
 and they are the only group a decision could still move.
 
 **#51 is filed, and the first reading of it was wrong.** `glGetStringi` is not
@@ -561,8 +561,9 @@ the only faithful option.
 
 Video (Theora) stays dropped; a future `<video>` seam is the right path.
 Networking stays absent for Beta; a web-native transport is a later
-exploration. Archive/`.love`-zip mounting stays enumeration-only, with D7 left
-open until a real game needs a runtime mount.
+exploration. Runtime archive/`.love`-zip mounting is now a divergence in its
+own right: **D7 closed as not built** (#48), reopening only if a real game calls
+`mount` on an archive.
 
 ## Open decisions
 
@@ -571,15 +572,17 @@ These gate work, and only the Human closes them (`AGENTS.md`, "Records").
 | Decision | The fork | What it gates |
 |---|---|---|
 | #47 (D4) | reload granularity: whole-chunk re-eval vs function-body hotswap | deferred past Beta; module granularity plus restart is what ships |
-| #48 (D7) | who unzips a runtime-mounted archive: host JS vs a guest zip reader over the in-tree zlib | archive mounting; enumeration shipped without needing it |
 | step-7 divergences | which desktop `love.thread` behaviors we accept losing | enumerated when the thread design document is written |
 | #7 | packaging: single `.js` vs `.js` + `.wasm` | step 8, decided by measurement, post-Beta |
 | rasterisation tolerance | pixel-exact vs a stated tolerance for `compareImg` — `arc` 3069/3072, `circle` 1022/1024, `ellipse` 1023/1024, `setLineStyle` 224/256 | whether those four corpus tests are a **blank** (a different rasteriser, declared) or a **✗** (a defect) in `wasi/COMPATIBILITY.md`, and therefore whether they enter the expected-fail list |
 
 `DESIGN.md` records D1–D3, D5 and D6 as closed, carrying the alternatives that
-lost. D4 and D7 are open, so under `CONTRIBUTING.md` §3.3 they live in the
-tracker — #47 and #48 — and `DESIGN.md` keeps only what is settled about each
-and points at the issue. D8 (Lua dialect) closed this session and is recorded in
+lost. D4 is open, so under `CONTRIBUTING.md` §3.3 it lives in the tracker —
+#47 — and `DESIGN.md` keeps only what is settled and points at the issue. **D7
+closed this session** (#48), ruled *not built*: the survey was re-checked before
+closing and had a hole — both recorded options answered *who* unzips and so
+presupposed that we unzip at all. The full record, with both alternatives and
+why each lost, is in `DESIGN.md`. D8 (Lua dialect) closed this session and is recorded in
 `DESIGN.md` in full.
 
 ### The Lua dialect — CLOSED, and where it now lives

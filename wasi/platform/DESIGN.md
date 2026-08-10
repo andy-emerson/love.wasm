@@ -425,19 +425,52 @@ control over what's included — kept faithful.
   if A proves insufficient. The stdio half exists already (the witnesses read
   fd 1).
 
-### D7 — Archive / `.love`-zip mounting: who unzips — OPEN, tracked in #48
+### D7 — Archive / `.love`-zip mounting: who unzips — CLOSED (2026-08-10, #48)
 
-An open fork lives in the tracker, not here (`CONTRIBUTING.md` §3.3). The fork,
-both options with their trade-offs, the reopen trigger and what it gates are in
-**#48**.
+**The ruling: neither option. Runtime archive mounting is not built**, and that
+is a declared divergence rather than a deferral. `mountFullPath` stays — a
+directory already in the store, given a second name — and an archive target
+returns a loud `false`, never a fake.
 
-What is settled and so stays here: replacing PhysFS split its two roles.
-**Directory enumeration** is built — an `fs_list` host import returns a
+Replacing PhysFS split its two roles, and they were settled separately.
+**Directory enumeration** is built: an `fs_list` host import returns a
 directory's immediate children, and the host merges the read-only project with
 the writable save namespace and de-dupes, reproducing the merged listing PhysFS
 gave across a mounted search path (`wasi/platform/run-fs-list.sh`). **Archive
-mounting** is not, and cannot be built without closing #48, because PhysFS's zip
-archiver went with it.
+mounting** is what D7 was about, because PhysFS's zip archiver went with it.
+
+**The framing had a hole, found by re-checking the survey before closing.** Both
+recorded options — the host unzips in JS, or a guest zip reader over the in-tree
+zlib — answer *who* unzips, and so both presuppose that we unzip at all. The
+prior question was never on the list, and it is the one that wins.
+
+**The alternatives, and why each lost:**
+
+- **A guest-side zip reader over `wasi/vendor/zlib`** loses on cost against
+  demand. It partially rebuilds in wasm the archive machinery D1=A deliberately
+  shed, to serve two corpus tests and no observed game.
+- **The host unzipping in JS** loses on the same demand argument and on nothing
+  else. It remains the right design if this is ever built: `DecompressionStream`
+  is native in the browser and needs no new wasm code, and its only real cost is
+  that `mount(Data*)` must send bytes already in wasm memory back out to JS to be
+  decoded. **If a reopen condition fires, build this one.**
+
+**The evidence that closed it.** The decision named the `testing/` corpus as the
+right measure of which use case was worth building. The corpus now runs, and
+`mount`/`unmount` are 2 of its 37 expected failures — the whole demand signal.
+The other half of the reopen trigger never fired: Legend of Lua reached a
+playable state without a runtime mount.
+
+Settled with it, and worth stating because it was the one thing that might have
+forced the decision: ***`.love`*-as-source needs no engine work and no archive
+reader.** The `love_fs` seam takes a path→bytes map, so a host holding a `.love`
+unzips it in its own JS and fills the map. A downstream consumer coming from
+love.js is not blocked by this.
+
+**Reopen conditions:** a real game calls `love.filesystem.mount` on an archive at
+runtime, or a downstream consumer needs it for something the boot-time path
+cannot serve. Corpus tests alone do not reopen it — they are counted above, and
+recorded as an expected divergence in `wasi/COMPATIBILITY.md`.
 
 ### D8 — Lua dialect: which Lua the engine runs — CLOSED
 

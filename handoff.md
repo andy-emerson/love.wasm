@@ -504,9 +504,23 @@ the cell that does the work: it separates "`setPosition` is broken" from "a page
 cannot move its window".
 
 The 37 resolve as **28 blank, 4 gesture-gated (`~`), 5 real gaps** — archive
-mount (D7, open), the wake lock (unbuilt), and DXT1 (the extension-enumeration
-defect). Four of the 28 are the rasterisation near-misses, and they are the only
-group a decision could still move.
+mount (D7, open), the wake lock (unbuilt), and DXT1 (**#51**, the
+extension-enumeration defect). Four of the 28 are the rasterisation near-misses,
+and they are the only group a decision could still move.
+
+**#51 is filed, and the first reading of it was wrong.** `glGetStringi` is not
+auto-stubbed; it is not imported at all, and `getStaticGLProcAddress` returns
+null for it. Nothing traps only because `GL_NUM_EXTENSIONS` has no WebGL2
+`getParameter` pname — `gl.getParameter` raises `INVALID_ENUM`, returns null,
+the host writes `null|0` = 0, and glad's `has_ext` loop never reaches the null
+pointer. So the two halves cannot be fixed independently: answering the count
+without importing `glGetStringi` converts a silent wrong answer into a trap.
+All **491** `GLAD_*` flags are false, of which the `opengl` backend reads ~39 —
+DXT1 is only the one the corpus probes. Not an easy fix: it needs a
+WebGL→GL name map, `gl.getExtension` activation (listing without activating
+would be a fake), the currently-stubbed `glCompressedTexImage2D` path, and a
+staged re-run of all 20 graphics legs, since flipping ~39 flags sends the
+backend down paths this build has never taken.
 
 Two columns, not more: **Desktop** (read out of upstream's source, which `main`
 carries byte-for-byte) and **Web** (ours, the only column carrying our own

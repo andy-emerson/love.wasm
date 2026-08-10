@@ -84,7 +84,7 @@ peculiarity — a phone cannot reposition its window either.
 | texel buffers, texture buffers, SSBO | ✓ | | ditto |
 | client-side vertex arrays, buffer mapping | ✓ | | forbidden in WebGL2; vertex streaming selects `glBufferSubData` |
 | LA8 textures | ✓ | | no texture swizzle in WebGL2; the font atlas falls back to RGBA8 |
-| DXT / BC compressed textures | ✓ | **✗** | the GL extension list is never enumerated — `glGetStringi` is auto-stubbed and `glGetIntegerv(GL_NUM_EXTENSIONS)` is unanswerable through `getParameter`, so LÖVE sees **zero** extensions and every extension-gated format reports unsupported. `WEBGL_compressed_texture_s3tc` is real in Chromium; this is our gap, not the browser's |
+| DXT / BC compressed textures | ✓ | **✗** | **#51.** The GL extension list is never enumerated: `GL_NUM_EXTENSIONS` has no WebGL2 `getParameter` pname, so glad's `has_ext` reads 0 and the loop that would call `glGetStringi` — which is not imported at all — never runs. All 491 `GLAD_*` flags are false, so *every* extension-gated feature reports unsupported, not only this one. `WEBGL_compressed_texture_s3tc` is real in Chromium; the gap is ours |
 | pixel-exact agreement with desktop's rasteriser | ✓ | | a different GL implementation rasterises differently at the edges: `arc` 3069/3072 pixels, `circle` 1022/1024, `ellipse` 1023/1024, `setLineStyle` 224/256. Desktop *behavioral* parity is the reference, not the bar (`readme.md`, fidelity standard §3). **The tolerance is an open design call** |
 
 ## love.window

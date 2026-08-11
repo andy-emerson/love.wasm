@@ -50,8 +50,12 @@ Now in the tracker, per `CONTRIBUTING.md` §3.3:
   present-tense claims in readme/EMBEDDING/DESIGN/fs-host are corrected to
   ruled-not-built. This is the sharpest instance of the pattern.
 - **#56 — D4=B hotswap**, the implementation of the freshly closed ruling.
-- **#57 — the `boot({files, canvas, onLog})` library entry point**, which until
-  filing existed only in session conversation.
+- **#57 — the `boot({files, canvas, onLog})` library entry point** — **built**:
+  `wasi/shell/boot.mjs` exports the consumer-invariant wiring (instantiate, bind,
+  the `WebAssembly.Module.imports()` skew check, pump boot, the rAF loop with the
+  blur/visibility pause) and returns a handle; `player.mjs` is the first caller,
+  and `EMBEDDING.md` §2 documents it as the recommended consumption shape.
+  Evidence: the shell witness passes unchanged over the new seam.
 - **#58 — the five constant-answer gaps** (wake lock, hasFocus/hasMouseFocus,
   getSystemTheme, image cursors, gamepad rumble), previously visible only as
   COMPATIBILITY ✗ cells.

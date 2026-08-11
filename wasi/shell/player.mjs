@@ -1,11 +1,11 @@
 // The interactive shell — Beta step 1. A page that runs a LÖVE game you can play.
 //
 // Every seam this drives already exists and is witnessed; the shell is assembly,
-// not new engine work. What it changes is who fills the seams. The witnesses
-// stringify the host modules into a Playwright page, bake a fixed event script,
-// and serve a canned project; here the hosts are imported as ordinary modules,
-// input comes from real DOM events, and the drawing surface is a canvas in the
-// document rather than an OffscreenCanvas.
+// not new engine work. The consumer-invariant wiring — instantiate, bind, boot,
+// the frame loop — lives in boot.mjs (#57), and this page is its first caller:
+// what remains here is exactly what varies per consumer — producing the file
+// map (a manifest over HTTP), the canvas's place in this document, where the
+// log goes, and the live-edit poll.
 //
 // It is a game PLAYER and nothing more: load a project, run it, show it. No
 // editor, no REPL, no agent UI — those belong to a downstream consumer, which
@@ -19,13 +19,7 @@
 // ?wasm= points. Build one with:
 //
 //   PREFIX=$PREFIX OUT=wasi/shell/love-game.wasm wasi/platform/build-game.sh
-import { makeWasiShim } from '../host/wasi-shim.mjs';
-import { makeWebGLWinHost } from '../host/webgl-win-host.mjs';
-import { makeFsHost } from '../host/fs-host.mjs';
-import { makeSystemHost } from '../host/system-host.mjs';
-import { makeAudioHost } from '../host/audio-host.mjs';
-import { makeGamepadHost } from '../host/gamepad-host.mjs';
-import { makeBrowserInputHost } from '../host/input-host-browser.mjs';
+import { boot } from './boot.mjs';
 
 const params = new URLSearchParams(location.search);
 const WASM_URL = params.get('wasm') || './love-game.wasm';
@@ -55,7 +49,8 @@ const log = (s) => {
 };
 
 // The visible drawing surface. love.window.setMode decides the size, so the
-// canvas is created on demand by the window host and inserted here.
+// canvas is created on demand and inserted here; boot() attaches the input
+// listeners to whatever this returns.
 let canvas = null;
 const newCanvas = (w, h) => {
   const c = document.createElement('canvas');
@@ -65,25 +60,14 @@ const newCanvas = (w, h) => {
   if (canvas) canvas.remove();
   stage.appendChild(c);
   canvas = c;
-  input.attach(c);
-  c.focus();
   log(`window.setMode ${w}x${h}`);
   return c;
 };
 
-const shim = makeWasiShim();
-const win = makeWebGLWinHost(newCanvas);
-const fs = makeFsHost();
-const system = makeSystemHost();
-const audio = makeAudioHost();
-const gamepad = makeGamepadHost();
-const input = makeBrowserInputHost();
-
-const te = new TextEncoder(), td = new TextDecoder();
-
-// Replace the canned project with a real one, read through the manifest contract.
-// Files land in fs.files, the read-only project map; the writable save namespace
-// (fs.saves) is left alone, so a game's saves never overwrite its source.
+// Produce the path -> Uint8Array map (EMBEDDING.md §2: the map is the contract;
+// this manifest-over-HTTP loader is one way to fill it). The read-only project
+// only — the writable save namespace is boot()'s host's business, so a game's
+// saves never overwrite its source.
 async function loadProject(base) {
   const baseUrl = new URL(base.endsWith('/') ? base : base + '/', location.href);
   const manRes = await fetch(new URL('manifest.json', baseUrl));
@@ -116,15 +100,14 @@ async function loadProject(base) {
     return [name, buf];
   }));
 
-  for (const k of Object.keys(fs.files)) delete fs.files[k];
-  for (const [name, buf] of entries) fs.files[name] = buf;
-  if (!fs.files['main.lua'])
+  const files = Object.fromEntries(entries);
+  if (!files['main.lua'])
     throw new Error('the project has no main.lua — LÖVE has nothing to run');
-  return { count: entries.length, bytes: total, base: baseUrl, meta };
+  return { files, count: entries.length, bytes: total, base: baseUrl, meta };
 }
 
 // Live-edit, at module granularity, over the mechanism step 6.7 already ships:
-// replace the source the VFS serves, then pump_invalidate() drops the game's Lua
+// replace the source the VFS serves, then invalidate() drops the game's Lua
 // modules from package.loaded so the next require re-reads and re-evaluates them.
 // love and every love.* submodule survive, so the engine is not rebooted.
 //
@@ -138,7 +121,7 @@ async function loadProject(base) {
 // silently doing nothing.
 const RESTART_ONLY = new Set(['main.lua', 'conf.lua']);
 
-function watchProject(project, invalidate, intervalMs = 700) {
+function watchProject(project, handle, intervalMs = 700) {
   let meta = project.meta;
   let stop = false;
   const poll = async () => {
@@ -166,14 +149,14 @@ function watchProject(project, invalidate, intervalMs = 700) {
           const live = changed.filter((p) => !RESTART_ONLY.has(p));
           const needsRestart = [...changed, ...gone].filter((p) => RESTART_ONLY.has(p));
 
-          for (const p of gone) delete fs.files[p];
+          for (const p of gone) delete handle.files[p];
           for (const p of live) {
             const r = await fetch(new URL(p, project.base), { cache: 'no-store' });
-            if (r.ok) fs.files[p] = new Uint8Array(await r.arrayBuffer());
+            if (r.ok) handle.files[p] = new Uint8Array(await r.arrayBuffer());
             else log(`live-edit: ${p} vanished (${r.status})`);
           }
           if (live.length || gone.length) {
-            const dropped = invalidate();
+            const dropped = handle.invalidate();
             log(`live-edit: ${[...live, ...gone].join(', ')} → ${dropped} module(s) invalidated`);
           }
           if (needsRestart.length)
@@ -189,11 +172,6 @@ function watchProject(project, invalidate, intervalMs = 700) {
   setTimeout(poll, intervalMs);
   return { stop() { stop = true; } };
 }
-
-// Frame cadence is the browser's, and a hidden or unfocused tab gets none: a
-// game must not keep simulating in a tab nobody is looking at. love.timer's dt
-// comes from the pump, so a paused tab resumes without a giant time step.
-let running = false, paused = false, raf = 0;
 
 async function main() {
   setStatus('loading…');
@@ -229,80 +207,31 @@ async function main() {
     log('project: none given, running the canned project (pass ?project=<url>)');
   }
 
-  shim.autostub(module);
-  const instance = await WebAssembly.instantiate(module, {
-    wasi_snapshot_preview1: shim.imports,
-    love_gl: win.glImports,
-    love_win: win.winImports,
-    love_fs: fs.imports,
-    love_input: input.imports,
-    love_gamepad: gamepad.imports,
-    love_system: system.imports,
-    love_audio: audio.imports,
-  });
-  const x = instance.exports;
-  // Bind before any import can fire.
-  shim.bind(x.memory);
-  win.bind(x.memory, x.malloc);
-  fs.bind(x.memory);
-  system.bind(x.memory);
-  audio.bind(x.memory);
-  gamepad.bind(x.memory);
-  input.bind(x.memory);
-  x._initialize();
-
-  // pump_in hands back a pointer to write into; take it before viewing memory,
-  // since a growth during the call would detach an earlier view.
-  const put = (s) => {
-    const b = te.encode(s);
-    const p = x.pump_in(b.length);
-    new Uint8Array(x.memory.buffer).set(b, p);
-    return b.length;
-  };
-  const out = () => {
-    const p = x.pump_out();
-    return td.decode(new Uint8Array(x.memory.buffer).slice(p, p + x.pump_out_len()));
-  };
-
-  let tapped = 0;
-  const drainTap = () => {
-    const s = shim.stdout || '';
-    if (s.length > tapped) { log(s.slice(tapped).trimEnd()); tapped = s.length; }
-  };
-
-  let st = x.pump_boot(put(bootSrc));
-  drainTap();
-  if (st === -2) { setStatus('boot error', 'bad'); log(out()); return; }
-  setStatus('running', 'good');
-  running = true;
+  let handle;
+  try {
+    handle = await boot({
+      wasm: module,
+      bootSrc,
+      files: project ? project.files : null,
+      canvas: newCanvas,
+      onLog: log,
+      onStatus: (state, detail) => {
+        if (state === 'running') setStatus('running', 'good');
+        else if (state === 'paused') setStatus('paused (' + detail + ')', '');
+        else if (state === 'error') { setStatus('runtime error', 'bad'); log(detail); }
+        else if (state === 'quit') { setStatus('quit', ''); log('the game exited'); }
+      },
+    });
+  } catch (e) {
+    setStatus('boot error', 'bad');
+    log(e.message);
+    return;
+  }
 
   // Watch only a mounted project: the canned one has no source on disk to change.
-  if (project) watchProject(project, () => x.pump_invalidate());
+  if (project) watchProject(project, handle);
 
-  const frame = () => {
-    if (!running) return;
-    if (paused) { raf = requestAnimationFrame(frame); return; }
-    st = x.pump_frame(put('t'));
-    drainTap();
-    if (st === -2) { running = false; setStatus('runtime error', 'bad'); log(out()); return; }
-    if (st < 0) { running = false; setStatus('quit', ''); log('the game exited'); return; }
-    raf = requestAnimationFrame(frame);
-  };
-  raf = requestAnimationFrame(frame);
-
-  // Pausing is the shell's job, not the input host's: the host reports focus and
-  // visibility as events the game can see, and the shell decides whether to keep
-  // pumping. A key held when focus is lost is still held when it returns, which
-  // is what desktop does.
-  const pause = (why) => { if (running && !paused) { paused = true; setStatus('paused (' + why + ')', ''); } };
-  const resume = () => { if (running && paused) { paused = false; setStatus('running', 'good'); } };
-  addEventListener('blur', () => pause('unfocused'));
-  addEventListener('focus', resume);
-  document.addEventListener('visibilitychange', () =>
-    document.visibilityState === 'visible' ? resume() : pause('tab hidden'));
-
-  // A browser tab has no close button the game owns, so quitting is explicit.
-  el('quit').addEventListener('click', () => { input.quit(); });
+  el('quit').addEventListener('click', () => { handle.quit(); });
 }
 
 main().catch((e) => { setStatus('failed', 'bad'); log('unhandled: ' + (e && e.message ? e.message : String(e))); });

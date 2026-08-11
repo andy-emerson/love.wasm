@@ -49,6 +49,27 @@ once per frame). See `wasi/boot/` for the boot wiring.
 
 ## 2. The host import surface
 
+### `boot()` — the recommended consumption shape (`wasi/shell/boot.mjs`)
+
+A browser consumer should not wire this surface by hand: `boot({ wasm, bootSrc,
+files, canvas, onLog, onStatus })` is the exported entry point that instantiates
+the artifact with all eight import modules, binds memory on every host, runs
+`_initialize`, boots the pump, and drives it on `requestAnimationFrame` with the
+blur/visibility pause. Only what genuinely varies per consumer is a parameter:
+`files` is the path → bytes map this section defines (produce it however you
+like), `canvas` is a `(w, h) => HTMLCanvasElement` callback invoked when
+`love.window.setMode` asks for a window, and `onLog`/`onStatus` say where the
+console tap and the running/paused/error/quit state go. It returns a handle —
+`stop()`, `invalidate()` (§4), `quit()`, the `files`/`saves` stores,
+`running`/`paused` — and it **verifies the host fulfils the module's import
+surface** via `WebAssembly.Module.imports()` before instantiating, so an
+artifact whose imports have outgrown the host fails loudly with the missing
+names instead of at first call. `wasi/shell/player.mjs` is the first caller: its
+manifest-over-HTTP loader just produces the map and calls `boot()`. This fits
+the #7 delivery shape — host inline in the page, `love.wasm` fetched by URL —
+and everything below remains the contract for a host that fulfils the seams
+itself.
+
 Each module is a WebAssembly import module the host provides at instantiate. All
 are self-contained linear-memory contracts (pointers + lengths into the wasm
 memory the host bound); none require COOP/COEP, SharedArrayBuffer, or Emscripten.

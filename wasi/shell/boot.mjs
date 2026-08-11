@@ -1,0 +1,178 @@
+// The library entry point (#57). Everything a consumer must wire identically to
+// run love.wasm — the eight import modules at instantiate, the memory binds, the
+// import-surface check, the pump marshalling, the stdout tap, pump_boot, the
+// requestAnimationFrame loop with the blur/visibility pause — is one exported
+// call. Before this, that wiring lived only inside player.mjs's main() and could
+// be copied but not called, and a copy breaks silently on the consumer's
+// timeline whenever the import surface moves (as it did when fs_stat gained
+// `readonly`, and again when #51 added glGetStringi).
+//
+// What genuinely varies per consumer is the parameter list — above all which
+// files, which canvas, and where the log goes. player.mjs is the first caller;
+// EMBEDDING.md documents this as the recommended consumption shape.
+//
+//   import { boot } from './boot.mjs';
+//   const handle = await boot({ wasm, bootSrc, files, canvas, onLog });
+//
+// Importable without side effects: nothing here touches the DOM or the network
+// until boot() is called.
+import { makeWasiShim } from '../host/wasi-shim.mjs';
+import { makeWebGLWinHost } from '../host/webgl-win-host.mjs';
+import { makeFsHost } from '../host/fs-host.mjs';
+import { makeSystemHost } from '../host/system-host.mjs';
+import { makeAudioHost } from '../host/audio-host.mjs';
+import { makeGamepadHost } from '../host/gamepad-host.mjs';
+import { makeBrowserInputHost } from '../host/input-host-browser.mjs';
+
+// boot(options) -> handle. Options:
+//   wasm     — the artifact: a compiled WebAssembly.Module (compile it yourself
+//              to keep compileStreaming), or raw bytes to compile here.
+//   bootSrc  — the Lua boot chunk (LÖVE's own boot wrapper,
+//              wasi/platform/witness-frame.lua — see EMBEDDING.md §1).
+//   files    — path -> Uint8Array, the EMBEDDING.md §2 project contract: the map
+//              IS the interface, however the consumer produced it (player.mjs
+//              fetches a manifest; an in-page editor fills it directly). A plain
+//              object or a Map. Omitted, the reference host's canned project runs.
+//   canvas   — (w, h) => HTMLCanvasElement. love.window.setMode decides the
+//              size, so the consumer is asked for a canvas when the game asks
+//              for a window, not before.
+//   onLog    — (line) => void: the game's stdout (print/io.write) and host notes.
+//   onStatus — (state, detail) => void: 'running' | 'paused' (detail = why) |
+//              'error' (detail = the Lua error + traceback) | 'quit'.
+//
+// The handle: stop(), invalidate() (the live-edit reload primitive, EMBEDDING.md
+// §4), quit(), the fs stores (files to mutate for live-edit, saves), and
+// running/paused as live state.
+//
+// Failure is loud: a boot-time Lua error, a missing import, or an instantiate
+// failure all throw — there is no handle to return for a game that never ran.
+export async function boot({
+  wasm, bootSrc, files = null, canvas,
+  onLog = () => {}, onStatus = () => {},
+} = {}) {
+  const shim = makeWasiShim();
+  const input = makeBrowserInputHost();
+  // The consumer says where a canvas comes from; wiring the input listeners to
+  // it and focusing it (so keys land without a click) is invariant, so it
+  // happens here rather than in every consumer.
+  const win = makeWebGLWinHost((w, h) => {
+    const c = canvas(w, h);
+    input.attach(c);
+    c.focus();
+    return c;
+  });
+  const fs = makeFsHost();
+  const system = makeSystemHost();
+  const audio = makeAudioHost();
+  const gamepad = makeGamepadHost();
+
+  if (files) {
+    for (const k of Object.keys(fs.files)) delete fs.files[k];
+    for (const [name, bytes] of files instanceof Map ? files : Object.entries(files))
+      fs.files[name] = bytes;
+  }
+
+  const module = wasm instanceof WebAssembly.Module ? wasm : await WebAssembly.compile(wasm);
+
+  shim.autostub(module);
+  const importObject = {
+    wasi_snapshot_preview1: shim.imports,
+    love_gl: win.glImports,
+    love_win: win.winImports,
+    love_fs: fs.imports,
+    love_input: input.imports,
+    love_gamepad: gamepad.imports,
+    love_system: system.imports,
+    love_audio: audio.imports,
+  };
+
+  // The skew check (#7/#57): when the artifact's import surface outgrows the
+  // host, fail HERE with the missing names, not at first call with whatever a
+  // LinkError happens to say. autostub has already filled preview1, so anything
+  // still missing is a love_* seam the host genuinely does not fulfil.
+  const missing = WebAssembly.Module.imports(module)
+    .filter((i) => !(importObject[i.module] && i.name in importObject[i.module]))
+    .map((i) => i.module + '.' + i.name);
+  if (missing.length)
+    throw new Error('the host does not fulfil the module\'s import surface: ' + missing.join(', '));
+
+  const instance = await WebAssembly.instantiate(module, importObject);
+  const x = instance.exports;
+  // Bind before any import can fire.
+  shim.bind(x.memory);
+  win.bind(x.memory, x.malloc);
+  fs.bind(x.memory);
+  system.bind(x.memory);
+  audio.bind(x.memory);
+  gamepad.bind(x.memory);
+  input.bind(x.memory);
+  x._initialize();
+
+  const te = new TextEncoder(), td = new TextDecoder();
+  // pump_in hands back a pointer to write into; take it before viewing memory,
+  // since a growth during the call would detach an earlier view.
+  const put = (s) => {
+    const b = te.encode(s);
+    const p = x.pump_in(b.length);
+    new Uint8Array(x.memory.buffer).set(b, p);
+    return b.length;
+  };
+  const out = () => {
+    const p = x.pump_out();
+    return td.decode(new Uint8Array(x.memory.buffer).slice(p, p + x.pump_out_len()));
+  };
+
+  let tapped = 0;
+  const drainTap = () => {
+    const s = shim.stdout || '';
+    if (s.length > tapped) { onLog(s.slice(tapped).trimEnd()); tapped = s.length; }
+  };
+
+  let st = x.pump_boot(put(bootSrc));
+  drainTap();
+  if (st === -2) throw new Error(out());
+
+  // Frame cadence is the browser's, and a hidden or unfocused tab gets none: a
+  // game must not keep simulating in a tab nobody is looking at. love.timer's dt
+  // comes from the pump, so a paused tab resumes without a giant time step.
+  let running = true, paused = false, raf = 0;
+  onStatus('running');
+
+  const pause = (why) => { if (running && !paused) { paused = true; onStatus('paused', why); } };
+  const resume = () => { if (running && paused) { paused = false; onStatus('running'); } };
+  const onBlur = () => pause('unfocused');
+  const onVis = () => (document.visibilityState === 'visible' ? resume() : pause('tab hidden'));
+  addEventListener('blur', onBlur);
+  addEventListener('focus', resume);
+  document.addEventListener('visibilitychange', onVis);
+  const detach = () => {
+    removeEventListener('blur', onBlur);
+    removeEventListener('focus', resume);
+    document.removeEventListener('visibilitychange', onVis);
+  };
+
+  const frame = () => {
+    if (!running) return;
+    if (paused) { raf = requestAnimationFrame(frame); return; }
+    st = x.pump_frame(put('t'));
+    drainTap();
+    if (st === -2) { running = false; detach(); onStatus('error', out()); return; }
+    if (st < 0) { running = false; detach(); onStatus('quit'); return; }
+    raf = requestAnimationFrame(frame);
+  };
+  raf = requestAnimationFrame(frame);
+
+  return {
+    // The fs stores, live: mutate files then invalidate() for live-edit (§4);
+    // saves is the writable namespace the game's love.filesystem writes land in.
+    files: fs.files,
+    saves: fs.saves,
+    get running() { return running; },
+    get paused() { return paused; },
+    invalidate: () => x.pump_invalidate(),
+    // A browser tab has no close button the game owns, so quitting is explicit:
+    // push the quit event and let love.run wind down normally next frame.
+    quit: () => input.quit(),
+    stop() { if (!running) return; running = false; cancelAnimationFrame(raf); detach(); },
+  };
+}

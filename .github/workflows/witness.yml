@@ -352,3 +352,23 @@ jobs:
         # step is the reason graphics-witness runs materially longer. Chromium-only
         # (real WebGL2); no node leg (expected).
         run: PREFIX="$PWD/wasi-eh" OUT="$PWD/wasi/shell/love-game.wasm" wasi/shell/run.sh
+        
+$ sed -n 's/^+//p' /tmp/claude-0/-home-user-love-wasi/f4d1b2d0-766e-5007-9245-60d4bdf0f1b9/scratchpad/witness-step.patch | tail -n +2
+
+      - name: corpus parity — LÖVE's own testing/ suite, compared to the expected-fail list (Beta step 3, real Chromium)
+        # The only witness measured by somebody else's tests. Every other one
+        # asserts the thing it built; this runs LÖVE's own 355-test conformance
+        # corpus against this build and compares it test by test to
+        # wasi/corpus/expected.txt.
+        #
+        # THE COMPARISON is the witness, and it fails three ways: a test expected
+        # to pass that failed (a regression), a test on the expected-fail list
+        # that PASSED (the list is stale — a good problem, still a failure,
+        # because an unearned divergence is a lie), and a test that failed while
+        # classified nowhere (nobody decided). So the classification in
+        # COMPATIBILITY.md cannot rot quietly in either direction.
+        #
+        # Reuses the union artifact the shell step above just built, so it adds
+        # ~20s rather than another ~6-min build. Chromium-only (the corpus drives
+        # real love.graphics); no node leg (expected).
+        run: PREFIX="$PWD/wasi-eh" WASM="$PWD/wasi/shell/love-game.wasm" wasi/corpus/run.sh

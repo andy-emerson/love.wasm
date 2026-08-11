@@ -17,7 +17,7 @@ This table is that standard written out one feature at a time.
 |---|---|
 | **✓** | the target has this feature, and this build does it — witnessed |
 | **✗** | the target has this feature, and this build does **not**. A gap, and every one is named below |
-| **~** | the target has it and this build does it, but only under conditions no test can create (a browser API that requires a user gesture). Stated, not witnessed |
+| **~** | the target has it and this build does it, but only under conditions no test can create (a browser API that requires a user gesture, or an async permission grant the test environment refuses). Stated, not witnessed |
 | *(blank)* | the target does not have this feature. A **declared divergence**, never a hidden failure |
 
 A blank cell is the load-bearing one. It does not mean "missing"; it means the
@@ -98,9 +98,9 @@ peculiarity — a phone cannot reposition its window either.
 | pixel dimensions, DPI scale, `toPixels`/`fromPixels` | ✓ | ✓ | |
 | `isVisible`, `isOpen` | ✓ | ✓ | |
 | fullscreen | ✓ | **~** | the Fullscreen API is real, but it requires a **user gesture**. A game calling it from a keypress can work; a test driving it cold never can |
-| `hasFocus` / `hasMouseFocus` | ✓ | **✗** | a page knows: `document.hasFocus()`, `blur`/`focus`, `visibilitychange`. The backend returns a constant `true`. The shell pauses on blur through its own path, so the module never learned to answer |
-| `getSystemTheme` | ✓ | **✗** | `prefers-color-scheme` is real; the backend reports `unknown` |
-| display sleep (`setDisplaySleepEnabled`) | ✓ | **✗** | the Screen Wake Lock API is real, async and permission-gated — implementable, currently a no-op |
+| `hasFocus` / `hasMouseFocus` | ✓ | ✓ | the host's `blur`/`focus` and pointer enter/leave events land in the input snapshot the pump keeps, and the window backend reads it (#58); with no input backend linked the default-focused fallback answers |
+| `getSystemTheme` | ✓ | ✓ | `matchMedia('(prefers-color-scheme: dark)')` over a `love_win` import (#58); a host without `matchMedia` reports `unknown` |
+| display sleep (`setDisplaySleepEnabled`) | ✓ | **~** | the Screen Wake Lock is wired (#58) as request-and-report: the host requests/releases the lock, and `isDisplaySleepEnabled` reports only a lock actually **held** — the grant is async and permission-gated, and headless Chromium refuses it, so no test can see the held state |
 | `setPosition` / `getPosition` | ✓ | | a page cannot move its window |
 | `minimize`, `maximize`, `restore`, `isMinimized`, `isMaximized` | ✓ | | nothing to drive |
 | `setIcon` / `getIcon` | ✓ | | a favicon belongs to the host document, not to the canvas the game owns. Storing the ImageData so `getIcon` round-trips would report an effect the browser never performed |
@@ -153,14 +153,14 @@ These are pure computation. They are the same code, compiled.
 | on-screen keyboard | | | `hasScreenKeyboard` is false on desktop LÖVE too; it is an iOS/Android entry point |
 | mouse position, buttons, wheel | ✓ | ✓ | wheel deltas are normalized — a declared divergence |
 | system cursors, `setVisible` | ✓ | ✓ | CSS cursors |
-| custom image cursors (`newCursor`) | ✓ | **✗** | a data-URL CSS cursor is a real browser capability; unbuilt |
+| custom image cursors (`newCursor`) | ✓ | ✓ | the RGBA8 pixels + hotspot cross the `love_input` seam and the browser host sets a PNG data-URL CSS cursor — `url(...) hotx hoty, auto` (#58) |
 | `setPosition` (cursor warp) | ✓ | | a page cannot move the pointer; reported as a failure rather than faked |
 | relative mode (pointer lock) | ✓ | **~** | the Pointer Lock API is real and requires a **user gesture**. The corpus *passes* it, but only because the reference host answers yes — the test proves the call is wired, not that a browser locked the pointer |
 | `setGrabbed` (cursor confinement) | ✓ | | no browser API at all |
 | touch — press, move, release, `getTouches`, pressure | ✓ | ✓ | the browser TouchEvent API, arriving as three more record types on the existing `love_input` seam. `dx`/`dy` are computed host-side, because a browser gives absolute positions and no per-touch delta |
 | `t.trackpadtouch` | ✓ | | a page cannot ask the OS to deliver a trackpad as touch. `false` — the default — is exactly what a browser already does |
 | gamepad connect/disconnect, buttons, axes | ✓ | ✓ | the Gamepad API is poll-based, so the backend diffs each frame's snapshot and **synthesizes** the events SDL would have delivered — both the raw-joystick and the mapped-gamepad family, as SDL sends both |
-| gamepad vibration | ✓ | **✗** | the browser gamepad has a `vibrationActuator`; unbuilt, and reported unsupported rather than faked as a rumble nobody can observe |
+| gamepad vibration | ✓ | ✓ | `setVibration` drives the pad's `vibrationActuator` (`'dual-rumble'` playEffect) over the `love_gamepad` seam, and the host records every request so the witness can observe it; `isVibrationSupported` reports whether the actuator exists (#58) |
 | custom gamepad mappings — `setGamepadMapping`, `getGamepadMappingString` | ✓ | | no SDL controller database in a browser; the W3C standard mapping is fixed and implicit. `loadGamepadMappings` checks the shape of what it is given and refuses garbage, so a mistyped filename is not silently swallowed |
 | gamepad motion sensors | ✓ | | no gamepad sensor stream |
 | `love.sensor` — accelerometer, gyroscope | | | desktop LÖVE reports no sensors either. The browser's `DeviceMotionEvent` is permission- and HTTPS-gated, and is not wired; the module is linked with warn-once stubs so `love.sensor` is a real table, as it is on desktop |
@@ -222,8 +222,8 @@ Read through this table, the 34 stop being one number:
 | | count | |
 |---|:--:|---|
 | *(blank)* — not supposed to work here | **30** | declared divergences. A test asserting them here is asserting something about a desktop, and it should be marked expected-fail rather than fixed |
-| **~** — real, but needs a user gesture | **2** | `setFullscreen` / `getFullscreen`. A game can reach these from a click or a keypress; a test driving them cold cannot |
-| **✗** — the browser has it and we do not | **2** | `setDisplaySleepEnabled` / `isDisplaySleepEnabled` — the Screen Wake Lock, implementable and unbuilt. It is the whole to-do list now that #51 is fixed |
+| **~** — real, but gated behind what no test can supply | **4** | `setFullscreen` / `getFullscreen` (a user gesture) and `setDisplaySleepEnabled` / `isDisplaySleepEnabled` (#58 — the Screen Wake Lock is wired, but the grant is async and headless Chromium refuses it, and the honest state reports only a lock actually held). A game can reach all four; a test driving them cold cannot |
+| **✗** — the browser has it and we do not | **0** | the wake lock was the last one; #58 closed it and the other four ✗ cells this table had (`hasFocus`/`hasMouseFocus`, `getSystemTheme`, image cursors, gamepad rumble) |
 
 The 30, by suite — and `wasi/corpus/expected.txt` is the same list, executable:
 
@@ -243,11 +243,12 @@ Four of them — the rasterisation near-misses — are not a decision after all:
 measured (#54), they are upstream test-harness tolerance gates that have not
 met a Web target, and the fix is an upstream patch, not a ruling here.
 
-The ✗ column is the honest to-do list, and it is short. Four more ✗ cells appear
-elsewhere in this table — `hasFocus`/`hasMouseFocus`, `getSystemTheme`, custom
-image cursors, and gamepad vibration — which the corpus does not currently probe
-and which no failure count would have surfaced. Finding them is what writing the
-table out feature by feature bought.
+The ✗ column is the honest to-do list, and it is now empty: #58 closed the wake
+lock (to **~**, grant-gated) and the four ✗ cells the corpus never probed —
+`hasFocus`/`hasMouseFocus`, `getSystemTheme`, custom image cursors, and gamepad
+vibration — each behind a host import with a witness that saw the host observe
+the request. Finding them is what writing the table out feature by feature
+bought.
 
 ## Keeping it true
 
@@ -261,7 +262,8 @@ fail. So a divergence that quietly becomes supported, and a fix that quietly
 regresses, both turn CI red instead of ageing in a document.
 
 This document is therefore **tested** where the corpus reaches it — 306/34/15,
-re-earned on every push — and **observed** elsewhere: the ✗ and blank rows the
-corpus does not probe (`hasFocus`, `getSystemTheme`, custom image cursors,
-gamepad vibration) still rest on reading the code, and the Desktop column
+re-earned on every push — and **observed** elsewhere: rows the corpus does not
+probe rest on the platform witnesses (`hasFocus`, `getSystemTheme`, image
+cursors and rumble are asserted by `wasi/platform/run-win.sh`, `run-input.sh`
+and `run-joystick.sh` since #58) or on reading the code, and the Desktop column
 remains a reading of upstream's source rather than a run.

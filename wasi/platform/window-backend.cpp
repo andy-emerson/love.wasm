@@ -34,6 +34,15 @@
 //   window_get_pixel_dimensions(int32* outW, int32* outH)
 //       The canvas's real backing pixel size, host-reported (never assumed).
 //   window_present(void)   Presents the drawn backbuffer (swapBuffers path).
+//   window_set_display_sleep(enable)   #58: enable=0 asks the host to REQUEST a
+//       Screen Wake Lock (keep the display awake), enable=1 to release it. The
+//       request is async and permission-gated, so this only asks.
+//   window_get_display_sleep() -> 1 while display sleep is allowed, 0 only once
+//       a wake lock is actually HELD — the state reflects the granted lock, not
+//       the request, so isDisplaySleepEnabled never claims an effect the browser
+//       has not performed.
+//   window_get_system_theme() -> 0 unknown / 1 light / 2 dark, answered from
+//       matchMedia('(prefers-color-scheme: dark)') where the host has it.
 
 #include "window-backend.h"
 
@@ -50,7 +59,20 @@ WIN_IMPORT("window_setmode") int32_t wwin_setmode(int32_t w, int32_t h,
 	int32_t stencil, int32_t depth, int32_t msaa, int32_t vsync);
 WIN_IMPORT("window_get_pixel_dimensions") void wwin_get_pixel_dimensions(int32_t *out_w, int32_t *out_h);
 WIN_IMPORT("window_present") void wwin_present(void);
+WIN_IMPORT("window_set_display_sleep") void wwin_set_display_sleep(int32_t enable);
+WIN_IMPORT("window_get_display_sleep") int32_t wwin_get_display_sleep(void);
+WIN_IMPORT("window_get_system_theme") int32_t wwin_get_system_theme(void);
 }
+
+// The 6.4 input backend's focus snapshot (#58), reached over WEAK hooks in the
+// same shape as input-backend.cpp's wasi_poll_gamepad_events: the pump records
+// the host's FOCUS/MOUSEFOCUS events into the shared InputState, and these
+// report it. In a build without the input backend (build-win.sh links no
+// input-backend.cpp) the symbols stay null and hasFocus()/hasMouseFocus() fall
+// back to the default-focused answer — the only honest one where no focus
+// events exist at all.
+extern "C" __attribute__((weak)) int32_t wasi_input_has_focus();
+extern "C" __attribute__((weak)) int32_t wasi_input_has_mouse_focus();
 
 namespace love
 {
@@ -292,13 +314,20 @@ int Window::getVSync() const
 	return settings.vsync;
 }
 
-void Window::setDisplaySleepEnabled(bool /*enable*/)
+void Window::setDisplaySleepEnabled(bool enable)
 {
+	// enable=false means "keep the display awake": the host requests a Screen
+	// Wake Lock. The request is async and permission-gated — this only asks.
+	wwin_set_display_sleep(enable ? 1 : 0);
 }
 
 bool Window::isDisplaySleepEnabled() const
 {
-	return true;
+	// Host truth: 0 only while a wake lock is actually HELD. Immediately after
+	// setDisplaySleepEnabled(false) this still reports true until (unless) the
+	// browser grants the async request — request-and-report, never
+	// claim-before-grant.
+	return wwin_get_display_sleep() != 0;
 }
 
 void Window::minimize() {}
@@ -325,11 +354,19 @@ void Window::swapBuffers()
 
 bool Window::hasFocus() const
 {
+	// The input backend's pump records the host's FOCUS events (blur/focus on
+	// the canvas) into the shared snapshot; read it through the weak hook. No
+	// input backend linked -> no focus events exist -> default focused.
+	if (wasi_input_has_focus)
+		return wasi_input_has_focus() != 0;
 	return true;
 }
 
 bool Window::hasMouseFocus() const
 {
+	// Same snapshot, MOUSEFOCUS events (pointer enter/leave on the canvas).
+	if (wasi_input_has_mouse_focus)
+		return wasi_input_has_mouse_focus() != 0;
 	return true;
 }
 
@@ -509,7 +546,14 @@ void Window::requestAttention(bool /*continuous*/)
 
 Window::SystemTheme Window::getSystemTheme() const
 {
-	return THEME_UNKNOWN;
+	// Host truth from matchMedia('(prefers-color-scheme: dark)'); a host
+	// without matchMedia (node, the baked legs) answers 0 = unknown.
+	switch (wwin_get_system_theme())
+	{
+	case 1: return THEME_LIGHT;
+	case 2: return THEME_DARK;
+	default: return THEME_UNKNOWN;
+	}
 }
 
 } // wasm

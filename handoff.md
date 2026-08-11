@@ -33,10 +33,10 @@ witness asserts. See step 3.
 feature against desktop and against this build, ✓ / ✗ / blank. It replaces the
 flat failure count with the question that actually matters — does the target have
 the feature at all — and it resolves the 34 into **30 blanks** (the browser does
-not have it), **2 gesture-gated**, and **2 real gaps** — the Screen Wake Lock,
-implementable and unbuilt, is now the whole to-do list. Its failing half is `wasi/corpus/expected.txt`, so the
-classification is executable rather than prose. It also surfaced four ✗ cells the
-corpus never probes.
+not have it) and **4 grant-/gesture-gated** (fullscreen and, since #58, the
+Screen Wake Lock) — the real-gap count is **zero**. Its failing half is `wasi/corpus/expected.txt`, so the
+classification is executable rather than prose. It also surfaced the four ✗
+cells the corpus never probes, which #58 then closed.
 
 `love.thread` is the one major module still stubbed (build-order step 7).
 
@@ -63,7 +63,16 @@ Now in the tracker, per `CONTRIBUTING.md` §3.3:
   Evidence: the shell witness passes unchanged over the new seam.
 - **#58 — the five constant-answer gaps** (wake lock, hasFocus/hasMouseFocus,
   getSystemTheme, image cursors, gamepad rumble), previously visible only as
-  COMPATIBILITY ✗ cells.
+  COMPATIBILITY ✗ cells — **built**: each rides a host import in the existing
+  seam style (`love_win` wake-lock request/release + held-state + theme;
+  FOCUS/MOUSEFOCUS into the input snapshot, read by the window backend over
+  weak hooks; RGBA8 pixels + hotspot → a data-URL CSS cursor over `love_input`;
+  `vibrationActuator` dual-rumble over `love_gamepad`), and each witness asserts
+  the host **observed** the request — all demonstrated able to fail. The ✗
+  column is now empty; the wake lock lands as **~** (the grant is async and
+  permission-gated, and headless Chromium refuses it, so `expected.txt` keeps
+  its two lines reworded to the fullscreen shape), and honest reporting held:
+  `isDisplaySleepEnabled` reflects only a lock actually held.
 
 **#27 closed** — the warn-once mechanism shipped long ago and
 COMPATIBILITY.md + expected.txt are its "declared disposition table", exceeded.

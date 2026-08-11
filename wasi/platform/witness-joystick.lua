@@ -84,6 +84,24 @@ check("js:getName() == 'Test Controller'", js:getName() == "Test Controller", js
 check("js:getAxisCount() == 4", js:getAxisCount() == 4, js:getAxisCount())
 check("js:getHatCount() == 0", js:getHatCount() == 0, js:getHatCount())
 
+-- ── #58: rumble reaches the host's vibrationActuator ─────────────────────────
+-- The scripted pad carries an actuator, so support is host truth, setVibration
+-- reports what the host actually drove, and getVibration remembers it. The
+-- runner asserts the host's effects log received exactly these two requests.
+check("js:isVibrationSupported() == true (actuator present)",
+  js:isVibrationSupported() == true, js:isVibrationSupported())
+local vibOk = js:setVibration(1, 0.5, 0.25)
+check("js:setVibration(1, 0.5, 0.25) == true (host drove the actuator)",
+  vibOk == true, vibOk)
+local vl, vr = js:getVibration()
+check("js:getVibration() == 1, 0.5", vl == 1 and vr == 0.5,
+  tostring(vl) .. "," .. tostring(vr))
+local stopOk = js:setVibration()
+check("js:setVibration() (stop) == true", stopOk == true, stopOk)
+vl, vr = js:getVibration()
+check("js:getVibration() == 0, 0 after stop", vl == 0 and vr == 0,
+  tostring(vl) .. "," .. tostring(vr))
+
 -- ── pump2: frame1 — A released, B pressed, leftx -1.0 ────────────────────────
 check("pump2 love.event.pump() does not throw", pcall(love.event.pump), true)
 local l2 = drain()
@@ -100,6 +118,8 @@ check("pump3 love.event.pump() does not throw", pcall(love.event.pump), true)
 local l3 = drain()
 check("pump3 joystickremoved", has(l3, "joystickremoved"))
 check("getJoystickCount() == 0 (removed)", love.joystick.getJoystickCount() == 0, love.joystick.getJoystickCount())
+check("js:isVibrationSupported() == false once disconnected (#58)",
+  js:isVibrationSupported() == false, js:isVibrationSupported())
 
 coroutine.yield(("checks done, %d failures"):format(failures))
 return failures == 0 and "STEP65-JOYSTICK-WITNESS: PASS" or "STEP65-JOYSTICK-WITNESS: FAIL"

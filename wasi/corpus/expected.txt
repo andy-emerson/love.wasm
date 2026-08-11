@@ -76,5 +76,5 @@ window/getIcon	divergence	a favicon belongs to the host document, not to the can
 window/setIcon	divergence	storing the ImageData so getIcon round-trips would report an effect the browser never performed
 window/getFullscreen	gesture	the Fullscreen API is real and requires a user gesture — a game can, a cold test cannot
 window/setFullscreen	gesture	as above
-window/isDisplaySleepEnabled	defect	Screen Wake Lock is real, async and permission-gated — implementable, currently a no-op
-window/setDisplaySleepEnabled	defect	as above
+window/isDisplaySleepEnabled	gesture	the Screen Wake Lock is wired (#58), but grant-gated-in-test-env: the grant is async and headless Chromium refuses it, and isDisplaySleepEnabled honestly reports only a lock actually HELD — the test asserts synchronously in the requesting frame
+window/setDisplaySleepEnabled	gesture	as above

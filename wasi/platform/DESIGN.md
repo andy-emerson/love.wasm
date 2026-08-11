@@ -119,8 +119,13 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
   modal-draw path is the only caller — offered upstream). `love.image` +
   `love.filesystem` link because `love.mouse`'s Cursor is image/file-backed;
   witnessed windowlessly, so it runs on node **and** Chromium (no WebGL2).
-  `isModifierActive` (lock latch), custom image cursors, and pointer confinement
-  are the honest warn-once edges.
+  `isModifierActive` (lock latch) and pointer confinement are the honest
+  warn-once edges. (Custom image cursors were one too until #58: `newCursor` now
+  sends the RGBA8 pixels + hotspot through `input_new_cursor_image` and the
+  browser host sets a data-URL CSS cursor; the 6.4 witness asserts the host
+  received the exact bytes. #58 also routed the host's FOCUS/MOUSEFOCUS records
+  into the shared snapshot, where `love.window.hasFocus`/`hasMouseFocus` read
+  them over weak hooks.)
 - **6.5 — `love.joystick` + `love.gamepad`. DONE** (node:wasi + real Chromium; CI
   step added). The real `love.joystick`/`love.gamepad` on a new `love_gamepad`
   host seam (`wasi/platform/joystick-backend.{h,cpp}`) over the browser **Gamepad
@@ -153,10 +158,13 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
   `Joystick:getDevicePowerInfo`/`:getDeviceConnectionState` unconditionally but
   only *defines* them under `LOVE_ENABLE_SENSOR` (upstream bug #23), so joystick
   won't link with sensor off — enabling it moots #23 by config. The honest
-  warn-once edges: **vibration** (the browser gamepad *has* a `vibrationActuator`,
-  but it is a host effect the windowless witness cannot observe, so 6.5 reports it
-  unsupported and `setVibration` is a no-op returning false rather than faking an
-  unwitnessable rumble), the **gamepad-mapping string** (no SDL controller DB in
+  warn-once edges: ~~vibration~~ (**closed by #58**: `setVibration` /
+  `isVibrationSupported` ride two more `love_gamepad` imports, the host drives
+  the pad's `vibrationActuator` with a `'dual-rumble'` effect and records every
+  request in an effects log the 6.5 witness asserts — the "unwitnessable"
+  objection fell once the effects log made the call reaching the host
+  observable, the same standard the cursor-shape effects meet), the
+  **gamepad-mapping string** (no SDL controller DB in
   the browser — the W3C standard mapping is implicit, so `getGamepadMappingString`
   / `setGamepadMapping` / `loadGamepadMappings` are empty/no-op), and **gamepad
   motion sensors** (no gamepad sensor stream). The input path itself is real.

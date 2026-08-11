@@ -57,6 +57,12 @@ export function makeBrowserInputHost() {
   let listeners = [];
   let lastX = 0, lastY = 0;
   let cursorVisible = true;
+  // #58: image cursors, id -> the CSS cursor value (`url(data:...) x y, auto`)
+  // built from the RGBA pixels the guest sent. Remembered so setVisible(true)
+  // can restore whatever cursor was current, image or shape.
+  const imageCursors = new Map();
+  let nextCursorId = 1;
+  let currentCursorCss = '';
 
   // Keys a game owns, so the page does not scroll or move focus under the player.
   // Deliberately narrow: anything with a modifier is left to the browser, so
@@ -119,7 +125,7 @@ export function makeBrowserInputHost() {
     },
     input_set_cursor_visible(v) {
       cursorVisible = !!v;
-      if (target && target.style) target.style.cursor = cursorVisible ? '' : 'none';
+      if (target && target.style) target.style.cursor = cursorVisible ? currentCursorCss : 'none';
     },
     input_set_cursor_shape(s) {
       // LÖVE's system cursor set maps onto CSS cursor keywords for the shapes a
@@ -127,8 +133,33 @@ export function makeBrowserInputHost() {
       const shapes = ['default', 'text', 'crosshair', 'progress', 'wait',
                       'not-allowed', 'nwse-resize', 'nesw-resize', 'ew-resize',
                       'ns-resize', 'move', 'pointer'];
+      currentCursorCss = shapes[s] || 'default';
       if (target && target.style && cursorVisible)
-        target.style.cursor = shapes[s] || 'default';
+        target.style.cursor = currentCursorCss;
+    },
+    // #58: build a real image cursor — paint the RGBA8 pixels onto a canvas,
+    // encode a PNG data URL, and remember `url(...) hotx hoty, auto` under a
+    // fresh id. Returns 0 when the pixels cannot become a cursor here (no DOM
+    // canvas, degenerate size), so the guest raises instead of faking.
+    input_new_cursor_image(ptr, w, h, hotx, hoty) {
+      if (w <= 0 || h <= 0 || typeof document === 'undefined') return 0;
+      try {
+        const rgba = new Uint8ClampedArray(memory.buffer).slice(ptr, ptr + w * h * 4);
+        const cnv = document.createElement('canvas');
+        cnv.width = w; cnv.height = h;
+        const ctx = cnv.getContext('2d');
+        ctx.putImageData(new ImageData(rgba, w, h), 0, 0);
+        const id = nextCursorId++;
+        imageCursors.set(id, 'url(' + cnv.toDataURL('image/png') + ') ' + hotx + ' ' + hoty + ', auto');
+        return id;
+      } catch { return 0; }
+    },
+    input_set_cursor_image(id) {
+      const css = imageCursors.get(id);
+      if (!css) return;
+      currentCursorCss = css;
+      if (target && target.style && cursorVisible)
+        target.style.cursor = currentCursorCss;
     },
     // A browser cannot place the cursor, and pointer lock is deferred (it needs a
     // user gesture and changes the event model). Report honestly.

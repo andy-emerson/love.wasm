@@ -194,7 +194,14 @@ export async function reactorPageFn({ b64, boot, driverSrc, shimSrc, audioHostSr
       }
       audioTone = best;
     }
-    return { ok, lines, stdout: shim.stdout, audioSources, audioTone };
+    // #58: hand the host-observed effect logs back to the runner, so the node
+    // and browser legs can assert the same host-side facts (image cursors,
+    // gamepad rumble). Hosts without a log (makeEmptyInputHost) yield undefined.
+    return {
+      ok, lines, stdout: shim.stdout, audioSources, audioTone,
+      inputEffects: input ? input.effects : undefined,
+      gamepadEffects: gamepad ? gamepad.effects : undefined,
+    };
   } catch (e) {
     // Decode the shim's proc_exit sentinel so it doesn't print [object Object].
     const error = (e && typeof e.wasiExit === 'number') ? ('proc_exit(' + e.wasiExit + ')') : String(e);

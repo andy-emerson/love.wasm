@@ -51,13 +51,31 @@ export function makeInputHost() {
     { type: TOUCHMOVED,    a: 35, b: 48, c: 5, d: 8, i0: 7, p: 0.5 },
     { type: TOUCHPRESSED,  a: 60, b: 70, c: 0, d: 0, i0: 9, p: 0.25 },
     { type: TOUCHRELEASED, a: 35, b: 48, c: 0, d: 0, i0: 7, p: 0.5 },
+    // Focus round-trip (#58): the canvas loses the pointer, then the window,
+    // then regains both — so the witness sees the four messages AND the shared
+    // snapshot love.window.hasFocus/hasMouseFocus read ends where it started
+    // (focused, the default the baked host's silence otherwise means).
+    { type: MOUSEFOCUS, i0: 0 },                                  // mousefocus false
+    { type: FOCUS, i0: 0 },                                       // focus false
+    { type: FOCUS, i0: 1 },                                       // focus true
+    { type: MOUSEFOCUS, i0: 1 },                                  // mousefocus true
     { type: QUIT },                                               // quit
   ];
 
   const queue = script.slice();
 
   // Side effects the guest requests, recorded so a leg can assert them.
-  const effects = { cursorVisible: [], cursorShape: [], warp: [], relative: [], textInput: [] };
+  // newCursor records every image cursor the guest built (#58) — dimensions,
+  // hotspot, and the css value a browser would set; cursorImage records each
+  // id the guest APPLIED via love.mouse.setCursor.
+  const effects = { cursorVisible: [], cursorShape: [], warp: [], relative: [], textInput: [], newCursor: [], cursorImage: [] };
+
+  // #58: image cursors, id -> the recorded build. This baked host applies
+  // nothing (there is no canvas), so the css value is a deterministic data URL
+  // of the raw RGBA bytes — enough for a witness to assert the exact pixels and
+  // hotspot that would reach the browser's `url(...) x y, auto` cursor.
+  const cursors = new Map();
+  let nextCursorId = 1;
 
   const writeStr = (dv, off, s) => {
     for (let i = 0; i < 40; i++) dv.setUint8(off + i, 0);
@@ -90,6 +108,22 @@ export function makeInputHost() {
     },
     input_set_cursor_visible(v) { effects.cursorVisible.push(v); },
     input_set_cursor_shape(s) { effects.cursorShape.push(s); },
+    // #58: build an image cursor from RGBA8 pixels + hotspot; return its id.
+    input_new_cursor_image(ptr, w, h, hotx, hoty) {
+      if (w <= 0 || h <= 0) return 0;
+      // A plain array, not a typed one: the browser leg returns the effects log
+      // through the page boundary, and a plain array survives serialization.
+      const rgba = Array.from(new Uint8Array(memory.buffer).subarray(ptr, ptr + w * h * 4));
+      let bin = '';
+      for (const b of rgba) bin += String.fromCharCode(b);
+      const css = 'url(data:image/x-rgba8;base64,' + btoa(bin) + ') ' + hotx + ' ' + hoty + ', auto';
+      const id = nextCursorId++;
+      const rec = { id, w, h, hotx, hoty, rgba, css };
+      cursors.set(id, rec);
+      effects.newCursor.push(rec);
+      return id;
+    },
+    input_set_cursor_image(id) { effects.cursorImage.push(id); },
     input_warp(x, y) { effects.warp.push([x, y]); },
     input_set_relative(r) { effects.relative.push(r); return 1; },
     input_set_text_input(enable, x, y, w, h) { effects.textInput.push([enable, x, y, w, h]); },

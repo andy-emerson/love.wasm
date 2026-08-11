@@ -31,6 +31,7 @@
 #include "common/Object.h"
 #include "event/Event.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -46,6 +47,13 @@
 extern "C" {
 GP_IMPORT("gamepad_count") int32_t gp_count();
 GP_IMPORT("gamepad_read") int32_t gp_read(int32_t slot, uint8_t *rec, int32_t cap);
+// #58: rumble over the gamepad's vibrationActuator. Supported iff the actuator
+// exists on the pad in that slot; set returns 1 only when the host actually
+// drove (or stopped) the actuator — left/right are the strong/weak dual-rumble
+// magnitudes in [0,1], duration in seconds (<= 0 = until stopped, which the
+// host clamps to the Gamepad API's longest effect).
+GP_IMPORT("gamepad_is_vibration_supported") int32_t gp_is_vibration_supported(int32_t slot);
+GP_IMPORT("gamepad_set_vibration") int32_t gp_set_vibration(int32_t slot, float left, float right, float duration);
 }
 
 // The gamepad-record wire format (must match the host writer exactly, LE):
@@ -306,31 +314,38 @@ void Joystick::getDeviceInfo(int &vendorID, int &productID, int &productVersion)
 
 bool Joystick::isVibrationSupported()
 {
-	// The browser gamepad DOES expose a vibrationActuator, but driving it is a
-	// host effect the windowless witness cannot observe, so 6.5 reports it
-	// unsupported rather than faking a rumble the witness can't confirm. Honest
-	// warn-once edge (documented in DESIGN.md); a later sub-step can wire the
-	// real actuator through the host once there is a way to witness it.
-	preview_warn_once("joystick.isVibrationSupported",
-		"love.joystick vibration is reported unsupported in the browser preview "
-		"(the gamepad vibrationActuator is a host effect not driven by 6.5).");
-	return false;
+	// #58: host truth — whether the pad in this slot has a vibrationActuator.
+	return cur.connected && gp_is_vibration_supported(slot) != 0;
 }
 
-bool Joystick::setVibration(float /*left*/, float /*right*/, float /*duration*/)
+bool Joystick::setVibration(float left, float right, float duration)
 {
-	preview_warn_once("joystick.setVibration",
-		"love.joystick Joystick:setVibration is a no-op in the browser preview "
-		"(gamepad rumble is not driven by 6.5); returning false.");
-	return false;
+	if (!cur.connected)
+		return false;
+
+	left = std::min(std::max(left, 0.0f), 1.0f);
+	right = std::min(std::max(right, 0.0f), 1.0f);
+
+	// Report only what the host performed: 1 means the actuator was driven.
+	bool ok = gp_set_vibration(slot, left, right, duration) != 0;
+	vibLeft = ok ? left : 0.0f;
+	vibRight = ok ? right : 0.0f;
+	return ok;
 }
 
-bool Joystick::setVibration() { return false; }
+bool Joystick::setVibration()
+{
+	// Stop: zero magnitudes, zero duration. Success means the host stopped it.
+	bool ok = cur.connected && gp_set_vibration(slot, 0.0f, 0.0f, 0.0f) != 0;
+	vibLeft = 0.0f;
+	vibRight = 0.0f;
+	return ok;
+}
 
 void Joystick::getVibration(float &left, float &right)
 {
-	left = 0.0f;
-	right = 0.0f;
+	left = vibLeft;
+	right = vibRight;
 }
 
 bool Joystick::hasSensor(Sensor::SensorType /*type*/) const { return false; }

@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { driveWitness } from './driver.mjs';
+import { assertCursorEffects } from './assert-input-effects.mjs';
 import { makeWasiShim } from '../host/wasi-shim.mjs';
 import { makeInputHost } from '../host/input-host.mjs';
 import { makeFsHost } from '../host/fs-host.mjs';
@@ -31,4 +32,8 @@ console.log('--- browser transcript ---');
 for (const line of result.lines) console.log(line);
 if (result.stdout) console.log('--- wasm stdout ---\n' + result.stdout.trimEnd());
 if (result.error) console.log('--- error: ' + result.error + ' ---');
-process.exit(result.ok ? 0 : 1);
+
+// #58 host-side assertions on the effects log the page handed back — the same
+// facts the node leg asserts (see assert-input-effects.mjs).
+const hostOk = result.ok && assertCursorEffects(result.inputEffects, console.log);
+process.exit(result.ok && hostOk ? 0 : 1);

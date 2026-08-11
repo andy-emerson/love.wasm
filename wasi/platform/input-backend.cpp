@@ -26,7 +26,10 @@
 #include "input-backend.h"
 #include "preview-warn.h"
 
+#include "common/Exception.h"
 #include "common/Object.h"
+#include "common/pixelformat.h"
+#include "image/ImageData.h"
 
 #ifdef LOVE_ENABLE_TOUCH
 // Touch records update the live-touch list as they are converted, which is where
@@ -54,6 +57,12 @@ INPUT_IMPORT("input_set_cursor_shape") void win_input_set_cursor_shape(int32_t s
 INPUT_IMPORT("input_warp") void win_input_warp(double x, double y);
 INPUT_IMPORT("input_set_relative") int32_t win_input_set_relative(int32_t relative);
 INPUT_IMPORT("input_set_text_input") void win_input_set_text_input(int32_t enable, double x, double y, double w, double h);
+// #58: custom image cursors. input_new_cursor_image hands the host the RGBA8
+// pixels + hotspot and returns a host cursor handle (> 0; 0 = the host could
+// not build one); input_set_cursor_image applies a previously built cursor to
+// the canvas (a data-URL CSS cursor in the browser host).
+INPUT_IMPORT("input_new_cursor_image") int32_t win_input_new_cursor_image(const uint8_t *rgba, int32_t w, int32_t h, int32_t hotx, int32_t hoty);
+INPUT_IMPORT("input_set_cursor_image") void win_input_set_cursor_image(int32_t id);
 }
 
 // The event-record wire format (must match the host writer exactly, LE):
@@ -164,6 +173,21 @@ bool domCodeToName(const char *code, const char *&name)
 
 } // wasi_input
 } // love
+
+// #58: the focus half of the snapshot, exported for the window backend. These
+// are the STRONG definitions of the weak hooks window-backend.cpp declares —
+// the same linkage shape as wasi_poll_gamepad_events below — so a build that
+// links love.window without this input backend still links, falling back to
+// the default-focused answer there.
+extern "C" int32_t wasi_input_has_focus()
+{
+	return love::wasi_input::state().windowFocused ? 1 : 0;
+}
+
+extern "C" int32_t wasi_input_has_mouse_focus()
+{
+	return love::wasi_input::state().mouseFocused ? 1 : 0;
+}
 
 // ── love.event backend ────────────────────────────────────────────────────────
 
@@ -327,11 +351,15 @@ void Event::pump(float /*waitTimeout*/)
 			msg = new Message("resize", vargs);
 			break;
 		case EV_FOCUS:
-			vargs.emplace_back(recInt(rec, 36) != 0);
+			// #58: record into the shared snapshot too, so love.window.hasFocus()
+			// (through the weak hooks below) answers the same truth the event said.
+			st.windowFocused = recInt(rec, 36) != 0;
+			vargs.emplace_back(st.windowFocused);
 			msg = new Message("focus", vargs);
 			break;
 		case EV_MOUSEFOCUS:
-			vargs.emplace_back(recInt(rec, 36) != 0);
+			st.mouseFocused = recInt(rec, 36) != 0;
+			vargs.emplace_back(st.mouseFocused);
 			msg = new Message("mousefocus", vargs);
 			break;
 		case EV_VISIBLE:
@@ -515,9 +543,12 @@ Cursor::Cursor(SystemCursor sysCursor)
 {
 }
 
-Cursor::Cursor(CursorType type, SystemCursor sysCursor)
-	: cursorType(type)
-	, systemCursor(sysCursor)
+Cursor::Cursor(int imageId)
+	: cursorType(CURSORTYPE_IMAGE)
+	// The shape a host without the image falls back to; getSystemType() has to
+	// answer something for an image cursor, and arrow is that answer.
+	, systemCursor(CURSOR_ARROW)
+	, imageId(imageId)
 {
 }
 
@@ -536,14 +567,23 @@ Mouse::~Mouse()
 
 love::mouse::Cursor *Mouse::newCursor(const std::vector<image::ImageData *> &data, int hotx, int hoty)
 {
-	(void) data; (void) hotx; (void) hoty;
-	// The browser canvas can only show a CSS cursor (a system shape or an image
-	// URL). A pixel-data custom cursor is not rendered here; return an honest
-	// image-typed cursor that behaves as the default shape.
-	preview_warn_once("mouse.newCursor",
-		"custom image cursors are not drawn in the browser canvas; the default "
-		"cursor shape is used");
-	return new Cursor(Cursor::CURSORTYPE_IMAGE, Cursor::CURSOR_ARROW);
+	// #58: a real image cursor — the RGBA8 pixels + hotspot go to the host,
+	// which builds a data-URL CSS cursor for the canvas. Validation mirrors
+	// mouse/sdl/Cursor.cpp; only the FIRST ImageData is sent (the extras are
+	// alternate DPI representations, and CSS has one image per cursor).
+	if (data.empty() || data[0] == nullptr)
+		throw love::Exception("At least one ImageData must be provided for a custom cursor.");
+
+	image::ImageData *imgd = data[0];
+	if (getLinearPixelFormat(imgd->getFormat()) != PIXELFORMAT_RGBA8_UNORM)
+		throw love::Exception("Cannot create cursor: ImageData pixel format must be rgba8.");
+
+	int32_t id = win_input_new_cursor_image((const uint8_t *) imgd->getData(),
+		imgd->getWidth(), imgd->getHeight(), hotx, hoty);
+	if (id <= 0)
+		throw love::Exception("Cannot create cursor: the host could not build an image cursor.");
+
+	return new Cursor((int) id);
 }
 
 love::mouse::Cursor *Mouse::getSystemCursor(Cursor::SystemCursor cursortype)
@@ -554,8 +594,14 @@ love::mouse::Cursor *Mouse::getSystemCursor(Cursor::SystemCursor cursortype)
 void Mouse::setCursor(love::mouse::Cursor *cursor)
 {
 	curCursor.set(cursor);
-	if (cursor)
-		win_input_set_cursor_shape((int32_t) cursor->getSystemType());
+	if (!cursor)
+		return;
+	// Every cursor here is ours (the two factories above are the only sources).
+	Cursor *c = (Cursor *) cursor;
+	if (c->getType() == love::mouse::Cursor::CURSORTYPE_IMAGE && c->getImageId() > 0)
+		win_input_set_cursor_image(c->getImageId());
+	else
+		win_input_set_cursor_shape((int32_t) c->getSystemType());
 }
 
 void Mouse::setCursor()

@@ -124,6 +124,14 @@ WebGL2 context (D3); `present()` swaps; `captureScreenshot` reads the presented
 backbuffer back. The created context is the surface the static WebGL2 GL imports
 (step 4) issue draw calls against.
 
+Three more imports carry the honest window answers (#58):
+
+| Import | Contract |
+|---|---|
+| `window_set_display_sleep(enable)` | `0` asks the host to **request** a Screen Wake Lock (keep the display awake), `1` to release it. The grant is async and permission-gated — this only asks |
+| `window_get_display_sleep() -> i32` | `1` while display sleep is allowed; `0` only while a wake lock is actually **held**. `isDisplaySleepEnabled` reads this, so it never claims an effect the browser has not performed |
+| `window_get_system_theme() -> i32` | `0` unknown / `1` light / `2` dark, from `matchMedia('(prefers-color-scheme: dark)')`; a host without `matchMedia` answers `0` |
+
 ### `love_gl` — the WebGL2 draw surface (step 4)
 
 The `opengl` backend, reused, with its GL loader reseamed to **static WebGL2
@@ -138,7 +146,17 @@ guest's `event::wasm::Event::pump()` drains them into `love::event::Message`
 objects (the translation `event/sdl/Event.cpp` does for SDL, incl. the DOM→LÖVE
 button remap and physical-`code`→key mapping), which the unchanged Lua dispatch
 fires as `love.keypressed`/`love.mousepressed`/… . `love.keyboard`/`love.mouse`
-read the shared input snapshot the pump maintains.
+read the shared input snapshot the pump maintains — including the FOCUS /
+MOUSEFOCUS records, which also back `love.window.hasFocus()`/`hasMouseFocus()`
+(#58).
+
+Custom image cursors (#58) ride two guest→host imports beside the existing
+cursor side effects:
+
+| Import | Contract |
+|---|---|
+| `input_new_cursor_image(rgba, w, h, hotx, hoty) -> i32` | builds an image cursor from `w*h*4` RGBA8 bytes + hotspot; returns a host cursor id (`> 0`), or `0` when the host cannot build one (the guest raises rather than faking). The browser host paints the pixels onto a canvas and keeps `url(<png data URL>) hotx hoty, auto` |
+| `input_set_cursor_image(id)` | applies a previously built image cursor to the canvas; system-cursor shapes keep flowing through `input_set_cursor_shape` |
 
 ### `love_gamepad` — joystick + gamepad (6.5) — `wasi/host/gamepad-host.mjs`
 
@@ -147,6 +165,13 @@ mirroring `navigator.getGamepads()`). Once per frame the guest reads the slots
 and **diffs** them against the previous poll to synthesize the
 `joystick*`/`gamepad*` events SDL would push, reusing 6.4's push queue via a weak
 poll hook.
+
+Rumble (#58) adds two guest→host imports:
+
+| Import | Contract |
+|---|---|
+| `gamepad_is_vibration_supported(slot) -> i32` | `1` iff the pad in this slot has a `vibrationActuator` |
+| `gamepad_set_vibration(slot, left, right, duration) -> i32` | drives the actuator with a `'dual-rumble'` effect — `left`/`right` are the strong/weak magnitudes in `[0,1]`, `duration` in seconds (`<= 0` = until stopped, clamped to the API's 5s longest effect; zero magnitudes stop). Returns `1` only when an actuator was actually driven, and the host records every request in its effects log |
 
 ### `love_system` — system capabilities (6.6a) — `wasi/host/system-host.mjs`
 

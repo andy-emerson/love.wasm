@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { driveWitness } from './driver.mjs';
+import { assertCursorEffects } from './assert-input-effects.mjs';
 import { makeInputHost } from '../host/input-host.mjs';
 import { makeFsHost } from '../host/fs-host.mjs';
 import { runReactorNode } from '../host/witness-harness.mjs';
@@ -26,4 +27,10 @@ const ok = await runReactorNode(bytes, driveWitness, bootSrc, {
     fs.bind(instance.exports.memory);
   },
 });
-process.exit(ok ? 0 : 1);
+
+// ── #58 host-side assertions: the image cursor REACHED the host ──────────────
+// The Lua checks prove the guest surface (type, get/set round-trip); this
+// proves the host's effects log received the exact pixels + hotspot as the
+// data-URL CSS cursor, and that setCursor applied that cursor's id.
+const hostOk = assertCursorEffects(input.effects, console.log);
+process.exit(ok && hostOk ? 0 : 1);

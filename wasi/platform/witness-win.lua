@@ -127,5 +127,48 @@ if shot.outside then
     ("(%d,%d,%d,%d)"):format(shot.outside[1], shot.outside[2], shot.outside[3], shot.outside[4]))
 end
 
+-- ── #58: the honest window answers — wake lock, system theme, focus surface ──
+-- Default: no wake lock held, so display sleep is enabled.
+check("isDisplaySleepEnabled() defaults to true (no lock held)",
+  love.window.isDisplaySleepEnabled() == true, love.window.isDisplaySleepEnabled())
+
+-- Request the wake lock (disable display sleep). The grant is async and
+-- permission-gated: the host records the REQUEST immediately (the runner
+-- asserts the effects log), while isDisplaySleepEnabled reports only a lock
+-- actually HELD — so in the same frame it must still say true.
+love.window.setDisplaySleepEnabled(false)
+check("isDisplaySleepEnabled() in the requesting frame is still true (request is not grant)",
+  love.window.isDisplaySleepEnabled() == true, love.window.isDisplaySleepEnabled())
+
+-- Two frames for the browser to resolve the request, then report what it did.
+-- A report, not a check: whether headless Chromium grants the lock is the
+-- environment's call; the runner cross-checks this line against the host's
+-- real sentinel state.
+coroutine.yield("waiting a frame for the wake-lock grant")
+coroutine.yield("waiting another frame for the wake-lock grant")
+coroutine.yield("wake lock held after request: " .. tostring(not love.window.isDisplaySleepEnabled()))
+
+-- Release: whatever the grant did, re-enabling display sleep must end with no
+-- lock held.
+love.window.setDisplaySleepEnabled(true)
+coroutine.yield("released the wake lock request")
+check("isDisplaySleepEnabled() == true after release",
+  love.window.isDisplaySleepEnabled() == true, love.window.isDisplaySleepEnabled())
+
+-- System theme: matchMedia('(prefers-color-scheme: dark)') truth. The runner
+-- asserts this line agrees with the page's own matchMedia answer.
+local theme = love.window.getSystemTheme()
+check("getSystemTheme() answers light/dark in a browser (not unknown)",
+  theme == "light" or theme == "dark", theme)
+coroutine.yield("getSystemTheme() = " .. tostring(theme))
+
+-- Focus surface: this build links no input backend, so the weak focus hooks
+-- are absent and the honest answer is the default-focused fallback. (The real
+-- snapshot wiring is witnessed by the 6.4 leg's focus/mousefocus messages.)
+check("hasFocus() == true (default focused)",
+  love.window.hasFocus() == true, love.window.hasFocus())
+check("hasMouseFocus() == true (default focused)",
+  love.window.hasMouseFocus() == true, love.window.hasMouseFocus())
+
 coroutine.yield(("checks done, %d failures"):format(failures))
 return failures == 0 and "STEP6-WIN-WITNESS: PASS" or "STEP6-WIN-WITNESS: FAIL"

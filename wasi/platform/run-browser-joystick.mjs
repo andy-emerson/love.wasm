@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { driveWitness } from './driver.mjs';
+import { assertVibrationEffects } from './assert-gamepad-effects.mjs';
 import { makeWasiShim } from '../host/wasi-shim.mjs';
 import { makeGamepadHost, makeEmptyInputHost } from '../host/gamepad-host.mjs';
 import { makeFsHost } from '../host/fs-host.mjs';
@@ -34,4 +35,8 @@ console.log('--- browser transcript ---');
 for (const line of result.lines) console.log(line);
 if (result.stdout) console.log('--- wasm stdout ---\n' + result.stdout.trimEnd());
 if (result.error) console.log('--- error: ' + result.error + ' ---');
-process.exit(result.ok ? 0 : 1);
+
+// #58 host-side assertions on the effects log the page handed back — the same
+// facts the node leg asserts (see assert-gamepad-effects.mjs).
+const hostOk = result.ok && assertVibrationEffects(result.gamepadEffects, console.log);
+process.exit(result.ok && hostOk ? 0 : 1);

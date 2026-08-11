@@ -46,10 +46,13 @@
 // enums — the same split the input backend has (host forwards browser truth, the
 // backend owns LÖVE semantics).
 //
-// Warn-once edges (honest, non-fatal — the input path itself is real): vibration
-// (the windowless witness can't drive a real vibrationActuator), the SDL
-// controller-DB mapping string (no controller DB in the browser), and joystick
-// motion sensors (no gamepad sensor stream here).
+// Vibration is real (#58): setVibration/isVibrationSupported ride two more
+// love_gamepad imports, and the host drives the pad's vibrationActuator
+// ('dual-rumble' playEffect) when it exists, recording each request in an
+// effects log the witness asserts. Warn-once edges that remain (honest,
+// non-fatal — the input path itself is real): the SDL controller-DB mapping
+// string (no controller DB in the browser), and joystick motion sensors (no
+// gamepad sensor stream here).
 //
 // This header lives out-of-tree (readme.md: the src tree stays upstream-shaped);
 // wrap_JoystickModule.cpp includes it under LOVE_WASM via -I wasi/platform and
@@ -166,6 +169,11 @@ private:
 	int slot;       // navigator.getGamepads() slot
 	int instanceid; // stable per-connection instance id
 	int playerIndex = -1;
+
+	// The last vibration the host ACCEPTED (#58) — what getVibration reports,
+	// mirroring how the SDL backend remembers what it last commanded.
+	float vibLeft = 0.0f;
+	float vibRight = 0.0f;
 
 	GamepadSnapshot cur;
 	GamepadSnapshot prev;

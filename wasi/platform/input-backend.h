@@ -88,6 +88,14 @@ struct InputState
 	bool textInput = false;      // love.keyboard.setTextInput
 	bool cursorVisible = true;   // love.mouse.setVisible
 	bool relativeMode = false;   // love.mouse.setRelativeMode / pointer lock
+
+	// #58: the host's FOCUS/MOUSEFOCUS events (blur/focus, pointer enter/leave
+	// on the canvas), recorded by the pump so love.window.hasFocus() /
+	// hasMouseFocus() answer real state through the weak hooks the window
+	// backend reads. Default focused: with no focus events yet (the baked
+	// hosts push none), a freshly opened canvas is the focused one.
+	bool windowFocused = true;   // EV_FOCUS
+	bool mouseFocused = true;    // EV_MOUSEFOCUS
 };
 
 InputState &state();
@@ -165,17 +173,23 @@ class Cursor final : public love::mouse::Cursor
 public:
 
 	Cursor(SystemCursor systemCursor);
-	Cursor(CursorType type, SystemCursor systemCursor);
+	// #58: an image cursor. imageId is the host's handle for the pixel data
+	// newCursor sent through input_new_cursor_image; setCursor applies it via
+	// input_set_cursor_image.
+	explicit Cursor(int imageId);
 	virtual ~Cursor() {}
 
 	void *getHandle() const override;
 	CursorType getType() const override;
 	SystemCursor getSystemType() const override;
 
+	int getImageId() const { return imageId; }
+
 private:
 
 	CursorType cursorType;
 	SystemCursor systemCursor;
+	int imageId = 0; // host cursor handle; 0 = not an image cursor
 
 }; // Cursor
 

@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { driveWitness } from './driver.mjs';
+import { assertVibrationEffects } from './assert-gamepad-effects.mjs';
 import { makeGamepadHost, makeEmptyInputHost } from '../host/gamepad-host.mjs';
 import { makeFsHost } from '../host/fs-host.mjs';
 import { runReactorNode } from '../host/witness-harness.mjs';
@@ -29,4 +30,9 @@ const ok = await runReactorNode(bytes, driveWitness, bootSrc, {
     fs.bind(instance.exports.memory);
   },
 });
-process.exit(ok ? 0 : 1);
+
+// ── #58 host-side assertions: the rumble REACHED the actuator ────────────────
+// The Lua checks prove the guest surface (supported/set/get); this proves the
+// host's effects log received the exact dual-rumble requests and drove them.
+const hostOk = assertVibrationEffects(gamepad.effects, console.log);
+process.exit(ok && hostOk ? 0 : 1);

@@ -17,7 +17,8 @@
 --   keydown KeyA · textinput "A" · keyup KeyA · keydown ArrowLeft(left held) ·
 --   mousemoved(10,20,+10,+20) · mousepressed left · mousepressed right ·
 --   mousereleased left · wheelmoved(0,1,standard) · resize(800,600) ·
---   touchpressed 7 · touchmoved 7 · touchpressed 9 · touchreleased 7 · quit
+--   touchpressed 7 · touchmoved 7 · touchpressed 9 · touchreleased 7 ·
+--   mousefocus false · focus false · focus true · mousefocus true (#58) · quit
 --
 -- The touch tail is two fingers on purpose: love.touch keeps a LIST of live
 -- touches, so a single finger would not tell a working list from a single slot.
@@ -55,7 +56,7 @@ local msgs = {}
 for name, a, b, c, d, e, f, g, h in love.event.poll() do
   msgs[#msgs + 1] = { name, a, b, c, d, e, f, g, h }
 end
-check("pump produced 15 messages", #msgs == 15, #msgs)
+check("pump produced 19 messages", #msgs == 19, #msgs)
 
 local function m(i) return msgs[i] or {} end
 local function eq(i, name, a, b, c, d)
@@ -132,8 +133,22 @@ if #touches == 1 then
   check("getPosition on the RELEASED finger errors", not pcall(love.touch.getPosition, t11[2]), "no error")
 end
 
+-- ── the focus round-trip (#58) ──────────────────────────────────────────────
+-- The four focus records become focus/mousefocus messages AND write the shared
+-- snapshot love.window.hasFocus()/hasMouseFocus() read (no window module in
+-- this build; the snapshot half shows through the message payloads, which are
+-- read back from the state the pump just wrote).
+local ok15, g15 = eq(15, "mousefocus", false)
+check("msg15 mousefocus false (pointer left the canvas)", ok15, g15)
+local ok16, g16 = eq(16, "focus", false)
+check("msg16 focus false (window blurred)", ok16, g16)
+local ok17, g17 = eq(17, "focus", true)
+check("msg17 focus true (window refocused)", ok17, g17)
+local ok18, g18 = eq(18, "mousefocus", true)
+check("msg18 mousefocus true (pointer back on the canvas)", ok18, g18)
+
 -- quit
-check("msg15 quit", m(15)[1] == "quit", m(15)[1])
+check("msg19 quit", m(19)[1] == "quit", m(19)[1])
 
 -- Now the shared-state readers. After the pump: 'a' was pressed then released,
 -- 'left' is still held; left mouse pressed then released, right still held; last
@@ -155,6 +170,32 @@ check("getKeyFromScancode('left') == 'left'", love.keyboard.getKeyFromScancode("
 -- setKeyRepeat / hasKeyRepeat round-trip.
 love.keyboard.setKeyRepeat(true)
 check("setKeyRepeat/hasKeyRepeat round-trips", love.keyboard.hasKeyRepeat() == true, love.keyboard.hasKeyRepeat())
+
+-- ── #58: a custom image cursor reaches the host ─────────────────────────────
+-- Build a 2x2 rgba8 ImageData with four distinct pixels and a (1,0) hotspot;
+-- the runner asserts the host's effects log received exactly these bytes and
+-- that hotspot as a data-URL CSS cursor.
+local iok = pcall(require, "love.image")
+check("require 'love.image' SUCCEEDS", iok and type(love.image) == "table", iok)
+local img = love.image.newImageData(2, 2)
+img:setPixel(0, 0, 1, 0, 0, 1)  -- red
+img:setPixel(1, 0, 0, 1, 0, 1)  -- green
+img:setPixel(0, 1, 0, 0, 1, 1)  -- blue
+img:setPixel(1, 1, 1, 1, 1, 1)  -- white
+local cok, cursor = pcall(love.mouse.newCursor, img, 1, 0)
+check("love.mouse.newCursor(2x2 ImageData, 1, 0) succeeds", cok and cursor ~= nil, cursor)
+check("cursor:getType() == 'image'", cok and cursor:getType() == "image",
+  cok and cursor:getType() or cursor)
+love.mouse.setCursor(cursor)
+check("getCursor() returns the image cursor", love.mouse.getCursor() == cursor,
+  love.mouse.getCursor())
+-- System cursors keep working beside image ones.
+local hand = love.mouse.getSystemCursor("hand")
+love.mouse.setCursor(hand)
+check("setCursor(system 'hand') still works after an image cursor",
+  love.mouse.getCursor() == hand, love.mouse.getCursor())
+love.mouse.setCursor()
+check("setCursor() resets to nil", love.mouse.getCursor() == nil, love.mouse.getCursor())
 
 coroutine.yield(("checks done, %d failures"):format(failures))
 return failures == 0 and "STEP64-INPUT-WITNESS: PASS" or "STEP64-INPUT-WITNESS: FAIL"

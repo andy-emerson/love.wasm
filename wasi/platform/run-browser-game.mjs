@@ -137,6 +137,8 @@ async function gamePageFn({ b64, boot, gameConf, gameMain, oggB64, shimSrc, winH
     input_poll() { return 0; },
     input_set_cursor_visible() {}, input_set_cursor_shape() {},
     input_warp() {}, input_set_relative() { return 0; }, input_set_text_input() {},
+    // #58 image-cursor pair, inert: 0 = "could not build one".
+    input_new_cursor_image() { return 0; }, input_set_cursor_image() {},
   };
 
   try {

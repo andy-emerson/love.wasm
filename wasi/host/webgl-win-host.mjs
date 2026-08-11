@@ -12,7 +12,10 @@
 // rework of that stringification mechanism, deferred as a separate refactor.
 // Until then: any GL entry point added to webgl-host.mjs MUST be mirrored here.
 //   love_win — window_setmode / window_get_pixel_dimensions / window_present,
-//              the seam love::window::wasm::Window drives.
+//              the seam love::window::wasm::Window drives — plus the #58 trio:
+//              window_set_display_sleep / window_get_display_sleep (Screen Wake
+//              Lock, request-and-report) and window_get_system_theme
+//              (prefers-color-scheme).
 //
 // The one structural difference from webgl-host.mjs is deliberate and is the
 // crux of step 6.3's context handoff: webgl-host.mjs creates the WebGL2 context
@@ -398,7 +401,48 @@ export function makeWebGLWinHost(newCanvas) {
   ];
   for (const name of STUBS) if (!(name in glImports)) glImports[name] = ((n) => () => { console.warn('[webgl-win-host] unimplemented GL entry point called: ' + n); })(name);
 
+  // ── #58: Screen Wake Lock state ─────────────────────────────────────────────
+  // Async and permission-gated, so the shape is request-and-report: `wakeLock`
+  // holds the granted sentinel (null until the browser resolves the request),
+  // `wakeLockWant` remembers what the guest asked for so a late grant after a
+  // release is let go instead of leaking a lock nobody wants. The guest reads
+  // truth back through window_get_display_sleep, which reports the lock HELD,
+  // never the request. Every request/release lands in winEffects so a witness
+  // can assert the host observed it even when the environment refuses the grant.
+  let wakeLock = null;
+  let wakeLockWant = false;
+  let wakeLockEverHeld = false;
+  const winEffects = { displaySleep: [] };
+
   const winImports = {
+    // #58: enable=1 -> allow display sleep (release any lock); enable=0 -> keep
+    // the display awake (request a lock). A refused/absent wake-lock API leaves
+    // the honest state unchanged: sleep stays enabled.
+    window_set_display_sleep(enable) {
+      winEffects.displaySleep.push(enable | 0);
+      if (enable) {
+        wakeLockWant = false;
+        if (wakeLock) { const s = wakeLock; wakeLock = null; s.release().catch(() => {}); }
+        return;
+      }
+      wakeLockWant = true;
+      const nav = typeof navigator !== 'undefined' ? navigator : null;
+      if (!nav || !nav.wakeLock || typeof nav.wakeLock.request !== 'function') return;
+      nav.wakeLock.request('screen').then((sentinel) => {
+        if (!wakeLockWant) { sentinel.release().catch(() => {}); return; }
+        wakeLock = sentinel;
+        wakeLockEverHeld = true;
+        if (sentinel.addEventListener)
+          sentinel.addEventListener('release', () => { if (wakeLock === sentinel) wakeLock = null; });
+      }).catch(() => { /* refused: no lock held, and the state says so */ });
+    },
+    // 1 while display sleep is allowed; 0 only while a wake lock is HELD.
+    window_get_display_sleep() { return wakeLock ? 0 : 1; },
+    // #58: 0 unknown / 1 light / 2 dark, from prefers-color-scheme.
+    window_get_system_theme() {
+      if (typeof matchMedia !== 'function') return 0;
+      try { return matchMedia('(prefers-color-scheme: dark)').matches ? 2 : 1; } catch { return 0; }
+    },
     // Create the real canvas + WebGL2 context and make it the one the love_gl
     // closures target. depth + stencil per the requested settings (always on for
     // the witness), preserveDrawingBuffer so the presented backbuffer survives
@@ -470,5 +514,9 @@ export function makeWebGLWinHost(newCanvas) {
     },
     // The canvas backing size, so the witness can sample the centre pixel.
     canvasSize() { return canvas ? [canvas.width, canvas.height] : [0, 0]; },
+    // #58 witness taps: the observed set-display-sleep requests, and the wake
+    // lock's real state (held now / ever granted during the run).
+    winEffects,
+    wakeLockState() { return { held: !!wakeLock, everHeld: wakeLockEverHeld }; },
   };
 }

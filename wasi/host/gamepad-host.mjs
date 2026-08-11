@@ -33,17 +33,24 @@ export function makeGamepadHost() {
   // A W3C "standard" gamepad has 17 buttons (0..16) and 4 axes. Each scripted
   // frame is an array of slots (gamepads); an empty array means "no gamepads".
   // `pressed` lists the W3C button indices held down that frame; a held button
-  // also reports analog value 1.0.
+  // also reports analog value 1.0. The scripted pad carries a vibrationActuator
+  // in the real Gamepad-API shape (#58) — the rumble imports below drive
+  // whatever actuator the slot's pad has, fixture or live, and record it.
+  const mkActuator = () => ({ playEffect(_type, _params) { return Promise.resolve('complete'); } });
   const frames = [
     // frame0: one standard gamepad, A(0) pressed, left stick X = +0.5.
     [ { id: 'Test Controller', mapping: 1, axisCount: 4, buttonCount: 17,
-        axes: [0.5, 0, 0, 0], pressed: [0] } ],
+        axes: [0.5, 0, 0, 0], pressed: [0], vibrationActuator: mkActuator() } ],
     // frame1: A(0) released, B(1) pressed, left stick X = -1.0.
     [ { id: 'Test Controller', mapping: 1, axisCount: 4, buttonCount: 17,
-        axes: [-1.0, 0, 0, 0], pressed: [1] } ],
+        axes: [-1.0, 0, 0, 0], pressed: [1], vibrationActuator: mkActuator() } ],
     // frame2: no gamepads (disconnected).
     [],
   ];
+
+  // #58: every rumble request the guest issued, host-observed — what the
+  // witness asserts. `applied` says whether an actuator was actually driven.
+  const effects = { vibration: [] };
 
   let frameIndex = 0;
   let activeFrame = [];
@@ -98,12 +105,40 @@ export function makeGamepadHost() {
       writeStr(dv, recPtr + 160, gp.id, 64);
       return 1;
     },
+    // #58: whether the pad in this slot has a vibrationActuator (host truth).
+    gamepad_is_vibration_supported(slot) {
+      const gp = activeFrame[slot];
+      return gp && gp.vibrationActuator ? 1 : 0;
+    },
+    // #58: drive the actuator. left/right are the dual-rumble strong/weak
+    // magnitudes in [0,1] (LÖVE's left = the low-frequency motor = strong);
+    // duration is seconds, <= 0 meaning "until stopped", clamped to the Gamepad
+    // API's longest single effect (5s). Zero magnitudes stop the rumble. The
+    // request is recorded either way; 1 is returned only when an actuator was
+    // actually driven.
+    gamepad_set_vibration(slot, left, right, duration) {
+      const gp = activeFrame[slot];
+      const act = gp && gp.vibrationActuator;
+      const durationMs = duration > 0 ? Math.min(duration * 1000, 5000) : 5000;
+      const stop = left === 0 && right === 0;
+      const applied = !!(act && typeof act.playEffect === 'function');
+      effects.vibration.push({ slot, left, right, durationMs: stop ? 0 : durationMs, stop, applied });
+      if (!applied) return 0;
+      if (stop && typeof act.reset === 'function') act.reset();
+      else act.playEffect('dual-rumble', {
+        duration: stop ? 0 : durationMs,
+        strongMagnitude: left,
+        weakMagnitude: right,
+      });
+      return 1;
+    },
   };
 
   return {
     imports,
     bind(m) { memory = m; },
     frames,
+    effects,
   };
 }
 
@@ -122,6 +157,10 @@ export function makeEmptyInputHost() {
     input_warp(/* x, y */) {},
     input_set_relative(/* r */) { return 0; },
     input_set_text_input(/* enable, x, y, w, h */) {},
+    // #58: inert image-cursor pair; 0 = "could not build one", the honest
+    // answer from a host with nothing to show a cursor on.
+    input_new_cursor_image(/* ptr, w, h, hotx, hoty */) { return 0; },
+    input_set_cursor_image(/* id */) {},
   };
   return {
     imports,

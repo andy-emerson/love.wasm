@@ -508,6 +508,20 @@ private:
 
 love::graphics::StreamBuffer *CreateStreamBuffer(BufferUsage mode, size_t size)
 {
+#ifdef LOVE_GRAPHICS_GL_STATIC_IMPORTS
+	// The wasm32-wasi browser port's GL surface is a real WebGL2 context. WebGL2
+	// reports itself as OpenGL ES 3.0 (so glad leaves coreProfile false), but
+	// unlike native GLES it forbids BOTH client-side vertex arrays and buffer
+	// mapping (no glMapBufferRange / glBufferStorage). That rules out the two
+	// strategies the version detection would otherwise pick here: the GLES
+	// default (StreamBufferClientMemory, which streams through a client pointer)
+	// and the core-profile mapped paths. StreamBufferSubDataOrphan uploads each
+	// frame's vertices through a real VBO with glBufferSubData — the only
+	// streaming strategy WebGL2 supports. Guarded by the same seam as the GL
+	// loader (see OpenGL.cpp); default builds define neither macro and are
+	// byte-unchanged.
+	return new StreamBufferSubDataOrphan(mode, size);
+#endif
 	if (gl.isCoreProfile())
 	{
 		if (!gl.bugs.clientWaitSyncStalls)

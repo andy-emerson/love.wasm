@@ -1,0 +1,80 @@
+# The expected-fail list — the executable half of wasi/COMPATIBILITY.md.
+#
+#   <suite>/<test>   <class>   <reason>
+#
+# Class is what COMPATIBILITY.md marks the row, and the three exist so that a
+# defect is never quietly filed as a divergence:
+#
+#   divergence  the browser does not have the feature. A blank cell. Permanent
+#               until the platform changes, and NOT a thing to fix.
+#   gesture     real in a browser, but gated behind a user gesture no automated
+#               test can supply. A game can reach it from a click; this cannot.
+#   defect      the browser has it and we do not. Names its issue. THIS IS THE
+#               TO-DO LIST, and it should only ever get shorter.
+#
+# wasi/corpus/run.sh fails if a test here PASSES: an unearned divergence is a
+# lie, and a fixed defect must be struck from the list in the same change that
+# fixes it. It also fails on a name here that the corpus does not have, so a
+# renamed or deleted upstream test cannot hide a real failure behind a dead line.
+
+# ── love.audio ────────────────────────────────────────────────────────────────
+audio/RecordingDevice	divergence	a browser gives you the mic rate it gives you; setting it is not offered
+audio/Source	divergence	Source:setFilter — per-source filters have no WebAudio equivalent inside LOVE's OpenAL-shaped model
+audio/getActiveEffects	divergence	EFX effects, as above
+audio/getEffect	divergence	EFX effects, as above
+audio/setEffect	divergence	EFX effects, as above
+audio/setPlaybackDevice	divergence	output-device selection is gated in a browser
+
+# ── love.filesystem ───────────────────────────────────────────────────────────
+filesystem/getRealDirectory	divergence	the store is virtual; there are no real directories to name
+filesystem/mount	divergence	runtime archive mounting — D7 closed as deliberately not built (#48)
+filesystem/mountCommonPath	divergence	userdesktop / userhome / appdocuments / userappdata — a page has no such paths
+filesystem/unmount	divergence	the other half of D7 (#48)
+
+# ── love.graphics ─────────────────────────────────────────────────────────────
+graphics/Video	divergence	love.video is not linked; Theora in wasm is not the right path
+graphics/newVideo	divergence	as above
+# The four rasterisation near-misses — MEASURED (#54), and not a decision after
+# all: they are upstream test-harness tolerance gates that don't know a Web
+# target exists. The harness already has the knobs (rgba_tolerance,
+# pixel_tolerance) and already grants them for this class of difference, gated
+# on isOS('Linux'); getOS() here is "Web". Every differing shape pixel matches a
+# neighbouring reference pixel EXACTLY (a fill-rule tie-break in the driver),
+# and the setLineStyle delta is uniformly 3/255 in one channel of an AA blend.
+# No engine change on either side converges this; the fix is upstream, in
+# testing/tests/graphics.lua. When it lands these start passing and this
+# witness says so.
+graphics/arc	divergence	#54 — 1/1024 boundary pixel, matches a neighbour exactly; upstream pixel_tolerance=1 closes it
+graphics/circle	divergence	#54 — 2/1024 boundary pixels, match neighbours exactly; upstream pixel_tolerance=1 closes it
+graphics/ellipse	divergence	#54 — 1/1024 boundary pixel, matches a neighbour exactly; upstream pixel_tolerance=1 closes it
+graphics/setLineStyle	divergence	#54 — AA blend 175 vs 178, max 3/255, one channel; upstream already grants rgba_tolerance on Linux, gate doesn't know "Web"
+
+# ── love.joystick ─────────────────────────────────────────────────────────────
+joystick/setGamepadMapping	divergence	no SDL controller database in a browser; the W3C standard mapping is fixed and implicit
+
+# ── love.mouse ────────────────────────────────────────────────────────────────
+mouse/setGrabbed	divergence	pointer confinement has no browser API at all
+
+# ── love.sound ────────────────────────────────────────────────────────────────
+sound/SoundData	divergence	getSample(0.001) — a D8 consequence, not a sound defect: luaL_checkinteger truncates under 5.1 and raises under 5.4
+
+# ── love.system ───────────────────────────────────────────────────────────────
+system/getOS	divergence	returns "Web" deliberately; the test asserts membership of a closed desktop-only list
+
+# ── love.timer ────────────────────────────────────────────────────────────────
+timer/getTime	divergence	measuring a sleep that did not happen — see below
+timer/sleep	divergence	love::sleep is an honest no-op; a browser must not block its main thread
+
+# ── love.window ───────────────────────────────────────────────────────────────
+window/getPosition	divergence	a page cannot move its window
+window/setPosition	divergence	a page cannot move its window
+window/isMaximized	divergence	nothing to drive
+window/isMinimized	divergence	nothing to drive
+window/maximize	divergence	nothing to drive
+window/minimize	divergence	nothing to drive
+window/getIcon	divergence	a favicon belongs to the host document, not to the canvas the game owns
+window/setIcon	divergence	storing the ImageData so getIcon round-trips would report an effect the browser never performed
+window/getFullscreen	gesture	the Fullscreen API is real and requires a user gesture — a game can, a cold test cannot
+window/setFullscreen	gesture	as above
+window/isDisplaySleepEnabled	gesture	the Screen Wake Lock is wired (#58), but grant-gated-in-test-env: the grant is async and headless Chromium refuses it, and isDisplaySleepEnabled honestly reports only a lock actually HELD — the test asserts synchronously in the requesting frame
+window/setDisplaySleepEnabled	gesture	as above

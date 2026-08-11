@@ -24,8 +24,8 @@ and **re-runnable** — `wasi/games/run.sh` fetches the pin, applies our port
 patch, plays it and asserts. Its Lua needs a 5.1 → 5.4 port; every LÖVE feature
 it uses works. See step 2, and **The Lua dialect** in `readme.md`.
 
-The `testing/` corpus runs as a **witness** — `wasi/corpus/run.sh`, **305 pass /
-35 fail / 15 skip** across 21 suites, up from 236/92 when it first ran. Every
+The `testing/` corpus runs as a **witness** — `wasi/corpus/run.sh`, **306 pass /
+34 fail / 15 skip** across 21 suites, up from 236/92 when it first ran. Every
 failure is classified, and the comparison against that classification is what the
 witness asserts. See step 3.
 
@@ -33,8 +33,8 @@ witness asserts. See step 3.
 feature against desktop and against this build, ✓ / ✗ / blank. It replaces the
 flat failure count with the question that actually matters — does the target have
 the feature at all — and it resolves the 35 into **30 blanks** (the browser does
-not have it), **2 gesture-gated**, and **3 real gaps**, one of which is an
-outright defect (#51). Its failing half is `wasi/corpus/expected.txt`, so the
+not have it), **2 gesture-gated**, and **2 real gaps** — the Screen Wake Lock,
+implementable and unbuilt, is now the whole to-do list. Its failing half is `wasi/corpus/expected.txt`, so the
 classification is executable rather than prose. It also surfaced four ✗ cells the
 corpus never probes.
 
@@ -512,7 +512,27 @@ lock (unbuilt) and DXT1 (**#51**, the extension-enumeration defect). Archive
 mount moved from ✗ to blank when D7 closed as not-built. Four of the 30 are the rasterisation near-misses,
 and they are the only group a decision could still move.
 
-**#51 is filed, and the first reading of it was wrong.** `glGetStringi` is not
+**#51 — FIXED this session.** The host now answers `GL_NUM_EXTENSIONS` and
+`glGetStringi` from `gl.getSupportedExtensions()`, translated to the spellings
+glad asks for (one WebGL extension can satisfy several GL names — s3tc is the
+DXT1/3/5 trio LÖVE checks separately), and **activates** each with
+`getExtension`, because a WebGL extension is inert until it is. `glGetStringi`
+was added to the generated import shim: glad calls it from `find_extensions()`,
+which the generator's scrape of the *backend* could never see. The four
+compressed-upload entry points are implemented rather than warn-stubs, so a
+format reported supported can actually be uploaded.
+
+Smaller than feared: Chromium exposes 29 extensions, and intersected with the 39
+`GLAD_*` flags the `opengl` backend reads, only ~11 flip true — all format and
+capability flags, not new desktop-GL entry points. `graphics/Image` passes,
+corpus **306/34**, and all 20 graphics legs stay green. **The witness caught its
+own staleness**: with `graphics/Image` still listed as a defect the run failed
+with "on the expected-fail list but PASSING", which is precisely the mode that
+stops a fix landing without striking its line. Demonstrated able to fail:
+disabling the enumeration brings back "The DXT1 pixel format is not supported on
+this system."
+
+**The original reading of #51 was wrong, and the record is worth keeping.** `glGetStringi` is not
 auto-stubbed; it is not imported at all, and `getStaticGLProcAddress` returns
 null for it. Nothing traps only because `GL_NUM_EXTENSIONS` has no WebGL2
 `getParameter` pname — `gl.getParameter` raises `INVALID_ENUM`, returns null,
@@ -559,7 +579,7 @@ fail: a failure classified nowhere, an expected-fail entry that starts passing,
 and an entry naming a test the corpus does not have (a renamed or deleted test
 cannot hide a real failure behind a dead line).
 
-**305 pass / 35 fail / 15 skip**, deterministic across three back-to-back runs,
+**306 pass / 34 fail / 15 skip**, deterministic across three back-to-back runs,
 **~18s** on a reused artifact — cheap enough for the per-push gate rather than
 on demand.
 
@@ -569,7 +589,7 @@ token has no `workflow` scope, so it cannot modify `.github/workflows/`. The
 step's text is in the session log; until it is committed, every document says
 "witnessed on demand" rather than "CI-enforced", because the second would be a
 claim above the evidence.
-The 35 are 30 divergence / 2 gesture / 3 defect.
+The 34 are 30 divergence / 2 gesture / 2 defect.
 
 Two numbers moved from the recorded census (303/37): `mouse.setRelativeMode` and
 `getRelativeMode` now pass. The earlier ad-hoc census ran with the 6.4 input

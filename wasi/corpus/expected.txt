@@ -32,7 +32,6 @@ filesystem/mountCommonPath	divergence	userdesktop / userhome / appdocuments / us
 filesystem/unmount	divergence	the other half of D7 (#48)
 
 # ── love.graphics ─────────────────────────────────────────────────────────────
-graphics/Image	defect	#51 — the GL extension list is never enumerated, so DXT1 reports unsupported though Chromium has it
 graphics/Video	divergence	love.video is not linked; Theora in wasm is not the right path
 graphics/newVideo	divergence	as above
 # The four rasterisation near-misses. A different GL implementation rasterises

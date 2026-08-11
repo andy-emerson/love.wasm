@@ -41,6 +41,14 @@ for (const line of readFileSync(GLADFUNCS, "utf8").split("\n")) {
   if (m) wrappers.set(m[2], [m[1].trim(), m[3].trim()]);
 }
 
+// glad calls these itself, from find_extensions() -- they never appear in the
+// backend's own source, so the scrape above cannot see them. Without
+// glGetStringi the extension loop has no function pointer to call, and because
+// GL_NUM_EXTENSIONS then answers 0 the loop never runs and the null is never
+// hit: every GLAD_* extension flag comes back false and every extension-gated
+// format reports unsupported (#51). The two halves must land together.
+for (const n of ["glGetStringi"]) called.add(n);
+
 const got = [...called].filter((n) => wrappers.has(n)).sort();
 const skipped = [...called].filter((n) => !wrappers.has(n)).sort();
 process.stderr.write(

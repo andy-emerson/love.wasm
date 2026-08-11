@@ -85,7 +85,7 @@ peculiarity — a phone cannot reposition its window either.
 | texel buffers, texture buffers, SSBO | ✓ | | ditto |
 | client-side vertex arrays, buffer mapping | ✓ | | forbidden in WebGL2; vertex streaming selects `glBufferSubData` |
 | LA8 textures | ✓ | | no texture swizzle in WebGL2; the font atlas falls back to RGBA8 |
-| DXT / BC compressed textures | ✓ | **✗** | **#51.** The GL extension list is never enumerated: `GL_NUM_EXTENSIONS` has no WebGL2 `getParameter` pname, so glad's `has_ext` reads 0 and the loop that would call `glGetStringi` — which is not imported at all — never runs. All 491 `GLAD_*` flags are false, so *every* extension-gated feature reports unsupported, not only this one. `WEBGL_compressed_texture_s3tc` is real in Chromium; the gap is ours |
+| DXT / BC / ASTC compressed textures | ✓ | ✓ | **#51, fixed.** The GL extension list is now enumerated: the host answers `GL_NUM_EXTENSIONS` and `glGetStringi` from `gl.getSupportedExtensions()`, translated to the spellings glad asks for, and **activates** each one with `getExtension` — listing without activating would claim a capability the context had not enabled. `glCompressedTexImage2D`/`SubImage2D` (and the 3D pair) are implemented rather than warn-stubs, so a format reported supported can actually be uploaded |
 | pixel-exact agreement with desktop's rasteriser | ✓ | | a different GL implementation rasterises differently at the edges: `arc` 3069/3072 pixels, `circle` 1022/1024, `ellipse` 1023/1024, `setLineStyle` 224/256. Desktop *behavioral* parity is the reference, not the bar (`readme.md`, fidelity standard §3). **The tolerance is an open design call** |
 
 ## love.window
@@ -215,15 +215,15 @@ See **The Lua dialect** in `readme.md`, and D8 in `wasi/platform/DESIGN.md`.
 
 ## What this says about the corpus
 
-The `testing/` corpus stands at **305 pass / 35 fail / 15 skip** across 21 suites
+The `testing/` corpus stands at **306 pass / 34 fail / 15 skip** across 21 suites
 — measured by `wasi/corpus/run.sh`, which is where these counts now come from.
-Read through this table, the 35 stop being one number:
+Read through this table, the 34 stop being one number:
 
 | | count | |
 |---|:--:|---|
 | *(blank)* — not supposed to work here | **30** | declared divergences. A test asserting them here is asserting something about a desktop, and it should be marked expected-fail rather than fixed |
 | **~** — real, but needs a user gesture | **2** | `setFullscreen` / `getFullscreen`. A game can reach these from a click or a keypress; a test driving them cold cannot |
-| **✗** — the browser has it and we do not | **3** | `setDisplaySleepEnabled`/`isDisplaySleepEnabled` (wake lock, unbuilt) and `Image()` DXT1 (**#51**, extension enumeration — the one outright defect) |
+| **✗** — the browser has it and we do not | **2** | `setDisplaySleepEnabled` / `isDisplaySleepEnabled` — the Screen Wake Lock, implementable and unbuilt. It is the whole to-do list now that #51 is fixed |
 
 The 30, by suite — and `wasi/corpus/expected.txt` is the same list, executable:
 
@@ -261,7 +261,7 @@ test that failed while classified nowhere. All three are demonstrated able to
 fail. So a divergence that quietly becomes supported, and a fix that quietly
 regresses, both turn CI red instead of ageing in a document.
 
-This document is therefore **tested** where the corpus reaches it — 305/35/15,
+This document is therefore **tested** where the corpus reaches it — 306/34/15,
 re-earned on every push — and **observed** elsewhere: the ✗ and blank rows the
 corpus does not probe (`hasFocus`, `getSystemTheme`, custom image cursors,
 gamepad vibration) still rest on reading the code, and the Desktop column

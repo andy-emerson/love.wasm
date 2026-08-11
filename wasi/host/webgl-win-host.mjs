@@ -81,6 +81,53 @@ export function makeWebGLWinHost(newCanvas) {
     return p;
   };
 
+
+  // ── GL extension enumeration (#51) ─────────────────────────────────────────
+  // glad's has_ext() drives every GLAD_* flag from glGetIntegerv(GL_NUM_EXTENSIONS)
+  // followed by glGetStringi(GL_EXTENSIONS, i). WebGL2 answers neither on its own:
+  // GL_NUM_EXTENSIONS is not a getParameter pname (it raises INVALID_ENUM and
+  // returns null, which read back as 0), and glGetStringi has no WebGL counterpart
+  // at all. So all 491 flags were false and every extension-gated format reported
+  // unsupported — DXT1 among them, though Chromium has it.
+  //
+  // Both halves must land together: answering the count without a real
+  // glGetStringi would send glad into a loop over a null function pointer.
+  //
+  // Reporting is not enough either. A WebGL extension is INERT until
+  // getExtension() activates it, so each one is activated here as it is listed.
+  // Listing without activating would claim a capability the context has not
+  // enabled — a fake, and worse than the honest zero it replaces.
+  //
+  // The names differ between the two worlds, so they are translated to the
+  // spellings glad actually asks for. One WebGL extension can satisfy several GL
+  // names: s3tc is the DXT1/3/5 trio LOVE checks separately.
+  const WEBGL_TO_GL = {
+    WEBGL_compressed_texture_s3tc: ['GL_EXT_texture_compression_s3tc', 'GL_EXT_texture_compression_dxt1',
+                                    'GL_ANGLE_texture_compression_dxt3', 'GL_ANGLE_texture_compression_dxt5'],
+    WEBGL_compressed_texture_s3tc_srgb: ['GL_EXT_texture_compression_s3tc_srgb'],
+    WEBGL_compressed_texture_astc: ['GL_KHR_texture_compression_astc_ldr'],
+    EXT_texture_compression_rgtc: ['GL_EXT_texture_compression_rgtc', 'GL_ARB_texture_compression_rgtc'],
+    EXT_texture_compression_bptc: ['GL_EXT_texture_compression_bptc', 'GL_ARB_texture_compression_bptc'],
+    EXT_color_buffer_float: ['GL_EXT_color_buffer_float'],
+    EXT_color_buffer_half_float: ['GL_EXT_color_buffer_half_float'],
+    EXT_texture_filter_anisotropic: ['GL_EXT_texture_filter_anisotropic'],
+    OES_texture_float_linear: ['GL_OES_texture_float_linear'],
+  };
+  // Computed on first use, not at construction: one host creates its context up
+  // front and the other only on setMode, and this has to work for both.
+  let extNames = null;
+  const extensions = () => {
+    if (extNames) return extNames;
+    if (!gl) return [];
+    const out = [];
+    for (const name of gl.getSupportedExtensions() || []) {
+      gl.getExtension(name);
+      for (const n of (WEBGL_TO_GL[name] || ['GL_' + name])) if (!out.includes(n)) out.push(n);
+    }
+    extNames = out;
+    return out;
+  };
+
   // glReadPixels' destination view must MATCH the pixel type in WebGL2 — BYTE
   // needs an Int8Array, FLOAT a Float32Array, and so on. A mismatch is not a
   // silent widening: it raises INVALID_OPERATION and reads NOTHING, so the
@@ -127,8 +174,34 @@ export function makeWebGLWinHost(newCanvas) {
   const glImports = {
     // --- strings / errors / queries (host-reported) ---
     glGetString(name) { return internString(HOST_STRINGS[name] ?? ''); },
+    // GL_NUM_EXTENSIONS (0x821D) and glGetStringi are the pair glad's has_ext()
+    // needs; see the note above the translation table.
+    glGetStringi: (name, index) => internString(name === 0x1F03 ? (extensions()[index] ?? '') : ''),
+
+    // Compressed uploads were warn-stubs, which would have made a reported
+    // format a lie: the query would say yes and the upload would do nothing.
+    // A null data pointer is a legal "allocate only", so it is passed through
+    // as such rather than as a zero-length view.
+    glCompressedTexImage2D(target, level, internalformat, width, height, border, imageSize, data) {
+      gl.compressedTexImage2D(target, level, internalformat, width, height, border,
+        data ? HEAPU8().subarray(data, data + imageSize) : new Uint8Array(0));
+    },
+    glCompressedTexSubImage2D(target, level, xoffset, yoffset, width, height, format, imageSize, data) {
+      gl.compressedTexSubImage2D(target, level, xoffset, yoffset, width, height, format,
+        data ? HEAPU8().subarray(data, data + imageSize) : new Uint8Array(0));
+    },
+    glCompressedTexImage3D(target, level, internalformat, width, height, depth, border, imageSize, data) {
+      gl.compressedTexImage3D(target, level, internalformat, width, height, depth, border,
+        data ? HEAPU8().subarray(data, data + imageSize) : new Uint8Array(0));
+    },
+    glCompressedTexSubImage3D(target, level, xoffset, yoffset, zoffset, width, height, depth, format, imageSize, data) {
+      gl.compressedTexSubImage3D(target, level, xoffset, yoffset, zoffset, width, height, depth, format,
+        data ? HEAPU8().subarray(data, data + imageSize) : new Uint8Array(0));
+    },
     glGetError() { return gl.getError(); },
     glGetIntegerv(pname, ptr) {
+      // GL_NUM_EXTENSIONS: WebGL2 has no such pname, so answer it ourselves.
+      if (pname === 0x821D) { HEAP32()[ptr >> 2] = extensions().length; return; }
       const v = gl.getParameter(pname);
       const h = HEAP32();
       if (Array.isArray(v) || ArrayBuffer.isView(v)) { for (let i = 0; i < v.length; i++) h[(ptr >> 2) + i] = v[i] | 0; }
@@ -311,8 +384,8 @@ export function makeWebGLWinHost(newCanvas) {
   // so instantiation succeeds; a call that slips through logs loudly.
   const STUBS = [
     'glBindImageTexture', 'glBufferStorage', 'glClearBufferData', 'glClearBufferSubData',
-    'glClearBufferfv', 'glClearBufferiv', 'glClearBufferuiv', 'glCompressedTexImage2D',
-    'glCompressedTexImage3D', 'glCompressedTexSubImage2D', 'glCompressedTexSubImage3D',
+    'glClearBufferfv', 'glClearBufferiv', 'glClearBufferuiv', 
+    
     'glDebugMessageCallback', 'glDebugMessageControl', 'glDiscardFramebufferEXT',
     'glDispatchCompute', 'glDispatchComputeIndirect', 'glDrawArraysIndirect',
     'glDrawElementsBaseVertex', 'glDrawElementsIndirect', 'glFlushMappedBufferRange',

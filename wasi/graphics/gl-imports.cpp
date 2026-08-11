@@ -120,6 +120,7 @@ WGL_IMPORT("glGetRenderbufferParameteriv") void wgl_glGetRenderbufferParameteriv
 WGL_IMPORT("glGetShaderInfoLog") void wgl_glGetShaderInfoLog(GLuint shader, GLsizei bufSize, GLsizei* length, GLchar* infoLog);
 WGL_IMPORT("glGetShaderiv") void wgl_glGetShaderiv(GLuint shader, GLenum pname, GLint* params);
 WGL_IMPORT("glGetString") const GLubyte* wgl_glGetString(GLenum name);
+WGL_IMPORT("glGetStringi") const GLubyte* wgl_glGetStringi(GLenum name, GLuint index);
 WGL_IMPORT("glGetTextureSubImage") void wgl_glGetTextureSubImage(GLuint texture, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, GLsizei bufSize, void* pixels);
 WGL_IMPORT("glGetUniformLocation") GLint wgl_glGetUniformLocation(GLuint program, const GLchar* name);
 WGL_IMPORT("glHint") void wgl_glHint(GLenum target, GLenum mode);
@@ -295,6 +296,7 @@ void *getStaticGLProcAddress(const char *name)
 		{"glGetShaderInfoLog", (void *)&wgl_glGetShaderInfoLog},
 		{"glGetShaderiv", (void *)&wgl_glGetShaderiv},
 		{"glGetString", (void *)&wgl_glGetString},
+		{"glGetStringi", (void *)&wgl_glGetStringi},
 		{"glGetTextureSubImage", (void *)&wgl_glGetTextureSubImage},
 		{"glGetUniformLocation", (void *)&wgl_glGetUniformLocation},
 		{"glHint", (void *)&wgl_glHint},

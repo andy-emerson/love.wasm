@@ -214,6 +214,9 @@ async function main() {
       bootSrc,
       files: project ? project.files : null,
       canvas: newCanvas,
+      // ?opfs=0 keeps saves in-memory — the knob the durability witness turns
+      // to demonstrate its own failure mode (a save must NOT survive a reload).
+      opfs: params.get('opfs') !== '0',
       onLog: log,
       onStatus: (state, detail) => {
         if (state === 'running') setStatus('running', 'good');

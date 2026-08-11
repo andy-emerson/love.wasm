@@ -44,11 +44,16 @@ corpus never probes.
 implementations, and three ideas existed nowhere but prose or conversation.**
 Now in the tracker, per `CONTRIBUTING.md` §3.3:
 
-- **#55 — D2's OPFS save store was decided, documented as built, and never
-  implemented.** Zero OPFS API calls exist in the tree; every host including the
-  shell keeps saves in-memory, so a save does not survive a page reload. The
-  present-tense claims in readme/EMBEDDING/DESIGN/fs-host are corrected to
-  ruled-not-built. This is the sharpest instance of the pattern.
+- **#55 — D2's OPFS save store** (decided, documented as built, never
+  implemented — the sharpest instance of the pattern) — **built**:
+  `wasi/host/fs-opfs.mjs` wraps the reference fs host (same `love_fs` imports;
+  the in-memory map stays the synchronous truth; eager per-write flush plus a
+  `pagehide`/`visibilitychange` retry; `boot()` hydrates before `pump_boot`).
+  Evidence: `wasi/shell/run-durability.sh` — write through `love.filesystem`,
+  `page.reload()`, read the payload back; demonstrated able to fail by the
+  `?opfs=0` leg, which must come back empty. The docs' present-tense claims are
+  true again. Not yet in `witness.yml` (the Agent's token lacks workflow scope —
+  same as the corpus step, which the Human wired by hand).
 - **#56 — D4=B hotswap**, the implementation of the freshly closed ruling.
 - **#57 — the `boot({files, canvas, onLog})` library entry point** — **built**:
   `wasi/shell/boot.mjs` exports the consumer-invariant wiring (instantiate, bind,

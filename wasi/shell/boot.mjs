@@ -19,6 +19,7 @@
 import { makeWasiShim } from '../host/wasi-shim.mjs';
 import { makeWebGLWinHost } from '../host/webgl-win-host.mjs';
 import { makeFsHost } from '../host/fs-host.mjs';
+import { makeOpfsSaves } from '../host/fs-opfs.mjs';
 import { makeSystemHost } from '../host/system-host.mjs';
 import { makeAudioHost } from '../host/audio-host.mjs';
 import { makeGamepadHost } from '../host/gamepad-host.mjs';
@@ -39,6 +40,15 @@ import { makeBrowserInputHost } from '../host/input-host-browser.mjs';
 //   onLog    — (line) => void: the game's stdout (print/io.write) and host notes.
 //   onStatus — (state, detail) => void: 'running' | 'paused' (detail = why) |
 //              'error' (detail = the Lua error + traceback) | 'quit'.
+//   opfs     — false disables the OPFS save store (#55) and keeps saves
+//              in-memory, the reference-host behaviour; anything else uses OPFS
+//              when the browser has it. The knob exists so the durability
+//              witness can demonstrate its own failure mode.
+//   identity — the save namespace's directory name. Defaults to t.identity as
+//              written in the project's conf.lua, which the host must read for
+//              itself: hydration has to finish before boot, and the engine only
+//              reports the identity after. A consumer whose identity is
+//              computed at runtime passes it explicitly.
 //
 // The handle: stop(), invalidate() (the live-edit reload primitive, EMBEDDING.md
 // §4), quit(), the fs stores (files to mutate for live-edit, saves), and
@@ -49,6 +59,7 @@ import { makeBrowserInputHost } from '../host/input-host-browser.mjs';
 export async function boot({
   wasm, bootSrc, files = null, canvas,
   onLog = () => {}, onStatus = () => {},
+  opfs = true, identity = null,
 } = {}) {
   const shim = makeWasiShim();
   const input = makeBrowserInputHost();
@@ -61,7 +72,7 @@ export async function boot({
     c.focus();
     return c;
   });
-  const fs = makeFsHost();
+  let fs = makeFsHost();
   const system = makeSystemHost();
   const audio = makeAudioHost();
   const gamepad = makeGamepadHost();
@@ -70,6 +81,26 @@ export async function boot({
     for (const k of Object.keys(fs.files)) delete fs.files[k];
     for (const [name, bytes] of files instanceof Map ? files : Object.entries(files))
       fs.files[name] = bytes;
+  }
+
+  // The OPFS save store (#55, D2) — durability across page reloads. Hydration
+  // must complete BEFORE pump_boot: love.boot reads conf.lua and main.lua on
+  // its very first frame, and a save written last session must already shadow
+  // the project when it does. Node-side callers fall through to the in-memory
+  // store automatically (no navigator.storage there).
+  const haveOpfs = typeof navigator !== 'undefined' && navigator.storage
+    && typeof navigator.storage.getDirectory === 'function';
+  if (opfs !== false && haveOpfs) {
+    const ident = identity || (() => {
+      const conf = fs.files['conf.lua'];
+      const m = conf && /t\.identity\s*=\s*["']([^"']+)["']/.exec(new TextDecoder().decode(conf));
+      return m ? m[1] : 'default';
+    })();
+    fs = makeOpfsSaves(fs, { identity: ident, onWarn: onLog });
+    const h = await fs.hydrate();
+    onLog(`saves: OPFS "${ident}" (${h.files} file(s) hydrated)`);
+  } else {
+    onLog('saves: in-memory (' + (opfs === false ? 'OPFS disabled — saves will not survive a reload' : 'no OPFS in this environment') + ')');
   }
 
   const module = wasm instanceof WebAssembly.Module ? wasm : await WebAssembly.compile(wasm);
@@ -167,6 +198,9 @@ export async function boot({
     // saves is the writable namespace the game's love.filesystem writes land in.
     files: fs.files,
     saves: fs.saves,
+    // Resolves when every save flush issued so far has settled. On the
+    // in-memory store there is nothing to wait for.
+    flushed: fs.flushed || (() => Promise.resolve()),
     get running() { return running; },
     get paused() { return paused; },
     invalidate: () => x.pump_invalidate(),

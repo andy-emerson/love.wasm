@@ -80,8 +80,9 @@ embed/fs builds link `love_fs` only; the union frame build links all of them).
 
 The host holds **two namespaces**: a read-only **project** (the game source /
 `.love` contents) and a separate, writable **save** namespace keyed by
-`t.identity` (D2's design is OPFS-backed in the browser; unbuilt, #55 — every
-shipped host is in-memory). Reads resolve
+`t.identity` (OPFS-backed in the browser per D2 — `wasi/host/fs-opfs.mjs`,
+used by `boot()`, witnessed by `wasi/shell/run-durability.sh` (#55); the node
+hosts keep the in-memory map). Reads resolve
 **save-first, then project** (physfs mount order), so a written file shadows a
 project file of the same name; removing the save copy reveals the project file
 beneath. Writes **never** touch the project.
@@ -219,16 +220,19 @@ the write/invalidate handshake.
 
 ## 5. Declared deferrals
 
-- **True cross-reload durability — decided (D2), NOT built (#55).** Every host
-  in this repository, the shell included, keeps the save namespace in-memory:
-  same-session read-after-write is what 6.7 proves, and a save does not survive a
-  page reload. D2's ruling — OPFS behind the same `fs_write` import, eager-flush
-  after each write plus on `pagehide`/`visibilitychange`, eventual durability
-  declared — is the design an implementing host follows; earlier revisions of
-  this document described that host in the present tense, which was a claim above
-  the evidence. Desktop-exact **sync** durability additionally needs the
-  engine-in-Worker + OPFS sync-access-handle pivot, parked for a shipping variant
-  that needs it.
+- **Cross-reload durability is eventual, not sync (D2, #55).** The browser save
+  store is OPFS-backed per D2's ruling: `wasi/host/fs-opfs.mjs` upgrades the
+  in-memory reference host behind the same `fs_write` import — the map stays the
+  synchronous truth, every mutation eager-flushes that path to OPFS, and
+  `pagehide`/`visibilitychange` retry failures; `boot()` hydrates the store back
+  before `pump_boot`. Witnessed by `wasi/shell/run-durability.sh`: write →
+  `page.reload()` → the same bytes come back through `love.filesystem`, and the
+  OPFS-disabled leg is required to come back empty. What remains declared: a
+  force-kill inside the last-write window can lose that write (eventual
+  durability — the model every shipped browser game uses), and the node hosts
+  keep the in-memory store. Desktop-exact **sync** durability additionally needs
+  the engine-in-Worker + OPFS sync-access-handle pivot, parked for a shipping
+  variant that needs it.
 - **Real archive / `.love`-zip mounting** (`mount*`) is unimplemented **by
   decision** — a loud `false`, not a fake. **D7 is closed (#48): not built**, and
   it is a declared divergence rather than a deferral. Note this does not affect

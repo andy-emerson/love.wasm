@@ -6,7 +6,8 @@
 // (6.7): fs_write / fs_remove / fs_mkdir, targeting a SEPARATE writable save
 // namespace (`saves`) beside the read-only project (`files`); reads resolve
 // save-first then project, so the witness can prove writes never touch the
-// project. The real browser host backs `saves` with OPFS (D2, eager-flush).
+// project. The browser upgrade that backs `saves` with OPFS (D2, eager-flush)
+// is fs-opfs.mjs, which wraps this host rather than forking it.
 //
 // Self-contained BY CONTRACT, exactly like wasi-shim.mjs and the driver.mjs
 // files: no imports, no outer-scope references, so makeFsHost.toString() can be
@@ -96,10 +97,12 @@ export function makeFsHost() {
 
   // The writable SAVE namespace (build-order 6.7). Separate from the read-only
   // project `files` so the witness can prove writes never touch the project.
-  // This in-memory map is the save store every shipped host uses today. D2 rules
-  // the browser host swaps it for OPFS (eager-flush durability, #55) behind the same
-  // three write imports. Keys are plain relative paths; values are Uint8Array
-  // (a file) or the DIR sentinel (a directory made by fs_mkdir).
+  // This in-memory map is the reference save store, and it stays the
+  // synchronous truth even in the browser: fs-opfs.mjs (D2, #55) wraps this
+  // host to flush the map to OPFS behind the same three write imports, so a
+  // node witness and the shell share this exact code. Keys are plain relative
+  // paths; values are Uint8Array (a file) or the DIR sentinel (a directory
+  // made by fs_mkdir).
   const DIR = { dir: true };
   const saves = Object.create(null);
 

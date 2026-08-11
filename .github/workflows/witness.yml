@@ -352,8 +352,6 @@ jobs:
         # step is the reason graphics-witness runs materially longer. Chromium-only
         # (real WebGL2); no node leg (expected).
         run: PREFIX="$PWD/wasi-eh" OUT="$PWD/wasi/shell/love-game.wasm" wasi/shell/run.sh
-        
-$ sed -n 's/^+//p' /tmp/claude-0/-home-user-love-wasi/f4d1b2d0-766e-5007-9245-60d4bdf0f1b9/scratchpad/witness-step.patch | tail -n +2
 
       - name: corpus parity — LÖVE's own testing/ suite, compared to the expected-fail list (Beta step 3, real Chromium)
         # The only witness measured by somebody else's tests. Every other one

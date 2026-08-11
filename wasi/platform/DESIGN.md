@@ -371,17 +371,53 @@ durability are all settled:
 - **DECIDED — Option A**, at 6.3 — the point of step 6 is to *build* the seam
   graphics faked.
 
-### D4 — Reload granularity (live-edit) — OPEN, tracked in #47
+### D4 — Reload granularity (live-edit) — CLOSED (2026-08-11, #47)
 
-An open fork lives in the tracker, not here (`CONTRIBUTING.md` §3.3). The three
-options with their trade-offs, the reopen trigger and what it gates are in
-**#47**.
+**The ruling: B — function-body hotswap.** Replace the compiled bodies inside
+the existing function objects, preserving upvalues, so an edit to `love.update`
+or `love.draw` takes effect on the function's next call with the game's live
+state intact. `conf.lua` and `love.load` run at game init only; edits change
+the future, not the past — the invariant 6.7 already ships.
 
-What is settled and so stays here: the mechanism must satisfy the reload
-invariant below, and the difficulty it has to survive is that a file-scope
-`local` is how both a tuning constant and evolved state get written, which Lua
-cannot tell apart syntactically. Restart is the blessed fallback for whatever
-the chosen mechanism cannot apply.
+**The deciding argument is play-testing.** Live-edit exists so a bug found two
+hours into a session can be fixed and re-verified *in that session*. Any
+mechanism that resets state (a restart, or A's re-run of the top level wiping
+file-scope locals) forfeits exactly the thing the feature is for — replaying
+hours of play to retest one fix. That cost dominates every implementation risk
+B carries.
+
+**The responsibility line, set by the Human:** if the saved edit is broken, the
+next call fails on the user's own code — that is on the user, not the engine.
+The engine's job is to perform the swap, not to validate it. This narrows B's
+classic risks considerably: the leaky edges (added/removed upvalues, stale
+references held elsewhere) are failure modes of the *user's edit*, reported as
+Lua errors, not silent engine corruption to be defended against.
+
+**Why the alternatives lost:**
+
+- **A — whole-chunk re-eval** loses on the play-testing argument directly:
+  re-running the top level re-declares file-scope locals, so state assigned in
+  `love.load` (which is deliberately not re-run) comes back nil and the session
+  is effectively restarted. Its simplicity was its whole case, and simplicity
+  that loses the feature's point is no case. It also loses its "silent
+  wrongness is worse" argument to the responsibility line above.
+- **C — convention plus re-eval** loses because it imposes a state-location
+  convention on the game, which violates "the game stays pure LÖVE"; a game
+  written for desktop should not need restructuring to be live-editable here.
+
+What was already settled and stays true: the mechanism must satisfy the reload
+invariant below; the difficulty is that a file-scope `local` is how both a
+tuning constant and evolved state get written, which Lua cannot tell apart
+syntactically — B sidesteps this by never re-running the scope that declares
+them. Restart remains the blessed fallback for whatever the swap cannot apply.
+Module-granularity invalidate (`pump_invalidate()`) stays: it is the right tool
+for a `require`'d library edit; B is what makes `main.lua`-direct edits — the
+notebook consumer's whole model — live.
+
+**Not yet built.** The ruling closes the fork; the implementation is a todo
+(hotswap in the reload path, with a witness proving: edit `love.update` →
+next frame runs the new body → file-scope state survives → a broken edit
+errors on the user's line rather than killing the engine).
 
 ### D5 — Supported-edit class (live-edit): what is guaranteed live
 

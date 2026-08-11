@@ -128,9 +128,11 @@ async function loadProject(base) {
 // modules from package.loaded so the next require re-reads and re-evaluates them.
 // love and every love.* submodule survive, so the engine is not rebooted.
 //
-// main.lua is deliberately NOT live. LÖVE does not require() it, so nothing
-// caches it and nothing re-reads it; making it live needs whole-chunk re-eval of
-// the main chunk, which is open decision #47 (D4) and explicitly not Beta scope.
+// main.lua is NOT live yet. LÖVE does not require() it, so nothing caches it
+// and nothing re-reads it. D4 (#47) has closed as function-body hotswap — the
+// chosen mechanism replaces the bodies of love.update/love.draw in place, with
+// live state surviving — but that mechanism is not built, so until it lands
+// restart is the honest report rather than a silent no-op.
 // conf.lua is read once before the window exists, so it cannot be live either.
 // For both, the honest answer is a restart, and the shell says so rather than
 // silently doing nothing.

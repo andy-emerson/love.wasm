@@ -86,7 +86,7 @@ peculiarity — a phone cannot reposition its window either.
 | client-side vertex arrays, buffer mapping | ✓ | | forbidden in WebGL2; vertex streaming selects `glBufferSubData` |
 | LA8 textures | ✓ | | no texture swizzle in WebGL2; the font atlas falls back to RGBA8 |
 | DXT / BC / ASTC compressed textures | ✓ | ✓ | **#51, fixed.** The GL extension list is now enumerated: the host answers `GL_NUM_EXTENSIONS` and `glGetStringi` from `gl.getSupportedExtensions()`, translated to the spellings glad asks for, and **activates** each one with `getExtension` — listing without activating would claim a capability the context had not enabled. `glCompressedTexImage2D`/`SubImage2D` (and the 3D pair) are implemented rather than warn-stubs, so a format reported supported can actually be uploaded |
-| pixel-exact agreement with desktop's rasteriser | ✓ | | a different GL implementation rasterises differently at the edges: `arc` 3069/3072 pixels, `circle` 1022/1024, `ellipse` 1023/1024, `setLineStyle` 224/256. Desktop *behavioral* parity is the reference, not the bar (`readme.md`, fidelity standard §3). **The tolerance is an open design call** |
+| pixel-exact agreement with desktop's rasteriser | ✓ | | measured (#54): `arc`/`circle`/`ellipse` differ by 1–2 boundary pixels each, every one matching a neighbouring reference pixel exactly — a driver fill-rule tie-break; `setLineStyle` by 3/255 in one channel of an AA blend. We are at the floor: no engine change on either side converges a rasteriser we don't ship. Upstream's harness already tolerates this class of difference per-platform, and #54 is the patch offering that tolerance a `"Web"` arm |
 
 ## love.window
 

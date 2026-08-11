@@ -60,8 +60,10 @@ pumps the union artifact on `requestAnimationFrame`, pausing when the tab is
 hidden or unfocused. `input-host-browser.mjs` is the live counterpart to the
 baked `input-host.mjs`, which stays as it is so both witness legs can share one
 host. Live-edit is module granularity over the existing `pump_invalidate()`;
-`main.lua` and `conf.lua` are reported restart-only, because making them live is
-#47 (D4) and outside Beta.
+`main.lua` and `conf.lua` are reported restart-only today. **D4 has since closed
+as B (function-body hotswap, #47)**, so `main.lua`-direct live edit is now a
+todo rather than an open fork; until it lands, restart-only remains the honest
+report.
 
 Divergences declared in the host's own header: physical-`code` keys mapped to a
 US layout, no IME, normalized wheel deltas, and pointer-lock and cursor-warp
@@ -633,14 +635,32 @@ These gate work, and only the Human closes them (`AGENTS.md`, "Records").
 
 | Decision | The fork | What it gates |
 |---|---|---|
-| #47 (D4) | reload granularity: whole-chunk re-eval vs function-body hotswap | deferred past Beta; module granularity plus restart is what ships |
 | step-7 divergences | which desktop `love.thread` behaviors we accept losing | enumerated when the thread design document is written |
-| #7 | packaging: single `.js` vs `.js` + `.wasm` | step 8, decided by measurement, post-Beta |
-| rasterisation tolerance | pixel-exact vs a stated tolerance for `compareImg` — `arc` 3069/3072, `circle` 1022/1024, `ellipse` 1023/1024, `setLineStyle` 224/256 | whether those four corpus tests are a **blank** (a different rasteriser, declared) or a **✗** (a defect) in `wasi/COMPATIBILITY.md`, and therefore whether they enter the expected-fail list |
+| #7 | packaging: single `.js` vs `.js` + `.wasm` | step 8, decided by measurement — newly actionable, since LoveIDE (the measuring consumer) is now reachable |
 
-`DESIGN.md` records D1–D3, D5 and D6 as closed, carrying the alternatives that
-lost. D4 is open, so under `CONTRIBUTING.md` §3.3 it lives in the tracker —
-#47 — and `DESIGN.md` keeps only what is settled and points at the issue. **D7
+**Two decisions closed this session, and one dissolved:**
+
+- **#47 (D4) — CLOSED: B, function-body hotswap.** The Human's ruling, driven
+  by play-testing: live-edit exists so a bug found two hours into a session is
+  fixed *in that session*, and any state-resetting mechanism forfeits that. The
+  responsibility line is set too — a broken saved edit fails on the user's own
+  code at its next call; the engine performs the swap, it does not validate it.
+  Full record in `DESIGN.md` D4, with why A and C lost. **Implementation is now
+  a todo**: hotswap in the reload path plus a witness (edit `love.update` → next
+  frame runs the new body → file-scope state survives → a broken edit errors on
+  the user's line, engine intact).
+- **Rasterisation tolerance — DISSOLVED by measurement (#54).** Not a decision:
+  the four failures are upstream test-harness tolerance gates that don't know a
+  Web target. Measured per pixel: arc/circle/ellipse differ by 1–2 boundary
+  pixels each, every one matching a neighbouring reference pixel exactly (a
+  driver fill-rule tie-break); setLineStyle is uniformly 3/255 in one channel
+  of an AA blend. The harness already has the knobs and already grants them —
+  gated on `isOS('Linux')`. The fix is an upstream patch to
+  `testing/tests/graphics.lua`; filed as **#54** alongside #23. Nothing on our
+  side to build, and `expected.txt` now carries the measured reasons.
+
+`DESIGN.md` records D1–D6 as closed, carrying the alternatives that lost —
+D4 closed this session (#47, ruled B; see above). **D7
 closed this session** (#48), ruled *not built*: the survey was re-checked before
 closing and had a hole — both recorded options answered *who* unzips and so
 presupposed that we unzip at all. The full record, with both alternatives and

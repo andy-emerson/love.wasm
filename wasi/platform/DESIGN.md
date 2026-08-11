@@ -266,8 +266,10 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
     shim), the pump ABI + reload entry points and how to drive them, and the
     supported-edit class. It documents the **seam**, not the downstream IDE.
 
-  Built without resolving **D4** (hotswap vs whole-chunk) — the D4=B refinement
-  layers onto step 3 of the reload handshake later without foreclosure. The IDE
+  Built without resolving **D4** (hotswap vs whole-chunk) — and the D4=B
+  refinement (#56) has since layered onto step 3 of the reload handshake exactly
+  as predicted, without changing the write/invalidate seam: `pump_hotswap`
+  (`wasi/pump/pump.cpp`, EMBEDDING.md §4) is the `main.lua`-direct path. The IDE
   (LoveIDE: editor, git-wasm save flow, agent live-edit UX) is a separate repo
   that consumes this contract — out of scope here. **With 6.7 landed, Step 6 is
   COMPLETE.** The former "step 8" is dropped; "step 7" (`love.thread` via Workers)
@@ -284,7 +286,7 @@ front-run any choice. Resolution status (Human-ratified):
 | D1 | Filesystem seam | **A — replace the module.** Gates 6.2. |
 | D2 | Save-dir backing | **Closed — OPFS, separate untracked namespace, eager-flush (eventual durability, declared).** See below. |
 | D3 | Window/context | **A — `setMode` drives the real canvas/context.** Gates 6.3. |
-| D4 | Reload granularity | **Closed — B, function-body hotswap** (#47). Chosen for play-testing: state survives the edit; a broken edit fails on the user's code at its next call. Not yet built; until it lands, module-granularity live-edit plus restart is what ships. See below. |
+| D4 | Reload granularity | **Closed — B, function-body hotswap** (#47), **built** (#56, `pump_hotswap`). Chosen for play-testing: state survives the edit; a broken edit fails on the user's code. Module-granularity live-edit stays for `require`'d files; restart stays the fallback for what the swap cannot apply. See below. |
 | D5 | Supported-edit class | **A — minimal & explicit**, restart fallback. |
 | D6 | Console channel | **A — pure stdio now**, architected so B (host structured tap) can layer on without engine changes. |
 | D7 | Archive/`.love` mounting: who unzips | **Closed — neither: not built** (#48). Directory enumeration (`getDirectoryItems` over `fs_list`) is built; runtime zip mounting is a declared divergence. See below. |
@@ -422,10 +424,21 @@ Module-granularity invalidate (`pump_invalidate()`) stays: it is the right tool
 for a `require`'d library edit; B is what makes `main.lua`-direct edits — the
 notebook consumer's whole model — live.
 
-**Not yet built.** The ruling closes the fork; the implementation is a todo
-(hotswap in the reload path, with a witness proving: edit `love.update` →
-next frame runs the new body → file-scope state survives → a broken edit
-errors on the user's line rather than killing the engine).
+**Built (#56).** `pump_hotswap` sits beside `pump_invalidate` in the pump
+(`wasi/pump/pump.cpp`; the mechanism and its supported-edit class are
+EMBEDDING.md §4): the edited chunk's top level runs in a capture environment
+(writes captured and applied, reads falling through to the live globals), and
+each replaced function's same-named upvalues are `debug.upvaluejoin`ed to the
+old function's cells — aliased, not copied, so functions sharing a file-scope
+local keep sharing it. Witnessed by `wasi/shell/run-hotswap.sh` in the order
+this record asked for: edit `love.update` on disk → the next frames run the new
+body → file-scope state survives, still shared → a syntax-broken save errors on
+the user's `main.lua:<line>` with the session running on (and a good save
+hotswaps into the same session) → `love.load` printed once for the whole
+session. Each leg demonstrated able to fail. The leaky edges the responsibility
+line anticipated are declared restart-only in EMBEDDING.md §4 (deleted
+bindings, a function newly capturing a pre-existing local, function values
+evolved as state).
 
 ### D5 — Supported-edit class (live-edit): what is guaranteed live
 

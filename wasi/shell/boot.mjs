@@ -50,9 +50,9 @@ import { makeBrowserInputHost } from '../host/input-host-browser.mjs';
 //              reports the identity after. A consumer whose identity is
 //              computed at runtime passes it explicitly.
 //
-// The handle: stop(), invalidate() (the live-edit reload primitive, EMBEDDING.md
-// §4), quit(), the fs stores (files to mutate for live-edit, saves), and
-// running/paused as live state.
+// The handle: stop(), invalidate() and hotswap(path) (the live-edit reload
+// primitives, EMBEDDING.md §4), quit(), the fs stores (files to mutate for
+// live-edit, saves), and running/paused as live state.
 //
 // Failure is loud: a boot-time Lua error, a missing import, or an instantiate
 // failure all throw — there is no handle to return for a game that never ran.
@@ -204,6 +204,19 @@ export async function boot({
     get running() { return running; },
     get paused() { return paused; },
     invalidate: () => x.pump_invalidate(),
+    // Function-body hotswap (D4=B, EMBEDDING.md §4): apply an edited file's new
+    // function bodies to the running game, live state intact. Put the file's
+    // new bytes in `files` first. Returns {ok:true, swapped} or {ok:false,
+    // error} carrying the edit's OWN Lua error — the engine performs the swap,
+    // it does not validate it, and the game keeps running on the old code
+    // either way.
+    hotswap: (path) => {
+      const st = x.pump_hotswap(put(path));
+      drainTap();
+      if (st === -3) return { ok: false, error: 'the pump is not booted' };
+      if (st === -2) return { ok: false, error: out() };
+      return { ok: true, swapped: st };
+    },
     // A browser tab has no close button the game owns, so quitting is explicit:
     // push the quit event and let love.run wind down normally next frame.
     quit: () => input.quit(),

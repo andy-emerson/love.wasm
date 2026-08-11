@@ -106,20 +106,23 @@ async function loadProject(base) {
   return { files, count: entries.length, bytes: total, base: baseUrl, meta };
 }
 
-// Live-edit, at module granularity, over the mechanism step 6.7 already ships:
-// replace the source the VFS serves, then invalidate() drops the game's Lua
-// modules from package.loaded so the next require re-reads and re-evaluates them.
-// love and every love.* submodule survive, so the engine is not rebooted.
+// Live-edit, over the two mechanisms step 6.7 and #56 ship:
 //
-// main.lua is NOT live yet. LÖVE does not require() it, so nothing caches it
-// and nothing re-reads it. D4 (#47) has closed as function-body hotswap — the
-// chosen mechanism replaces the bodies of love.update/love.draw in place, with
-// live state surviving — but that mechanism is not built, so until it lands
-// restart is the honest report rather than a silent no-op.
-// conf.lua is read once before the window exists, so it cannot be live either.
-// For both, the honest answer is a restart, and the shell says so rather than
-// silently doing nothing.
-const RESTART_ONLY = new Set(['main.lua', 'conf.lua']);
+// - Module granularity (D5=A): replace the source the VFS serves, then
+//   invalidate() drops the game's Lua modules from package.loaded so the next
+//   require re-reads and re-evaluates them. love and every love.* submodule
+//   survive, so the engine is not rebooted.
+// - main.lua is live by function-body hotswap (D4=B, #56). LÖVE requires it
+//   once at boot and never again, so invalidate cannot reach it; hotswap(path)
+//   re-runs the edited chunk and swaps the new function bodies into the
+//   existing bindings with file-scope state intact. A broken save fails on the
+//   edit's own code — reported here with the game still running the old code.
+//
+// conf.lua is read once before the window exists (init-only by the reload
+// invariant), so it cannot be live; the honest answer is a restart, and the
+// shell says so rather than silently doing nothing.
+const RESTART_ONLY = new Set(['conf.lua']);
+const HOTSWAP = new Set(['main.lua']);
 
 function watchProject(project, handle, intervalMs = 700) {
   let meta = project.meta;
@@ -146,7 +149,8 @@ function watchProject(project, handle, intervalMs = 700) {
         meta = next;
 
         if (changed.length || gone.length) {
-          const live = changed.filter((p) => !RESTART_ONLY.has(p));
+          const live = changed.filter((p) => !RESTART_ONLY.has(p) && !HOTSWAP.has(p));
+          const swap = changed.filter((p) => HOTSWAP.has(p));
           const needsRestart = [...changed, ...gone].filter((p) => RESTART_ONLY.has(p));
 
           for (const p of gone) delete handle.files[p];
@@ -159,8 +163,18 @@ function watchProject(project, handle, intervalMs = 700) {
             const dropped = handle.invalidate();
             log(`live-edit: ${[...live, ...gone].join(', ')} → ${dropped} module(s) invalidated`);
           }
+          for (const p of swap) {
+            const r = await fetch(new URL(p, project.base), { cache: 'no-store' });
+            if (!r.ok) { log(`live-edit: ${p} vanished (${r.status})`); continue; }
+            handle.files[p] = new Uint8Array(await r.arrayBuffer());
+            const res = handle.hotswap(p);
+            if (res.ok)
+              log(`live-edit: ${p} hotswapped — ${res.swapped} binding(s) applied, state intact (#56)`);
+            else
+              log(`live-edit: ${p} failed on the edit's own code (the game runs on; fix and save again):\n${res.error}`);
+          }
           if (needsRestart.length)
-            log(`live-edit: ${needsRestart.join(', ')} changed — reload the page to apply (#47)`);
+            log(`live-edit: ${needsRestart.join(', ')} changed — init-only, reload the page to apply`);
         }
       }
     } catch (e) {

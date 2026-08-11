@@ -17,11 +17,17 @@
 //   pump_out()       -> ptr   \  the yielded / returned / error value,
 //   pump_out_len()   -> u32   /  valid until the next pump call
 //
-// The live-edit reload primitive (build-order 6.7, decision D5=A — minimal &
-// explicit, whole-chunk re-eval):
+// The live-edit reload primitives (build-order 6.7, decisions D5=A and D4=B):
 //
 //   pump_invalidate() -> int  count of GAME Lua modules dropped from
 //                             package.loaded (or PUMP_NOBOOT before boot).
+//   pump_hotswap(len) -> int  in-slot = the path of an edited file (normally
+//                             "main.lua"); function-body hotswap, live state
+//                             intact. Count of bindings applied, PUMP_ERROR
+//                             with the edit's own Lua error in the out-slot
+//                             (the lua_State AND the resident coroutine
+//                             survive — the old code keeps running), or
+//                             PUMP_NOBOOT before boot.
 //
 // The host embeds live-edit like this: edit a game module's source in the VFS
 // (the love_fs write path), call pump_invalidate() to drop the stale cached
@@ -31,6 +37,13 @@
 // and the standard Lua libraries are preserved; only the GAME's Lua modules are
 // invalidated. A twin Lua hook `__pump_invalidate()` is registered on the state
 // so a witness can drive the full write→invalidate→re-require sequence in-script.
+//
+// pump_invalidate cannot reach main.lua — LÖVE requires it once at boot and
+// never again — so pump_hotswap (D4=B, #56) is the main.lua-direct edit path:
+// it re-runs the edited chunk's top level in a capture environment and swaps
+// the new function bodies into the existing bindings with their upvalues
+// joined to the old cells, so file-scope state survives the edit. The Lua half
+// is PUMP_HOTSWAP_LUA below; `__pump_hotswap(path)` is its in-script twin.
 //
 // status: >= 0   coroutine yielded; value of pump_out_len() (frame lives on)
 //   PUMP_DONE    coroutine returned; out-slot = final value
@@ -182,12 +195,182 @@ PUMP_EXPORT("pump_invalidate") int32_t pump_invalidate(void) {
   return static_cast<int32_t>(pump_invalidate_modules(g_L));
 }
 
+// ── function-body hotswap (build-order Beta, D4=B, #56) ─────────────────────
+//
+// The Lua half of pump_hotswap, kept beside the invalidate primitive it
+// refines (EMBEDDING.md §4 step 3). The engine PERFORMS the swap, it does not
+// validate it (the D4 record): a broken saved edit raises the user's own
+// load/run error, and nothing here catches it — the C wrapper reports it
+// through the out-slot with the state intact.
+static const char PUMP_HOTSWAP_LUA[] = R"lua(
+-- (path) -> number of top-level bindings applied; raises the USER's own error.
+-- Reads the file's CURRENT source through love.filesystem, runs its top level
+-- in a capture environment (reads fall through to the live globals; writes are
+-- recorded and applied), then joins each replaced function's same-named
+-- upvalues to the old function's cells, so file-scope locals keep their
+-- evolved values and functions sharing a local keep sharing it.
+local path = ...
+
+local okfs, fsmod = pcall(require, "love.filesystem")
+if not okfs or type(fsmod) ~= "table" or type(fsmod.load) ~= "function" then
+  error("pump_hotswap: love.filesystem is not available to read " .. tostring(path), 0)
+end
+local chunk, lerr = fsmod.load(path)
+if not chunk then error(lerr, 0) end  -- the user's syntax error, file:line intact
+
+local dbg = debug
+local G = _G
+local reallove = rawget(G, "love")
+
+-- Every top-level write is recorded (old and new value) and applied with plain
+-- assignment — the same semantics a fresh run's assignment would have.
+local records = {}
+local recording = true
+local function record(t, k, v)
+  if recording then records[#records + 1] = { t = t, k = k, old = t[k], new = v } end
+  t[k] = v
+end
+
+-- `love.update = f` and `function love.update()` are both writes to the love
+-- TABLE, not to a global — so `love` is served as a one-level proxy that
+-- captures writes and falls through on reads.
+local loveproxy = type(reallove) == "table" and setmetatable({}, {
+  __index = function(_, k) return reallove[k] end,
+  __newindex = function(_, k, v) record(reallove, k, v) end,
+}) or nil
+
+local env = setmetatable({}, {
+  __index = function(_, k)
+    if k == "love" and loveproxy then return loveproxy end
+    return G[k]
+  end,
+  __newindex = function(_, k, v) record(G, k, v) end,
+})
+
+-- _ENV is a main chunk's single upvalue (index 1).
+dbg.setupvalue(chunk, 1, env)
+
+chunk()  -- the user's top level; a runtime error here is the user's, and propagates
+
+-- After the run the proxies stay reachable only as the _ENV of functions this
+-- chunk defined; they keep writing through, but stop recording.
+recording = false
+
+local function is_lua_fn(f)
+  return type(f) == "function" and dbg.getinfo(f, "S").what == "Lua"
+end
+
+-- join(new, old): for every upvalue of NEW whose name matches an upvalue of
+-- OLD, alias new's slot to old's cell (debug.upvaluejoin — an alias, not a
+-- copy, so sharing between functions survives). An upvalue that is a Lua
+-- function on BOTH sides is code, not state: keep the new definition (the
+-- edit must be live) and recurse, so a `local function helper` gets its body
+-- swapped while the state IT captures still joins. Unmatched new upvalues
+-- keep their fresh initial values — a genuinely new variable starts fresh,
+-- exactly what a fresh run of the new code would have. `seen` guards mutual
+-- recursion.
+local seen = {}
+local function join(new, old)
+  if new == old or seen[new] then return end
+  seen[new] = true
+  local oldups = {}
+  for i = 1, 255 do
+    local n = dbg.getupvalue(old, i)
+    if not n then break end
+    if oldups[n] == nil then oldups[n] = i end
+  end
+  for i = 1, 255 do
+    local n = dbg.getupvalue(new, i)
+    if not n then break end
+    local oi = oldups[n]
+    if oi then
+      local _, nv = dbg.getupvalue(new, i)
+      local _, ov = dbg.getupvalue(old, oi)
+      if is_lua_fn(nv) and is_lua_fn(ov) then
+        join(nv, ov)
+      else
+        dbg.upvaluejoin(new, i, old, oi)
+      end
+    end
+  end
+end
+
+local applied = 0
+for _, r in ipairs(records) do
+  applied = applied + 1
+  if is_lua_fn(r.new) and is_lua_fn(r.old) then join(r.new, r.old) end
+end
+return applied
+)lua";
+
+static const char PUMP_HOTSWAP_KEY[] = "love.pump.hotswap";
+
+// Push the compiled hotswap function (cached in the registry). On a load
+// failure the error is left on the stack and false returned.
+static bool pump_push_hotswap_fn(lua_State *L) {
+  lua_getfield(L, LUA_REGISTRYINDEX, PUMP_HOTSWAP_KEY);
+  if (lua_isfunction(L, -1)) return true;
+  lua_pop(L, 1);
+  if (luaL_loadbuffer(L, PUMP_HOTSWAP_LUA, sizeof(PUMP_HOTSWAP_LUA) - 1,
+                      "@pump-hotswap") != LUA_OK)
+    return false;
+  lua_pushvalue(L, -1);
+  lua_setfield(L, LUA_REGISTRYINDEX, PUMP_HOTSWAP_KEY);
+  return true;
+}
+
+// Message handler: append a traceback to the user's error, the same service
+// settle() gives a frame error.
+static int pump_hotswap_msgh(lua_State *L) {
+  const char *m = lua_tostring(L, 1);
+  luaL_traceback(L, L, m ? m : "(non-string error)", 1);
+  return 1;
+}
+
+PUMP_EXPORT("pump_hotswap") int32_t pump_hotswap(uint32_t len) {
+  if (!g_L) return PUMP_NOBOOT;
+  int msgh = lua_gettop(g_L) + 1;
+  lua_pushcfunction(g_L, pump_hotswap_msgh);
+  if (!pump_push_hotswap_fn(g_L)) {
+    size_t elen = 0;
+    const char *e = lua_tolstring(g_L, -1, &elen);
+    g_out.assign(e, elen);
+    lua_pop(g_L, 2);  // load error + msgh
+    return PUMP_ERROR;
+  }
+  lua_pushlstring(g_L, g_in.data(), len);
+  if (lua_pcall(g_L, 1, 1, msgh) != LUA_OK) {
+    size_t elen = 0;
+    const char *e = lua_tolstring(g_L, -1, &elen);
+    g_out.assign(e, elen);
+    lua_pop(g_L, 2);  // error + msgh
+    return PUMP_ERROR;  // the lua_State and the resident coroutine live on
+  }
+  int32_t applied = static_cast<int32_t>(lua_tointeger(g_L, -1));
+  lua_pop(g_L, 2);  // result + msgh
+  g_out.clear();
+  return applied;
+}
+
+// Lua twin: __pump_hotswap(path) -> bindings applied. The user's own error
+// propagates to the caller (pcall it to observe), mirroring the export's
+// PUMP_ERROR report.
+static int pump_l_hotswap(lua_State *L) {
+  luaL_checkstring(L, 1);
+  lua_settop(L, 1);
+  if (!pump_push_hotswap_fn(L)) return lua_error(L);
+  lua_insert(L, 1);
+  lua_call(L, 1, 1);
+  return 1;
+}
+
 PUMP_EXPORT("pump_boot") int32_t pump_boot(uint32_t len) {
   if (!g_L) {
     g_L = luaL_newstate();
     if (!g_L) { g_out.assign("pump: luaL_newstate failed"); return PUMP_ERROR; }
     luaL_openlibs(g_L);
     lua_register(g_L, "__pump_invalidate", pump_l_invalidate);
+    lua_register(g_L, "__pump_hotswap", pump_l_hotswap);
     if (pump_open_extensions)
       pump_open_extensions(g_L);
   }

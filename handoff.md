@@ -15,9 +15,10 @@ sound, audio and physics working together in one artifact.
 
 There is also an **interactive shell** (`wasi/shell/`): a page that loads a
 project from disk, pumps it on `requestAnimationFrame`, forwards real DOM
-keyboard and mouse events into `love.event`, and applies a module edit to the
-running game without a reload. Beta step 1 is done, witnessed by
-`wasi/shell/run.sh` and CI-enforced.
+keyboard and mouse events into `love.event`, and applies an edit — a module or
+`main.lua` itself (#56 function-body hotswap, state intact) — to the running
+game without a reload. Beta step 1 is done, witnessed by `wasi/shell/run.sh`
+(and `wasi/shell/run-hotswap.sh`) and CI-enforced.
 
 A third-party game runs too: `challacade/legend-of-lua`, at 1920x1080, playable,
 and **re-runnable** — `wasi/games/run.sh` fetches the pin, applies our port
@@ -54,7 +55,19 @@ Now in the tracker, per `CONTRIBUTING.md` §3.3:
   `?opfs=0` leg, which must come back empty. The docs' present-tense claims are
   true again. Not yet in `witness.yml` (the Agent's token lacks workflow scope —
   same as the corpus step, which the Human wired by hand).
-- **#56 — D4=B hotswap**, the implementation of the freshly closed ruling.
+- **#56 — D4=B hotswap**, the implementation of the freshly closed ruling —
+  **built**: `pump_hotswap` beside `pump_invalidate` in the pump (the edited
+  chunk re-runs in a capture environment; replaced functions' same-named
+  upvalues are `debug.upvaluejoin`ed to the old cells, so file-scope state
+  survives, still shared), exposed on `boot()`'s handle as `hotswap(path)` and
+  routed by the shell's watcher, so a `main.lua` edit is live instead of
+  restart-only. Evidence: `wasi/shell/run-hotswap.sh` — four legs in the D4
+  record's order (new body at next call; state survived and shared; a broken
+  save errors on the user's line with the session intact; `love.load` once per
+  session), each demonstrated able to fail. The restart-only residue is
+  declared in `EMBEDDING.md` §4. Not yet in `witness.yml` (the Agent's token
+  lacks workflow scope — same as the corpus step, which the Human wired by
+  hand).
 - **#57 — the `boot({files, canvas, onLog})` library entry point** — **built**:
   `wasi/shell/boot.mjs` exports the consumer-invariant wiring (instantiate, bind,
   the `WebAssembly.Module.imports()` skew check, pump boot, the rAF loop with the
@@ -107,11 +120,11 @@ fulfillers as modules, loads the project over a `manifest.json` contract, and
 pumps the union artifact on `requestAnimationFrame`, pausing when the tab is
 hidden or unfocused. `input-host-browser.mjs` is the live counterpart to the
 baked `input-host.mjs`, which stays as it is so both witness legs can share one
-host. Live-edit is module granularity over the existing `pump_invalidate()`;
-`main.lua` and `conf.lua` are reported restart-only today. **D4 has since closed
-as B (function-body hotswap, #47)**, so `main.lua`-direct live edit is now a
-todo rather than an open fork; until it lands, restart-only remains the honest
-report.
+host. Live-edit is module granularity over the existing `pump_invalidate()` for
+`require`'d files, and **function-body hotswap for `main.lua` (D4=B, #47,
+built as #56)** — an edit takes effect at the function's next call with
+file-scope state intact. `conf.lua` is init-only by the reload invariant, so
+restart-only remains its honest report.
 
 Divergences declared in the host's own header: physical-`code` keys mapped to a
 US layout, no IME, normalized wheel deltas, and pointer-lock and cursor-warp
@@ -121,7 +134,9 @@ reported as failures rather than faked.
 from disk runs (its own `conf.lua` sizes the canvas, and an asset is read from a
 subdirectory); real DOM key events move the game, it stops on keyup, and it moves
 back on the opposite key; a module edited on disk reaches the running instance,
-and a `main.lua` edit is reported restart-only rather than silently ignored.
+a `main.lua` edit is hotswapped into it (#56 — `wasi/shell/run-hotswap.sh`
+carries the deep state-survival legs), and a `conf.lua` edit is reported
+restart-only rather than silently ignored.
 
 ### 2. Real third-party games — ONE GAME DONE, RE-RUNNABLE
 
@@ -697,10 +712,9 @@ These gate work, and only the Human closes them (`AGENTS.md`, "Records").
   fixed *in that session*, and any state-resetting mechanism forfeits that. The
   responsibility line is set too — a broken saved edit fails on the user's own
   code at its next call; the engine performs the swap, it does not validate it.
-  Full record in `DESIGN.md` D4, with why A and C lost. **Implementation is now
-  a todo**: hotswap in the reload path plus a witness (edit `love.update` → next
-  frame runs the new body → file-scope state survives → a broken edit errors on
-  the user's line, engine intact).
+  Full record in `DESIGN.md` D4, with why A and C lost. **Implemented as #56**
+  (see the tracker bullet above): `pump_hotswap` in the reload path, witnessed
+  by `wasi/shell/run-hotswap.sh`.
 - **Rasterisation tolerance — DISSOLVED by measurement (#54).** Not a decision:
   the four failures are upstream test-harness tolerance gates that don't know a
   Web target. Measured per pixel: arc/circle/ellipse differ by 1–2 boundary

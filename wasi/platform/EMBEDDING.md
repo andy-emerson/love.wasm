@@ -34,6 +34,7 @@ One in-slot and one out-slot over linear memory:
 | `pump_frame(len) -> status` | in-slot = this frame's payload (one Lua string); resumes the coroutine once |
 | `pump_out() -> ptr`, `pump_out_len() -> u32` | the yielded / returned / error value, valid until the next pump call |
 | `pump_invalidate() -> int` | **live-edit reload primitive** (§4): drops game Lua modules from `package.loaded`; returns the count, or `PUMP_NOBOOT` before boot |
+| `pump_hotswap(len) -> int` | **function-body hotswap** (§4, D4=B): in-slot = the path of an edited file (normally `main.lua`); swaps its new function bodies into the running game with live state intact. Returns the count of top-level bindings applied, `PUMP_ERROR` with the edit's own Lua error in the out-slot (the `lua_State` **and the resident coroutine survive** — the old code keeps running), or `PUMP_NOBOOT` before boot |
 
 `status`: `>= 0` coroutine yielded (value = `pump_out_len()`); `-1` `PUMP_DONE`
 (returned; out-slot = final value); `-2` `PUMP_ERROR` (Lua error; out-slot =
@@ -60,8 +61,8 @@ blur/visibility pause. Only what genuinely varies per consumer is a parameter:
 like), `canvas` is a `(w, h) => HTMLCanvasElement` callback invoked when
 `love.window.setMode` asks for a window, and `onLog`/`onStatus` say where the
 console tap and the running/paused/error/quit state go. It returns a handle —
-`stop()`, `invalidate()` (§4), `quit()`, the `files`/`saves` stores,
-`running`/`paused` — and it **verifies the host fulfils the module's import
+`stop()`, `invalidate()` and `hotswap(path)` (§4), `quit()`, the `files`/`saves`
+stores, `running`/`paused` — and it **verifies the host fulfils the module's import
 surface** via `WebAssembly.Module.imports()` before instantiating, so an
 artifact whose imports have outgrown the host fails loudly with the missing
 names instead of at first call. `wasi/shell/player.mjs` is the first caller: its
@@ -206,20 +207,21 @@ See `wasi/platform/driver.mjs` for the exact reference loop (shared by every
 platform witness) and `wasi/host/witness-harness.mjs` for the node:wasi and
 Chromium instantiate/bind/drive scaffolding.
 
-## 4. Live-edit reload (D5=A — minimal & explicit, whole-chunk re-eval)
+## 4. Live-edit reload (D5=A module re-eval + D4=B function-body hotswap)
 
 **The reload invariant** (Human-set): `reload(edit)` at state S ≡ a fresh run
 of the new code that has reached S. Edits change the **future, not the past**:
 `love.load` does **not** re-run on reload (a fresh run reaching S already ran it
-once); only the per-frame path picks up edits. A broken save breaks the game —
-LÖVE's error screen appears, exactly as a fresh run of broken code would (no
-rollback, no containment — the more faithful choice).
+once); `conf.lua` is init-only; only the per-frame path picks up edits. A broken
+save breaks the game — LÖVE's error path fires, exactly as a fresh run of broken
+code would (no rollback, no containment — the more faithful choice).
 
-**The mechanism** (D5=A): whole-chunk re-eval at **module granularity**. To apply
-an edit the host:
+**Module granularity** (D5=A): whole-chunk re-eval for `require`'d files. To
+apply an edit the host:
 
 1. **writes** the new module source into the VFS (`fs_write` — it lands in the
-   save namespace and shadows the project file of the same name); then
+   save namespace and shadows the project file of the same name — or, for a
+   host holding the project map directly, replaces the map entry); then
 2. calls **`pump_invalidate()`**, which drops every **game** Lua module from
    `package.loaded` — preserving `love`, every `love.*` submodule, and the
    standard Lua libraries (only the game's own modules are cleared); then
@@ -234,14 +236,52 @@ surviving. A Lua twin `__pump_invalidate()` is registered on the state so a
 witness (or a Lua-level host driver) can drive the sequence in-script; the
 `pump_invalidate()` **export** is what a real host calls.
 
-**Supported-edit class (D5=A).** Guaranteed live: function-body edits to
-callbacks and the functions they call, and file-scope constant literals, applied
-by re-requiring the changed module. Everything else (edits to already-executed
-init whose state lives in file-scope locals, structural changes that would leave
-stale live references) → **restart** (a fresh `pump_boot`), the blessed fallback.
-Finer-grained function-body hotswap that preserves live state (**D4**, closed as the chosen mechanism — not yet built)
-can layer on later without foreclosing this: it would refine step 3, not change
-the write/invalidate handshake.
+**Function-body hotswap** (D4=B, #56): the `main.lua`-direct path. LÖVE requires
+`main.lua` once at boot and never again, so invalidate cannot reach it — and it
+is where a notebook-shaped consumer's whole game lives. `pump_hotswap(path)`
+makes an edit to it live with state intact: it loads the edited chunk through
+`love.filesystem` (so the error a broken save raises names the user's file and
+line), runs its top level in a capture environment — global and `love.*`
+**writes** are captured and applied, **reads** fall through to the live
+environment — and, for each captured function replacing an existing function
+binding, joins every upvalue of the new function whose **name** matches an
+upvalue of the old function to the old function's cell (`debug.upvaluejoin` —
+an alias, not a copy, so two functions sharing a file-scope local keep sharing
+it). The next call of `love.update`/`love.draw`/any replaced function runs the
+new body against the evolved state. A Lua twin `__pump_hotswap(path)` is
+registered beside `__pump_invalidate()`; `boot()`'s handle exposes it as
+`hotswap(path)`, and the shell's watcher routes a `main.lua` change to it.
+
+The engine **performs the swap, it does not validate it** (the D4 record's
+responsibility line): a syntax-broken save comes back as `PUMP_ERROR` with the
+user's own `main.lua:<line>` error and the `lua_State` *and* resident coroutine
+intact — the game keeps running the old code, and a corrected save hotswaps
+into the same session. A runtime-broken body swaps in and errors when next
+called, through LÖVE's normal error path.
+
+**What survives, what starts fresh, what stays restart-only.** Survives: every
+file-scope local an old function also captured (evolved values, sharing
+preserved), and everything reachable from them. Takes the new value: top-level
+non-function assignments (tuning constants) and every replaced function body —
+including a `local function` helper reached through a replaced function's
+upvalues (a function-valued upvalue is treated as **code**, not state: the new
+definition wins, and the state *it* captures joins). Starts fresh: an upvalue
+the old function did not have — a genuinely new variable, correct under the
+invariant. Stays restart-only, honestly reported: `conf.lua` (init-only);
+deleting a binding (a function the new file no longer defines stays live — the
+capture env never sees a "write" for it); a function that *newly* captures a
+pre-existing local (its predecessor had no cell of that name to join, so it
+gets a fresh one and no longer shares); and function values evolved *as state*
+(reassigned during play — the join keeps the file's new definition, not the
+evolved value). Restart (a fresh `pump_boot`) remains the blessed fallback for
+all of them.
+
+Witnessed by `wasi/shell/run-hotswap.sh` in real Chromium, in the D4 record's
+own order: edit `love.update` on disk → the next frames run the new body →
+file-scope state survives and stays shared (draw keeps seeing what update
+mutates) → a syntax-broken save errors on the user's line with the session
+intact and a good save resumes it → `love.load` printed once across the whole
+session. Each leg demonstrated able to fail.
 
 ## 5. Declared deferrals
 
@@ -267,8 +307,9 @@ the write/invalidate handshake.
   (**Directory enumeration is no longer deferred**: `getDirectoryItems` is real,
   over the `fs_list` import in the table above, witnessed by
   `wasi/platform/run-fs-list.sh` on node and Chromium.)
-- **D4 hotswap** (function-body, state-preserving) is not built; D5=A's
-  whole-chunk re-eval + restart fallback is the shipped mechanism.
+- **D4 hotswap is built** (#56, `pump_hotswap`, §4); what it deliberately does
+  not cover — `conf.lua`, deleted bindings, newly-captured pre-existing locals,
+  function values evolved as state — stays restart-only, listed in §4.
 - Directory **mounting** is limited to a directory already in the host store
   (`mountFullPath` gives it a second name); there is no host filesystem behind
   the seam to reach anything else, and a path that does not resolve inside the

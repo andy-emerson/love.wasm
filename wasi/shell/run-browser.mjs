@@ -13,8 +13,10 @@
 //      queue, and cannot prove the DOM half.
 //   3. LIVE EDIT reaches the running game. colour.lua is rewritten on disk and
 //      the SAME running instance draws the new colour, with no page reload; then
-//      main.lua is touched and the shell reports it as restart-only, which is
-//      what keeps the #47 (D4) deferral honest rather than a silent no-op.
+//      main.lua is touched and the shell HOTSWAPS it (D4=B, #56 — the deep
+//      state-survival assertions live in run-hotswap.mjs); and conf.lua is
+//      touched and reported restart-only (init-only by the reload invariant),
+//      rather than silently ignored.
 //
 // Chromium-only: it needs a real WebGL2 context, like every graphics witness.
 // The project is copied to a temp directory first, because the live-edit half
@@ -233,16 +235,34 @@ try {
   if (!/running/.test(await page.textContent('#status')))
     fail('the game stopped running across the live edit');
 
-  // main.lua is restart-only (#47/D4) and must be REPORTED, not silently ignored.
-  log('touching main.lua (restart-only per #47)');
+  // main.lua is live by hotswap (D4=B, #56): a touch must be applied and
+  // reported, not silently ignored. run-hotswap.mjs owns the deep assertions
+  // (state survival, broken edits, love.load); here the shell path is what is
+  // proven — the watcher routes a main.lua change to hotswap and the game
+  // keeps running.
+  log('touching main.lua (hotswapped per #56)');
   writeFileSync(join(work, 'main.lua'), readFileSync(join(work, 'main.lua'), 'utf8') + '\n-- touched\n');
+  let sawSwap = false;
+  for (let i = 0; i < 40; i++) {
+    await page.waitForTimeout(250);
+    if (/main\.lua hotswapped — \d+ binding\(s\) applied/.test(await shellLog())) { sawSwap = true; break; }
+  }
+  if (!sawSwap) fail('a main.lua edit was not hotswapped into the running game (#56)');
+  log('main.lua hotswapped: ' + sawSwap);
+  if (!/running/.test(await page.textContent('#status')))
+    fail('the game stopped running across the main.lua hotswap');
+
+  // conf.lua stays init-only (the reload invariant) and must be REPORTED as
+  // restart-only, not silently ignored.
+  log('touching conf.lua (restart-only, init-only by the reload invariant)');
+  writeFileSync(join(work, 'conf.lua'), readFileSync(join(work, 'conf.lua'), 'utf8') + '\n-- touched\n');
   let sawRestart = false;
   for (let i = 0; i < 40; i++) {
     await page.waitForTimeout(250);
-    if (/main\.lua changed — reload the page/.test(await shellLog())) { sawRestart = true; break; }
+    if (/conf\.lua changed — init-only, reload the page/.test(await shellLog())) { sawRestart = true; break; }
   }
-  if (!sawRestart) fail('a main.lua edit was silently ignored instead of reported as restart-only');
-  log('main.lua reported restart-only: ' + sawRestart);
+  if (!sawRestart) fail('a conf.lua edit was silently ignored instead of reported as restart-only');
+  log('conf.lua reported restart-only: ' + sawRestart);
 
   if (pageErrors.length) { log('--- page errors ---\n' + pageErrors.join('\n')); fail('the page raised an error'); }
   log('--- shell log ---\n' + (await shellLog()).trimEnd());

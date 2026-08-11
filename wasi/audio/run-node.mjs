@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { driveAudio } from './driver.mjs';
+import { driveWitness } from '../platform/driver.mjs';
 import { runReactorNode } from '../host/witness-harness.mjs';
 import { makeAudioHost } from '../host/audio-host.mjs';
 
@@ -15,7 +15,7 @@ const bootSrc = readFileSync(join(here, 'witness-audio.lua'), 'utf8');
 const bytes = readFileSync(process.argv[2] ?? 'love-audio.wasm');
 
 const audio = makeAudioHost();
-const ok = await runReactorNode(bytes, driveAudio, bootSrc, {
+const ok = await runReactorNode(bytes, driveWitness, bootSrc, {
   extraImports: { love_audio: audio.imports },
   onInstance: (inst) => audio.bind(inst.exports.memory),
 });

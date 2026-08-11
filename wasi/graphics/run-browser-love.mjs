@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { driveGraphics } from './driver.mjs';
+import { driveWitness } from '../platform/driver.mjs';
 import { makeWasiShim } from '../host/wasi-shim.mjs';
 import { makeWebGLHost } from '../host/webgl-host.mjs';
 import { runInChromium } from '../host/witness-harness.mjs';
@@ -49,7 +49,7 @@ const result = await runInChromium(loveGraphicsPageFn, {
   b64, boot,
   shimSrc: makeWasiShim.toString(),
   hostSrc: makeWebGLHost.toString(),
-  driverSrc: driveGraphics.toString(),
+  driverSrc: driveWitness.toString(),
 });
 
 console.log('--- browser transcript ---');

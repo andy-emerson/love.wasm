@@ -32,7 +32,7 @@ witness asserts. See step 3.
 **`wasi/COMPATIBILITY.md` is the durable home for what works where**: every LÖVE
 feature against desktop and against this build, ✓ / ✗ / blank. It replaces the
 flat failure count with the question that actually matters — does the target have
-the feature at all — and it resolves the 35 into **30 blanks** (the browser does
+the feature at all — and it resolves the 34 into **30 blanks** (the browser does
 not have it), **2 gesture-gated**, and **2 real gaps** — the Screen Wake Lock,
 implementable and unbuilt, is now the whole to-do list. Its failing half is `wasi/corpus/expected.txt`, so the
 classification is executable rather than prose. It also surfaced four ✗ cells the
@@ -264,9 +264,11 @@ three fixes below:**
 | | pass | fail | skip |
 |---|---|---|---|
 | first run | 236 | 92 | 15 |
-| **now** | **303** | **37** | **15** |
+| after the three fixes (census session) | 303 | 37 | 15 |
 
-Per suite, as it stands now (▲ marks what the three fixes moved):
+(Historical: the census session's snapshot. The corpus witness now measures
+**306/34/15** — see step 3.) Per suite at that snapshot (▲ marks what the three
+fixes moved):
 
 | module | pass | fail | | module | pass | fail |
 |---|---|---|---|---|---|---|
@@ -560,14 +562,16 @@ would have surfaced: `hasFocus`/`hasMouseFocus` return a constant `true` where a
 page genuinely knows (`document.hasFocus()`, `blur`/`focus`); `getSystemTheme`
 reports `unknown` where `prefers-color-scheme` is real; custom image cursors
 (a data-URL CSS cursor) are unbuilt; gamepad vibration (`vibrationActuator`) is
-unbuilt. None is in the 37.
+unbuilt. None is in the corpus's failure set.
 
-**Evidence: observed, not tested.** Every ✓ traces to a witness run or to the
-corpus at 303/37/15, and every blank to a named platform fact — but nothing
-re-checks the mapping on each change. The table is prose, and prose rots
-silently.
+**Evidence: tested where the corpus reaches it.** Every ✓ traces to a witness
+run or to the corpus at 306/34/15, every blank to a named platform fact — and
+the mapping is re-checked on every push, because `expected.txt` is the failing
+half of the table and the corpus witness compares against it in CI. The rows
+the corpus does not probe (the four ✗ cells above, and the Desktop column)
+remain observed.
 
-### Step 3 — DONE, bar one loose end. The classification is executable.
+### Step 3 — DONE. The classification is executable and in CI.
 
 `wasi/corpus/run.sh` + `run-browser-corpus.mjs` + `expected.txt`. The corpus runs
 as an ordinary game — `testing/` IS the project, its own conf.lua sizes the
@@ -585,15 +589,15 @@ cannot hide a real failure behind a dead line).
 **~18s** on a reused artifact — cheap enough for the per-push gate rather than
 on demand.
 
-**It is NOT in `witness.yml` yet, and that is the one loose end of step 3.** The
-workflow step is written and reviewed, but the push was rejected: this session's
-token has no `workflow` scope, so it cannot modify `.github/workflows/`. The
-step's text is in the session log; until it is committed, every document says
-"witnessed on demand" rather than "CI-enforced", because the second would be a
-claim above the evidence.
+**The loose end closed: the corpus witness is in `witness.yml`.** The Agent's
+push lacked `workflow` scope, so the Human committed the step directly on `wasi`
+(0153f8ebb, corrected in 9e680bc6b after a paste artifact briefly made the whole
+workflow unparseable — worth remembering that a malformed workflow does not go
+red, it silently never runs). Step 3 is fully closed: the corpus runs on every
+push.
 The 34 are 30 divergence / 2 gesture / 2 defect.
 
-Two numbers moved from the recorded census (303/37): `mouse.setRelativeMode` and
+Two numbers moved from the recorded census snapshot (303/37): `mouse.setRelativeMode` and
 `getRelativeMode` now pass. The earlier ad-hoc census ran with the 6.4 input
 host's **baked event script** replaying, which polluted mouse state — and whose
 last record is a QUIT, which is why the first corpus run here died after one

@@ -253,6 +253,8 @@ static int w_draw_prims(lua_State *L)
 // shader, and correct UV mapping (orientation included: texel (0,0) lands
 // top-left). A background pixel confirms the clear colour survives off the quad.
 // The four texel colours are fixed here and mirrored in witness-texture.lua.
+static graphics::Texture *makeQuadTexture(graphics::Graphics *gfx);
+
 static int w_draw_texture(lua_State *L)
 {
 	auto *gfx = witnessGfx(L);
@@ -267,23 +269,7 @@ static int w_draw_texture(lua_State *L)
 		gfx->clear(clear, OptionalInt(), OptionalDouble());
 		gfx->setColor(Colorf(1, 1, 1, 1)); // white: texture colour passes through
 
-		auto *img = new image::ImageData(2, 2, PIXELFORMAT_RGBA8_UNORM);
-		img->setPixel(0, 0, Colorf(0.2f, 0.4f, 0.6f, 1.0f)); // TL (51,102,153)
-		img->setPixel(1, 0, Colorf(0.8f, 0.2f, 0.2f, 1.0f)); // TR (204,51,51)
-		img->setPixel(0, 1, Colorf(0.2f, 0.6f, 0.2f, 1.0f)); // BL (51,153,51)
-		img->setPixel(1, 1, Colorf(0.6f, 0.2f, 0.8f, 1.0f)); // BR (153,51,204)
-
-		graphics::Texture::Slices slices(graphics::TEXTURE_2D);
-		slices.set(0, 0, img);
-		img->release(); // Slices retains it; drop our creation ref.
-
-		graphics::Texture::Settings st;
-		st.width = 2; st.height = 2;
-		graphics::Texture *tex = gfx->newTexture(st, &slices);
-
-		graphics::SamplerState ss = tex->getSamplerState();
-		ss.minFilter = ss.magFilter = graphics::SamplerState::FILTER_NEAREST;
-		tex->setSamplerState(ss);
+		graphics::Texture *tex = makeQuadTexture(gfx);
 
 		Matrix4 m(4.0f, 4.0f, 0.0f, 4.0f, 4.0f, 0.0f, 0.0f, 0.0f, 0.0f); // at (4,4), 4x
 		gfx->draw(tex, m);
@@ -614,7 +600,8 @@ static int w_draw_mesh(lua_State *L)
 	return pushSamples(L, H, sx, sy, 2);
 }
 
-// Build a 2x2 four-texel NEAREST texture (shared by the spritebatch witness).
+// Build a 2x2 four-texel NEAREST texture (shared by the texture and
+// spritebatch witnesses).
 static graphics::Texture *makeQuadTexture(graphics::Graphics *gfx)
 {
 	auto *img = new image::ImageData(2, 2, PIXELFORMAT_RGBA8_UNORM);

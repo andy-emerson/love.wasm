@@ -8,7 +8,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { driveAudio } from './driver.mjs';
+import { driveWitness } from '../platform/driver.mjs';
 import { makeWasiShim } from '../host/wasi-shim.mjs';
 import { makeAudioHost } from '../host/audio-host.mjs';
 import { makeBrowserMicHost } from '../host/mic-host-browser.mjs';
@@ -50,7 +50,7 @@ try {
   await page.goto(`http://localhost:${port}/`);
   result = await page.evaluate(reactorPageFn, {
     b64: wasmB64, boot: bootSrc,
-    driverSrc: driveAudio.toString(), shimSrc: makeWasiShim.toString(),
+    driverSrc: driveWitness.toString(), shimSrc: makeWasiShim.toString(),
     audioHostSrc: makeAudioHost.toString(), micHostSrc: makeBrowserMicHost.toString(),
     toneHz: TONE_HZ, withNow: false,
   });

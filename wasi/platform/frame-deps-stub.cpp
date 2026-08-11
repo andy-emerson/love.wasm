@@ -31,7 +31,8 @@
 //
 // What is still genuinely absent in the frame build is only the audio, video and
 // thread module surface love.graphics references at link time but the frame does
-// not enable (love.audio/love.video are not ported; love.thread is the step-7
+// not enable (this FRAME build does not link love.audio — the union build does;
+// love.video is dropped by decision; love.thread is the step-7
 // Workers step). Those three symbols are provided here, honestly:
 //   * audio::Source::type / video::VideoStream::type — the RTTI Type objects
 //     love.graphics's Video path compares against; never instantiated without the

@@ -51,6 +51,7 @@ public:
 	// play(); queueable sources push through queue(); stream sources are not yet
 	// wired (voice created, nothing queued).
 	Source(Type type, int sampleRate, int bitDepth, int channels);
+	Source(const Source &other);
 	virtual ~Source();
 
 	// Store a static source's whole PCM buffer; flushed to the host voice on the

@@ -239,9 +239,9 @@ The 30, by suite — and `wasi/corpus/expected.txt` is the same list, executable
 | system | 1 | `getOS` returns `"Web"`; the test asserts a closed desktop-only list |
 | sound | 1 | `SoundData:getSample(0.001)` — a **D8** consequence, not a sound defect: `luaL_checkinteger` truncates under 5.1 and raises under 5.4 |
 
-Four of them — the rasterisation near-misses — are blank only as long as the
-tolerance question stays open. They are the one group whose classification a
-decision could still move.
+Four of them — the rasterisation near-misses — are not a decision after all:
+measured (#54), they are upstream test-harness tolerance gates that have not
+met a Web target, and the fix is an upstream patch, not a ruling here.
 
 The ✗ column is the honest to-do list, and it is short. Four more ✗ cells appear
 elsewhere in this table — `hasFocus`/`hasMouseFocus`, `getSystemTheme`, custom
@@ -252,9 +252,8 @@ table out feature by feature bought.
 ## Keeping it true
 
 Prose rots silently, so the Web column is not only prose. Its failing half is
-`wasi/corpus/expected.txt`, and `wasi/corpus/run.sh` — one command, and bound
-for the per-push gate though **not wired into `witness.yml` yet** — fails three
-ways: a test expected to pass that failed, a test on the
+`wasi/corpus/expected.txt`, and `wasi/corpus/run.sh` — in `witness.yml`, on
+every push — fails three ways: a test expected to pass that failed, a test on the
 expected-fail list that starts **passing** (this table is stale, which is a good
 problem and still a failure, because an unearned divergence is a lie), and a
 test that failed while classified nowhere. All three are demonstrated able to

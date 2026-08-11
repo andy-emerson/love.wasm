@@ -121,10 +121,13 @@ private:
 	// outlive the last Lua reference to it, or stopping "all" would walk
 	// pointers the collector has already freed.
 	//
-	// A Source that reaches the END of its buffer is NOT reclaimed: the host
-	// reports no "ended" event, so nothing here can observe it. Such a Source
-	// stays tracked (and retained) until it is stopped explicitly, which
-	// overstates getActiveSourceCount() and holds the Source alive — a declared
+	// The host reports no "ended" event, so a Source that reaches the END of
+	// its buffer is reclaimed on demand instead: reapFinished() drops entries
+	// whose isPlaying() has gone false — for a non-looping STATIC Source that
+	// is a clock check against its known duration — and every answer that
+	// depends on "what is playing" (pause(), getActiveSourceCount()) reaps
+	// before answering. STREAM/QUEUE lengths are unknown, so those stay
+	// tracked until stopped explicitly — that residue is the declared
 	// limitation until the love_audio seam grows an ended callback.
 	std::vector<love::audio::Source*> playingSources;
 

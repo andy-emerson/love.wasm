@@ -80,10 +80,33 @@ int Source::ensureHandle()
 	return handle;
 }
 
+// A clone is a stopped COPY sharing the original's format, settings and (for a
+// static source) PCM — the openal backend's semantics. Returning `this`
+// retained would alias: stop() or setVolume() on the "clone" would hit the
+// original, which is a different object identity than every other backend
+// hands back. The copy takes no host voice until it first plays.
+Source::Source(const Source &other)
+	: love::audio::Source(other.sourceType)
+	, sampleRate(other.sampleRate)
+	, bitDepth(other.bitDepth)
+	, channels(other.channels)
+	, staticData(other.staticData)
+	, pitch(other.pitch)
+	, volume(other.volume)
+	, coneInnerAngle(other.coneInnerAngle)
+	, coneOuterAngle(other.coneOuterAngle)
+	, coneOuterVolume(other.coneOuterVolume)
+	, coneOuterHighGain(other.coneOuterHighGain)
+	, relative(other.relative)
+	, looping(other.looping)
+	, minVolume(other.minVolume)
+	, maxVolume(other.maxVolume)
+{
+}
+
 love::audio::Source *Source::clone()
 {
-	this->retain();
-	return this;
+	return new Source(*this);
 }
 
 bool Source::play()

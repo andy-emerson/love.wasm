@@ -1,4 +1,4 @@
-// Full love_gl host binding: implements the 161-entry GL import surface the
+// Full love_gl host binding: implements the 162-entry GL import surface the
 // love.graphics opengl backend calls, against a real WebGL2 context. This is
 // the host side of the "static WebGL2 imports ARE the GL surface" seam
 // (readme.md) — the real IDE preview will use the same binding.
@@ -11,9 +11,11 @@
 // mesh, spritebatch, particles) exercise is implemented for real; entry points
 // WebGL2 lacks or no witness calls (compute, indirect draw, buffer mapping,
 // debug groups, MSAA resolve) are present as loud-warning stubs so
-// instantiation succeeds. Host-reported limits: glGetString/glGetIntegerv/
-// glGetFloatv answer from the real context (gl.getParameter), never a static
-// assumption.
+// instantiation succeeds. Numeric limits (glGetIntegerv/glGetFloatv) answer
+// from the real context via gl.getParameter; glGetString serves the fixed
+// identity strings below (VENDOR/RENDERER/VERSION have no faithful WebGL
+// counterpart to query), and the extension list is enumerated for real from
+// gl.getSupportedExtensions (#51).
 export function makeWebGLHost() {
   // The system backbuffer LÖVE renders to when no MSAA internal backbuffer is
   // requested (the witness case). Sized generously so a witness can setMode to

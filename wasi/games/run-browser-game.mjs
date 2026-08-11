@@ -139,7 +139,7 @@ try {
   if (near(moved.dominant, ERROR_BLUE))
     fail(`the game crashed on input — the canvas is LÖVE's error screen (${moved.dominant})`);
   if (moved.dominantPct === world.dominantPct && moved.distinct === world.distinct)
-    fail('the frame is byte-identical after holding a movement key — nothing responded');
+    fail('the frame statistics (dominant-colour share and distinct-colour count) are unchanged after holding a movement key — nothing responded');
 
   // (6) the engine is not limping along with a broken GL state.
   const glError = await page.evaluate(() => {

@@ -597,7 +597,7 @@ use, every time they cross a document boundary.
 ### 7.3 A claim's evidence is a witness
 
 Applying `AGENTS.md`'s preference for executable evidence: a behavioral claim
-carries a **witness** — a one-command script under `wasi/**/run-*.sh` that
+carries a **witness** — a one-command script under `wasi/**/run*.sh` that
 builds what it needs and exits non-zero if the claim is false. Prose asserting
 behavior that no witness covers is Stated, whatever its tone.
 

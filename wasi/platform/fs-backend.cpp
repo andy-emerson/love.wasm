@@ -86,7 +86,7 @@ FS_IMPORT("fs_list") int32_t wfs_list_raw(const char *path, int32_t path_len, ui
 // job is to make that resolve to `output/expected/…`. A path that does not
 // resolve inside the store is REFUSED (false), not faked — mounting a real
 // host directory would need a host-side seam that does not exist, and mounting
-// an ARCHIVE is a different question again, still open as #48.
+// an ARCHIVE is a different question again, closed in #48 as deliberately not built.
 //
 // The rewrite is applied in one place — these wrappers — so every operation
 // (read, stat, size, write, remove, mkdir, list) sees mounts identically, and

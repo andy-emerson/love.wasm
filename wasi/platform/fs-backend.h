@@ -28,9 +28,11 @@
 // project. Writes land in the save namespace; reads resolve save-first then
 // project (physfs mount order), so a written file shadows a project file of the
 // same name and removing the save copy reveals the pristine project file
-// beneath — the project itself is never mutated. Real archive/.love mounting
-// and directory enumeration remain deliberately unimplemented (loud, not
-// faked) — see fs-backend.cpp for exactly which surfaces stop and why.
+// beneath — the project itself is never mutated. Directory enumeration is real
+// (getDirectoryItems over the fs_list import), as are directory mounts of paths
+// already in the store (mountFullPath). Runtime ARCHIVE mounting is deliberately
+// not built — D7, closed in #48 — and returns a loud false, never a fake; see
+// fs-backend.cpp for exactly which surfaces stop and why.
 //
 // This header lives out-of-tree (readme.md: the src tree stays upstream-shaped;
 // the wasi build compiles the subset). wrap_Filesystem.cpp includes it under

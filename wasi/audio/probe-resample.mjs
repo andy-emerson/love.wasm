@@ -15,32 +15,12 @@
 //    feeds 48000 Hz — does Chromium honor the rate, does createMediaStreamSource
 //    survive the mismatch, and do the captured frames arrive at 16000 Hz with
 //    the tone intact? (The mic delegation point — the fragile one.)
-import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { existsSync, writeFileSync } from 'node:fs';
+import { makeSineWav, resolvePlaywright } from '../host/witness-harness.mjs';
 
 const TONE_HZ = 440;
 const WAV_RATE = 48000;
-
-function makeSineWav(freq, rate, seconds) {
-  const n = rate * seconds, bps = 2, dataLen = n * bps;
-  const buf = Buffer.alloc(44 + dataLen);
-  buf.write('RIFF', 0); buf.writeUInt32LE(36 + dataLen, 4); buf.write('WAVE', 8);
-  buf.write('fmt ', 12); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20);
-  buf.writeUInt16LE(1, 22); buf.writeUInt32LE(rate, 24);
-  buf.writeUInt32LE(rate * bps, 28); buf.writeUInt16LE(bps, 32); buf.writeUInt16LE(16, 34);
-  buf.write('data', 36); buf.writeUInt32LE(dataLen, 40);
-  for (let i = 0; i < n; i++)
-    buf.writeInt16LE(Math.max(-1, Math.min(1, Math.sin(2 * Math.PI * freq * i / rate))) * 32767, 44 + i * bps);
-  return buf;
-}
-
-function resolvePlaywright() {
-  for (const base of [process.cwd(), '/root/.love.wasm/npm', process.env.HOME || '/root']) {
-    try { return createRequire(base + '/noop.js')('playwright-core'); } catch { /* next */ }
-  }
-  throw new Error('playwright-core not resolvable');
-}
 
 async function pageProbe({ toneHz }) {
   const goertzel = (samples, rate, freq) => {

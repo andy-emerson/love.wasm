@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { driveAudio } from './driver.mjs';
+import { driveWitness } from '../platform/driver.mjs';
 import { makeWasiShim } from '../host/wasi-shim.mjs';
 import { makeAudioHost } from '../host/audio-host.mjs';
 import { runInChromium, reactorPageFn } from '../host/witness-harness.mjs';
@@ -19,7 +19,7 @@ const wasmB64 = readFileSync(process.argv[2] ?? 'love-audio.wasm').toString('bas
 
 const result = await runInChromium(reactorPageFn, {
   b64: wasmB64, boot: bootSrc,
-  driverSrc: driveAudio.toString(), shimSrc: makeWasiShim.toString(),
+  driverSrc: driveWitness.toString(), shimSrc: makeWasiShim.toString(),
   audioHostSrc: makeAudioHost.toString(), toneHz: TONE_HZ,
   withNow: false,
 });

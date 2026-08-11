@@ -19,31 +19,11 @@
 //      plays our WAV at 440 Hz; Firefox's fake device synthesises its own tone;
 //      WebKit headless typically has no fake mic at all), so capture detects the
 //      DOMINANT frequency by a coarse sweep rather than assuming 440.
-import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { existsSync, writeFileSync } from 'node:fs';
+import { makeSineWav, resolvePlaywright } from '../host/witness-harness.mjs';
 
 const TONE_HZ = 440, WAV_RATE = 48000;
-
-function makeSineWav(freq, rate, seconds) {
-  const n = rate * seconds, bps = 2, dataLen = n * bps;
-  const buf = Buffer.alloc(44 + dataLen);
-  buf.write('RIFF', 0); buf.writeUInt32LE(36 + dataLen, 4); buf.write('WAVE', 8);
-  buf.write('fmt ', 12); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20);
-  buf.writeUInt16LE(1, 22); buf.writeUInt32LE(rate, 24);
-  buf.writeUInt32LE(rate * bps, 28); buf.writeUInt16LE(bps, 32); buf.writeUInt16LE(16, 34);
-  buf.write('data', 36); buf.writeUInt32LE(dataLen, 40);
-  for (let i = 0; i < n; i++)
-    buf.writeInt16LE(Math.max(-1, Math.min(1, Math.sin(2 * Math.PI * freq * i / rate))) * 32767, 44 + i * bps);
-  return buf;
-}
-
-function resolvePlaywright() {
-  for (const base of [process.cwd(), '/root/.love.wasm/npm', process.env.HOME || '/root']) {
-    try { return createRequire(base + '/noop.js')('playwright-core'); } catch { /* next */ }
-  }
-  throw new Error('playwright-core not resolvable');
-}
 
 // Per-engine launch config. Chromium: fake device fed our WAV file. Firefox:
 // fake device via prefs (synthesises its own tone). WebKit: no documented fake

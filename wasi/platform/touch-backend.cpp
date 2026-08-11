@@ -56,7 +56,11 @@ const Touch::TouchInfo &Touch::getTouch(int64 id) const
 			return touch;
 	}
 
-	throw love::Exception("Invalid active touch ID: %d", id);
+	// id is int64; %d reads varargs as int, printing garbage for ids >= 2^31.
+	// Browser Touch.identifier values are small, but the format should not rely
+	// on that. (Upstream's sdl/Touch.cpp has the same mismatch; fork-authored
+	// code can just be right.)
+	throw love::Exception("Invalid active touch ID: %lld", (long long) id);
 }
 
 void Touch::onEvent(TouchEvent type, const TouchInfo &info)

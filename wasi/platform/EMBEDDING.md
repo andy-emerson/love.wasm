@@ -191,7 +191,7 @@ callbacks and the functions they call, and file-scope constant literals, applied
 by re-requiring the changed module. Everything else (edits to already-executed
 init whose state lives in file-scope locals, structural changes that would leave
 stale live references) → **restart** (a fresh `pump_boot`), the blessed fallback.
-Finer-grained function-body hotswap that preserves live state (**D4**, still open)
+Finer-grained function-body hotswap that preserves live state (**D4**, closed as the chosen mechanism — not yet built)
 can layer on later without foreclosing this: it would refine step 3, not change
 the write/invalidate handshake.
 

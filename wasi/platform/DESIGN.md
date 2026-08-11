@@ -276,10 +276,10 @@ front-run any choice. Resolution status (Human-ratified):
 | D1 | Filesystem seam | **A — replace the module.** Gates 6.2. |
 | D2 | Save-dir backing | **Closed — OPFS, separate untracked namespace, eager-flush (eventual durability, declared).** See below. |
 | D3 | Window/context | **A — `setMode` drives the real canvas/context.** Gates 6.3. |
-| D4 | Reload granularity | **Open — tracked in #47**, deferred past Beta. Beta ships module-granularity live-edit (the 6.7 `pump_invalidate` + write path) with **restart** as the fallback for `main.lua`-direct edits. |
+| D4 | Reload granularity | **Closed — B, function-body hotswap** (#47). Chosen for play-testing: state survives the edit; a broken edit fails on the user's code at its next call. Not yet built; until it lands, module-granularity live-edit plus restart is what ships. See below. |
 | D5 | Supported-edit class | **A — minimal & explicit**, restart fallback. |
 | D6 | Console channel | **A — pure stdio now**, architected so B (host structured tap) can layer on without engine changes. |
-| D7 | Archive/`.love` mounting: who unzips | **Open — tracked in #48.** Directory enumeration (`getDirectoryItems` over `fs_list`) is built; runtime zip mounting waits on the decision. |
+| D7 | Archive/`.love` mounting: who unzips | **Closed — neither: not built** (#48). Directory enumeration (`getDirectoryItems` over `fs_list`) is built; runtime zip mounting is a declared divergence. See below. |
 | D8 | Lua dialect | **Closed — PUC Lua 5.4.** See below. |
 
 ### D1 — Filesystem seam: replace the module, or keep PhysFS and reseam its IO
@@ -493,7 +493,7 @@ prior question was never on the list, and it is the one that wins.
 
 **The evidence that closed it.** The decision named the `testing/` corpus as the
 right measure of which use case was worth building. The corpus now runs, and
-`mount`/`unmount` are 2 of its 35 expected failures — the whole demand signal.
+`mount`/`unmount` are 2 of its 34 expected failures — the whole demand signal.
 The other half of the reopen trigger never fired: Legend of Lua reached a
 playable state without a runtime mount.
 

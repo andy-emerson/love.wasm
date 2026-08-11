@@ -571,20 +571,26 @@ silently.
 Sections 1–6 are project-agnostic and arrive by replacement. This section is
 love.wasm's own, and it is the only part of this file that changes here.
 
-### 7.1 Trunk is `wasi`, and `main` is not ours
+### 7.1 Trunk is `main`; the upstream reference is `upstream-mirror`
 
-Where `AGENTS.md` says `main`, read **`wasi`** — the reviewed, documented,
-known-good trunk and this repository's default branch. Working branches are cut
-from `wasi` and merge back to `wasi`.
+**`main` is the trunk** — the reviewed, documented, known-good branch
+`AGENTS.md` describes, and this repository's default. Working branches are cut
+from `main` and merge back to `main`. A pull request's base is always `main`.
 
-`main` is a pristine mirror of upstream [love2d/love][upstream]. It is never
-committed to and only ever fast-forwarded, when a new upstream base is adopted.
-That is what keeps `git diff main...wasi` a complete answer to "what did this
-fork touch"; the readme's "Upstream relationship" section explains why the fork
-is arranged this way.
+(History: until 2026-08-11 the trunk was named `wasi` and `main` was a mirror
+of the upstream parent, a layout inherited from the repository's origin as a
+GitHub fork. The repository is now detached from the fork network; `wasi` was
+retired with its history fully contained in `main`.)
 
-Because the repository began as a GitHub fork, a new pull request may default
-its base to the upstream parent. The base is always `wasi`.
+**`upstream-mirror`** is a pristine copy of upstream [love2d/love][upstream] at
+the recorded base pin (readme.md, top). It is never committed to and only ever
+advanced, deliberately, when a new upstream base is adopted — via an explicit
+remote (`git remote add upstream https://github.com/love2d/love`), never a
+button. That is what keeps `git diff upstream-mirror...main` a complete answer
+to "what did this fork touch"; the readme's "Upstream relationship" section
+explains the arrangement. Nothing enforces this branch's provenance but this
+convention, so treat any commit on it that did not come from `upstream/main`
+as an error to be reported, not merged around.
 
 ### 7.2 The subject is LÖVE and the browser
 

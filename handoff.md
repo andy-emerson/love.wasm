@@ -8,7 +8,7 @@ work is `AGENTS.md` and `CONTRIBUTING.md`.
 
 ## Where we are
 
-A real game runs, and that is merged to `wasi`. The engine, compiled to
+A real game runs, and that is merged to `main`. The engine, compiled to
 `wasm32-wasi`, takes an actual LÖVE project from `conf.lua` through canvas,
 `love.load`, `love.update`/`love.draw` and present, with graphics, filesystem,
 sound, audio and physics working together in one artifact.
@@ -754,11 +754,13 @@ boot-wrapper preamble were reverted and stay reverted.
 
 ## Practical notes
 
-- **A pull request's base is `wasi`.** The repository began as a fork of
-  `love2d/love`, so the host may default a new pull request's base to the
-  upstream parent. `main` is the pristine upstream mirror and is never a merge
-  target.
-- **A merged pull request here displays as "closed"** rather than with the
-  purple "merged" badge. Judge a merge by whether its commits landed on `wasi`.
+- **A pull request's base is `main`** — the trunk and default since 2026-08-11,
+  when the repository detached from the fork network and retired the old `wasi`
+  trunk (its history is fully contained in `main`). The upstream reference now
+  lives on `upstream-mirror`; base bumps advance it through an explicit
+  `upstream` remote, deliberately.
+- **The fork-era gotchas are gone with the detach**: PRs no longer default
+  their base to `love2d/love`, and merged pull requests now show the normal
+  purple "merged" badge.
 - **The dependency cache is `$HOME/.love.wasm`.** The first session after that
   rename re-fetches the wasm-EH sysroot once.

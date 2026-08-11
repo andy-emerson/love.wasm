@@ -38,6 +38,14 @@ Audio::Audio()
 
 Audio::~Audio()
 {
+	// Drop the references trackPlaying() took, or every Source that was still
+	// playing at teardown outlives the module that was keeping it alive. Emptied
+	// first, so a Source destroyed here cannot see a half-torn-down set.
+	std::vector<love::audio::Source*> tracked;
+	tracked.swap(playingSources);
+	for (auto *s : tracked)
+		s->release();
+
 	for (auto *d : capture)
 		d->release();
 }
@@ -69,7 +77,34 @@ love::audio::Source *Audio::newSource(int sampleRate, int bitDepth, int channels
 
 int Audio::getActiveSourceCount() const
 {
-	return 0;
+	// Reap before counting, for the same reason pause() does: a Source that ran
+	// to its own end is not active, and nothing tells us so unprompted.
+	const_cast<Audio *>(this)->reapFinished();
+	return (int) playingSources.size();
+}
+
+void Audio::trackPlaying(love::audio::Source *source)
+{
+	for (auto *s : playingSources)
+	{
+		if (s == source)
+			return;
+	}
+	source->retain();
+	playingSources.push_back(source);
+}
+
+void Audio::untrack(love::audio::Source *source)
+{
+	for (auto it = playingSources.begin(); it != playingSources.end(); ++it)
+	{
+		if (*it == source)
+		{
+			(*it)->release();
+			playingSources.erase(it);
+			return;
+		}
+	}
 }
 
 int Audio::getMaxSources() const
@@ -77,6 +112,13 @@ int Audio::getMaxSources() const
 	return 64;
 }
 
+// Source::play()/stop() are what maintain playingSources, not these entry
+// points: wrap_Source's `source:play()` / `source:stop()` call the Source
+// directly and never come through the module, which is the way games actually
+// start a sound. Registering here as well would leave that path untracked —
+// love.audio.stop() would stop nothing and getActiveSourceCount() would answer
+// 0 — so the Source owns the bookkeeping, exactly as openal's Source does
+// through the Pool.
 bool Audio::play(love::audio::Source *source)
 {
 	return source != nullptr && source->play();
@@ -86,7 +128,10 @@ bool Audio::play(const std::vector<love::audio::Source*> &sources)
 {
 	bool any = false;
 	for (auto *s : sources)
-		any = (s != nullptr && s->play()) || any;
+	{
+		if (s != nullptr && s->play())
+			any = true;
+	}
 	return any;
 }
 
@@ -99,12 +144,23 @@ void Audio::stop(love::audio::Source *source)
 void Audio::stop(const std::vector<love::audio::Source*> &sources)
 {
 	for (auto *s : sources)
+	{
 		if (s != nullptr)
 			s->stop();
+	}
 }
 
 void Audio::stop()
 {
+	// Copy first, and hold a reference across the walk: stop() untracks, which
+	// drops the tracking reference and can destroy the Source mid-loop.
+	std::vector<love::audio::Source*> all = playingSources;
+	for (auto *s : all)
+		s->retain();
+	for (auto *s : all)
+		s->stop();
+	for (auto *s : all)
+		s->release();
 }
 
 void Audio::pause(love::audio::Source *source)
@@ -120,9 +176,45 @@ void Audio::pause(const std::vector<love::audio::Source*> &sources)
 			s->pause();
 }
 
+// Drop Sources that have finished on their own. The host reports no "ended"
+// event, so completion is only ever observed on demand; every answer that
+// depends on "what is playing" reaps before answering.
+void Audio::reapFinished()
+{
+	std::vector<love::audio::Source*> live;
+	live.reserve(playingSources.size());
+	for (auto *s : playingSources)
+	{
+		if (s->isPlaying())
+			live.push_back(s);
+		else
+			s->release();
+	}
+	playingSources.swap(live);
+}
+
 std::vector<love::audio::Source*> Audio::pause()
 {
-	return {};
+	// LOVE's contract: pause everything currently playing and hand back exactly
+	// those Sources, so love.audio.play(list) can resume them.
+	//
+	// Nothing is untracked HERE, and that is what makes the returned vector safe:
+	// the tracking reference is routinely the last one — a Source played and then
+	// dropped by Lua is kept alive by nothing else — so releasing during this
+	// call would have w_pause push an already-destroyed Source to Lua. The next
+	// reapFinished() does drop them, because Source::pause() stops the voice and
+	// clears `playing`, and this backend has no way to tell paused from finished;
+	// by then w_pause has retained everything it handed to Lua.
+	//
+	// Reap first: a STATIC Source that ran to its own end is not playing, and
+	// with no host "ended" event the set only learns that by being asked. Without
+	// this, pause() hands back every Source ever played — the corpus's
+	// audio/pause asserts exactly that ("check nothing paused").
+	reapFinished();
+	std::vector<love::audio::Source*> paused = playingSources;
+	for (auto *s : paused)
+		s->pause();
+	return paused;
 }
 
 void Audio::setVolume(float volume)
@@ -159,13 +251,14 @@ void Audio::setVelocity(float *)
 {
 }
 
-void Audio::setDopplerScale(float)
+void Audio::setDopplerScale(float scale)
 {
+	dopplerScale = scale;
 }
 
 float Audio::getDopplerScale() const
 {
-	return 1.0f;
+	return dopplerScale;
 }
 
 const std::vector<love::audio::RecordingDevice*> &Audio::getRecordingDevices()

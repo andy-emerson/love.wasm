@@ -24,14 +24,28 @@ and **re-runnable** — `wasi/games/run.sh` fetches the pin, applies our port
 patch, plays it and asserts. Its Lua needs a 5.1 → 5.4 port; every LÖVE feature
 it uses works. See step 2, and **The Lua dialect** in `readme.md`.
 
-What is still unproven: the `testing/` corpus has not been run under this build.
+The `testing/` corpus runs as a **witness** — `wasi/corpus/run.sh`, **305 pass /
+35 fail / 15 skip** across 21 suites, up from 236/92 when it first ran. Every
+failure is classified, and the comparison against that classification is what the
+witness asserts. See step 3.
+
+**`wasi/COMPATIBILITY.md` is the durable home for what works where**: every LÖVE
+feature against desktop and against this build, ✓ / ✗ / blank. It replaces the
+flat failure count with the question that actually matters — does the target have
+the feature at all — and it resolves the 35 into **30 blanks** (the browser does
+not have it), **2 gesture-gated**, and **3 real gaps**, one of which is an
+outright defect (#51). Its failing half is `wasi/corpus/expected.txt`, so the
+classification is executable rather than prose. It also surfaced four ✗ cells the
+corpus never probes.
 
 `love.thread` is the one major module still stubbed (build-order step 7).
 
 ## Beta
 
 **Beta = real games playable interactively from a standalone dev artifact, with
-the sliced `testing/` corpus green modulo declared divergences.** Packaging
+the `testing/` corpus green modulo declared divergences.** (It needs no slicing:
+`testing/main.lua` gates every suite on `if love.<module> ~= nil`, so the whole
+corpus runs in one shot — the recorded plan to run it by module slice was wrong.) Packaging
 (#7, build-order step 8) is post-Beta: love.wasm must be demonstrably operable
 on its own, which is not the same as building every downstream consumer.
 
@@ -234,14 +248,346 @@ reports separately. Two adverse cases, both run:
 
 [lol]: https://github.com/challacade/legend-of-lua
 
-### 3. Sliced corpus parity
+### 3. Corpus parity — CENSUSED, work sized
 
-Run the `testing/` `love.test.*` suites for the linked modules and diff.
-Reference is the committed `testing/**/expected/` outputs, with version skew
-noted. The full corpus cannot run in one shot — it exercises unlinked `thread`
-and `video` — so run it **by module slice**. **Evidence:** every linked-module
-suite passes, with each divergence marked expected-fail and listed explicitly.
-Never silently failing.
+**It does not need slicing.** `testing/main.lua` already gates every suite on
+`if love.<module> ~= nil then require(...)`, so `video` and `thread` skip
+themselves — which works precisely *because* the boot wrapper leaves an absent
+module `nil` rather than a truthy stub. The recorded plan to "run it by module
+slice" was wrong; the whole corpus runs in one shot.
+
+**The census (this session), 21 suites in one run — first run, then after the
+three fixes below:**
+
+| | pass | fail | skip |
+|---|---|---|---|
+| first run | 236 | 92 | 15 |
+| **now** | **303** | **37** | **15** |
+
+Per suite, as it stands now (▲ marks what the three fixes moved):
+
+| module | pass | fail | | module | pass | fail |
+|---|---|---|---|---|---|---|
+| audio ▲ | 25 | 6 | | mouse | 15 | 3 |
+| data ▲ | 12 | 0 | | physics | 26 | 0 |
+| event | 4 | 0 | | sensor | 1 | 0 |
+| filesystem ▲ | 29 | 4 | | sound | 3 | 1 |
+| font | 7 | 0 | | system | 7 | 1 |
+| graphics ▲ | 98 | 7 | | timer | 4 | 2 |
+| image | 5 | 0 | | touch | 3 | 0 |
+| joystick ▲ | 5 | 1 | | window | 23 | 12 |
+| keyboard | 10 | 0 | | love ▲ | 6 | 0 |
+| math | 20 | 0 | | thread/video | — | skipped |
+
+**Three infrastructure blockers account for most of it. The residual is small.**
+
+**A. `setMode` recreated the GL context every call — FIXED this session.**
+`window_setmode` built a new canvas and a new WebGL2 context on every call, so
+the *second* one orphaned every shader, buffer and texture LÖVE had made in the
+first. The corpus died on line 39 of `love.load` — `love.window.updateMode` —
+with "Cannot link shader program object". This was never corpus-specific: a
+resolution change or a fullscreen toggle in any real game hit it. A repeat call
+now resizes the drawing buffer in place and keeps the context, and depth+stencil
+are requested unconditionally at creation so a later request can always be
+honoured. Witnesses re-run: win, frame, game, shell — all pass.
+
+**B. `love.data.pack` trapped the module — FIXED this session.** Minimal repro:
+`love.data.pack('string', '>I4', 9999)` traps ("null function or function
+signature mismatch"; sometimes "memory access out of bounds"). Native
+`string.pack`/`unpack` are fine and `love.data.getPackedSize` is fine, so it is
+not the format machinery.
+
+The cause is `src/libraries/lua53/lstrlib.c`, the Kepler 5.3 backport LÖVE
+vendors so LuaJIT gets `string.pack`. Its buffer layer branches on
+`LUA_VERSION_NUM == 501`: on 5.1 it uses its own `ptr`/`nelems`/`capacity`/`L2`
+fields; on anything else `luaL_buffinit_53` initialises the **native**
+`luaL_Buffer` — but `luaL_addsize_53` and `lua53_pushresult` still read the
+shim's own fields, which nobody set. So `lua53_pushresult` calls
+`lua_pushlstring(B->L2, B->ptr, B->nelems)` on garbage. Someone added a
+`>= 504` arm to one macro, which made it *compile* under 5.4 without making it
+*work*; upstream never runs this path because upstream is 5.1.
+
+The fix needed no `src/` change. Lua 5.4 has `string.pack`/`unpack`/`packsize`
+natively and the backport's whole interface is five symbols, so
+`wasi/platform/lua53-strlib.c` implements those over the native functions and
+all fourteen build scripts link it instead of `lstrlib.c`. It includes upstream's
+header, so a drift in the struct layout or a prototype is a compile error rather
+than a trap. The functions come from the registry's loaded-module table, not the
+`string` global, so a game reassigning `string.pack` cannot change what
+`love.data.pack` does.
+
+`love.data` is now **12 pass / 0 fail**, and the total is **290 pass / 50 fail**.
+`love.data.pack` is a real LÖVE 12 API, so this was never corpus-only.
+
+One bug of my own on the way in, worth recording because the shape recurs:
+`posidx` was read *after* pushing the function and its arguments. It is an
+absolute stack index, so with no position argument supplied it pointed at the
+pushed function — "bad argument #3 to 'string.unpack' (number expected, got
+function)". Read the caller's optional arguments before pushing anything.
+
+**C. `mountFullPath` — FIXED this session.** It returned false, so `compareImg`
+could not read its reference PNGs and 44 of graphics' 47 failures were one
+missing capability rather than 44 defects. Confirmed independent of #48: this is
+a **directory** mount, and #48 is about who unzips an *archive*.
+
+Two parts, and the second was a defect in its own right:
+
+- The store behind the seam has no host filesystem — only the loaded project and
+  the writable save namespace. So a mount here cannot open an unrelated
+  directory on a machine; what it can do, and all LÖVE actually asks for, is
+  make a directory ALREADY in the store visible under a second name. A target
+  that does not resolve inside the store is refused, not faked. The rewrite sits
+  in wrappers around the `love_fs` imports, so read/stat/size/write/remove/
+  mkdir/list all see mounts identically and there is no cost while no mount
+  exists.
+- **Project directories did not exist to `getInfo`.** The store is a flat
+  path→bytes map, so only an `fs_mkdir`'d directory in the save namespace ever
+  stat'ed. `love.filesystem.getInfo("<a directory of the game's own source>")`
+  returned nil while `getDirectoryItems` happily listed its children — the two
+  halves of one store disagreeing. A directory is now implicit: it exists when
+  some key lives beneath it. That is what let the mount verify its target, and
+  it fixes `getInfo` on directories for every game.
+
+**Result: 236 pass / 92 fail → 278 pass / 50 fail.** graphics went 58/47 to
+**97/8**, filesystem 23/10 to 26/7, and zero `tempoutput` failures remain.
+
+### Triage so far
+
+**`love.audio`: 19/12 → 25 pass / 6 fail.** Four defects, all fork-authored code
+(`src/modules/audio/webaudio/` is ours — it is absent from the upstream mirror):
+
+- **`Audio` kept no registry of playing sources.** `love.audio.stop()` was
+  literally an empty function and `getActiveSourceCount()` returned a constant
+  `0`, because there was nothing to answer from. Sources are now tracked while
+  playing — and *retained* while tracked, as the OpenAL backend does, or
+  stopping "all" would walk pointers the collector had already freed.
+  `pause()` returns exactly the Sources it paused, which is what lets
+  `love.audio.play(list)` resume them.
+- **`Source:getDuration()` returned -1 for everything.** A static Source holds
+  its whole PCM buffer, so its length is arithmetic; -1 ("unknown") was a lie
+  for the one case that is knowable. STREAM and QUEUE keep -1 honestly.
+- **`setDopplerScale` discarded its argument** while `setDistanceModel` stored
+  its own — an inconsistency against this backend's stated convention, which is
+  that unappliable spatialization state is *stored and reported* (Source.h).
+- **The distance-model default was `DISTANCE_NONE`**, where desktop's is
+  `DISTANCE_INVERSE_CLAMPED`.
+
+The remaining **6 are declared divergences**, not defects: the mic's sample rate
+is not settable in a browser; EFX effects and per-source filters have no
+WebAudio equivalent in LÖVE's OpenAL-shaped model (`setEffect`, `getEffect`,
+`getActiveEffects`, `Source:setFilter`); and output-device selection is gated.
+
+**`love.filesystem`: 23/10 → 29 pass / 4 fail.** `mountFullPath` (blocker C)
+took three of them; `remove` took a fourth:
+
+- **`remove` could not delete a directory, and would delete a non-empty one.**
+  Two host-side causes. `fs_mkdir` did not create intermediate directories,
+  where physfs's does — so `createDirectory("foo/bar")` left no `foo` at all,
+  and `remove("foo")` could never succeed. And `fs_remove` did not check
+  emptiness, so removing a directory with a file still in it reported success.
+  Both fixed in `fs-host.mjs`; no rebuild, since it is host JavaScript.
+
+The remaining 6 divide into declared divergences and one defect worth naming:
+
+| test | verdict |
+|---|---|
+| `mount`, `unmount` | archive mounting — **#48 (D7)**, closed as deliberately not built |
+| `mountCommonPath` | userdesktop / userhome / appdocuments / userappdata / userdocuments — a browser has no such paths |
+| `getRealDirectory` | there are no real directories; the store is virtual |
+| ~~`getInfo().readonly`~~ | **FIXED** — see below |
+| ~~`isFused`~~ | **FIXED** — see below |
+
+**`getInfo().readonly` — fixed by extending the seam.** `fs_stat` gained an
+`out_readonly` param: the host reports which store answered, because it is the
+side that resolves the two and they shadow each other. A file of the project is
+read-only; a file of the save namespace is not; a directory is writable when
+anything of the save namespace lives in it, since that is where a write to it
+would land. `EMBEDDING.md`'s import table records the new signature, and its
+deferral list drops the entry.
+
+**`isFused` — fixed, in the two halves it needed.** `boot.lua:77` infers "fused"
+from `pcall(setSource, exepath)` SUCCEEDING, and ours succeeded for anything: it
+only recorded the path, where a desktop physfs `setSource` refuses a plain
+executable. So `setSource` now requires a game to actually be there — `main.lua`
+or `conf.lua`, the two files `boot.lua` goes on to look for — and the boot
+wrapper seeds `arg` with a game argument, because the inference is read at
+`boot.lua:92` *before* the non-fused branch reassigns `can_has_game`; without the
+argument there would be no game at all once `setSource` stopped saying yes to
+everything. That is the same route a desktop `love /path/to/game` takes.
+
+It fixed three tests, not one: `love.setDeprecationOutput` had been switched off
+by the false inference, so two `love` suite tests were failing with it. `love` is
+now 6 pass / 0 fail.
+
+The full sweep caught the cost, which is the point of running it: `run-fs2.sh`
+asserted `setSource("/project")` succeeds — a path with no game in it — which
+was the old permissive behaviour written down. Updated to the new contract, and
+made *stronger* while there: it now asserts the refusal as well as the
+acceptance, tested in that order because `setSource` is settable-once.
+
+**The scattered nine, examined.** One defect, eight declared divergences:
+
+- **`love.joystick.loadGamepadMappings` accepted anything — FIXED.** The wrap
+  passes the argument through as mapping CONTENT when it does not name a file,
+  so a mistyped filename arrived here as a mapping string and we returned
+  happily; desktop rejects it while parsing. "Ignored" must not slide into
+  "anything is accepted" — that hides the user's mistake instead of declaring a
+  limitation. The shape is now checked (SDL mapping data is `GUID,name,binding,…`
+  — at least two commas on a real line), and only the shape: it is still not
+  parsed and still not applied, which is what the warning now says.
+- `love.joystick.setGamepadMapping` (24 asserts) — no controller DB in a
+  browser; the W3C standard mapping is fixed. Already declared in DESIGN.md 6.5.
+- `love.mouse.setRelativeMode` / `getRelativeMode` — pointer lock is real but
+  needs a **user gesture**, the same shape as `setFullscreen`: a game calling it
+  from a click could work where a test never can.
+- `love.mouse.setGrabbed` — cursor confinement has no browser API at all.
+- `love.timer.sleep` and `getTime` — both are the same fact: `love::sleep` is an
+  honest no-op because blocking the main thread is forbidden here, so no time
+  passes across the test's sleep. `getTime` itself is fine; it is measuring a
+  sleep that did not happen.
+- `love.system.getOS` — returns `"Web"`, deliberately (readme's seam table). The
+  corpus asserts membership of a desktop-only list, which has no Web entry.
+- `love.sound.SoundData:getSample(0.001)` — **a D8 consequence, not a sound
+  defect**: LÖVE takes a sample index with `luaL_checkinteger`, which truncates
+  under 5.1 and raises under 5.4. Exactly the class the Lua-dialect decision
+  named, showing up inside the corpus rather than in a game.
+
+**`love.window`: 12 fail, and this is the honest shape of a page.** Nothing here
+was implemented, because none of it can be done faithfully and the ones that
+could be are gesture-gated:
+
+| tests | what a page can do |
+|---|---|
+| `setPosition`, `getPosition` | nothing — a page cannot move its window |
+| `maximize`, `minimize`, `isMaximized`, `isMinimized` | nothing |
+| `setFullscreen`, `getFullscreen` | the Fullscreen API is real but needs a **user gesture**, so a game calling it from a keypress could work while this test never can |
+| `setDisplaySleepEnabled`, `isDisplaySleepEnabled` | the Screen Wake Lock API is real, async and permission-gated — implementable, currently not |
+| `setIcon`, `getIcon` | a favicon is the host document's business, not the canvas's |
+
+So window's 12 divide into **6 impossible**, **2 possible only under a user
+gesture**, and **4 implementable-but-unbuilt** (wake lock, icon). None of them
+should be made to pass by storing a value the browser never applied — that is
+the line between a declared divergence and a fake.
+
+**What is left: 37 failures, every one examined.**
+Its remaining 8 are worth naming because they set the shape of the triage:
+
+| test | shape |
+|---|---|
+| `Image()` | DXT1 pixel format unsupported — a real WebGL2 divergence |
+| `Video()`, `newVideo()` | `love.video` absent — expected |
+| `arc()` | 3069/3072 pixels match |
+| `circle()` | 1022/1024 |
+| `ellipse()` | 1023/1024 |
+| `setLineStyle()` | 224/256 |
+| `Shader()` | **FIXED** — see below |
+
+Four of those are near-miss rasterisation edges, which is what a different
+rasteriser looks like and probably a declared divergence rather than a bug.
+
+**`Shader()` was a genuine defect, and a much wider one than the test.**
+`glReadPixels` allocated a `Uint8Array` whatever the pixel type was. WebGL2
+requires the destination view to MATCH the type — `BYTE` needs an `Int8Array`,
+`FLOAT` a `Float32Array` — and a mismatch is not a silent widening: it raises
+`INVALID_OPERATION` and reads **nothing**, so the caller gets zeros. The size was
+wrong for the same reason, `w*h*4` being true of RGBA8 and little else. So every
+readback that was not `UNSIGNED_BYTE` came back as zeros — an integer render
+target, and a float one too. Only the corpus's integer-canvas case happened to
+exercise it. Both hosts fixed, view and size chosen from format and type. (The residual named
+here as "still unexamined" was examined in the same session — see the
+classification below and `wasi/corpus/expected.txt`.)
+
+**The 37 are now classified, in `wasi/COMPATIBILITY.md`.** The reframing is the
+Human's: correctness is judged against the system a game is deployed to, not
+against one universal bar — a browser game works in a browser, a Windows game
+works on Windows. So the table puts every LÖVE feature on the y axis and the
+deployment targets on the x axis, and marks ✓ where the target has the feature
+and this build does it, ✗ where the target has it and we do not, and **blank**
+where the target does not have it. A blank is a declared divergence, and it is
+the cell that does the work: it separates "`setPosition` is broken" from "a page
+cannot move its window".
+
+The 37 resolve as **30 blank, 4 gesture-gated (`~`), 3 real gaps** — the wake
+lock (unbuilt) and DXT1 (**#51**, the extension-enumeration defect). Archive
+mount moved from ✗ to blank when D7 closed as not-built. Four of the 30 are the rasterisation near-misses,
+and they are the only group a decision could still move.
+
+**#51 is filed, and the first reading of it was wrong.** `glGetStringi` is not
+auto-stubbed; it is not imported at all, and `getStaticGLProcAddress` returns
+null for it. Nothing traps only because `GL_NUM_EXTENSIONS` has no WebGL2
+`getParameter` pname — `gl.getParameter` raises `INVALID_ENUM`, returns null,
+the host writes `null|0` = 0, and glad's `has_ext` loop never reaches the null
+pointer. So the two halves cannot be fixed independently: answering the count
+without importing `glGetStringi` converts a silent wrong answer into a trap.
+All **491** `GLAD_*` flags are false, of which the `opengl` backend reads ~39 —
+DXT1 is only the one the corpus probes. Not an easy fix: it needs a
+WebGL→GL name map, `gl.getExtension` activation (listing without activating
+would be a fake), the currently-stubbed `glCompressedTexImage2D` path, and a
+staged re-run of all 20 graphics legs, since flipping ~39 flags sends the
+backend down paths this build has never taken.
+
+Two columns, not more: **Desktop** (read out of upstream's source, which `main`
+carries byte-for-byte) and **Web** (ours, the only column carrying our own
+evidence). **Mobile was deliberately left out** — `love-ios` and `love-android`
+are outside this tree, so that column would be guesswork. Worth adding by
+whoever can ground it; it would show most of the blanks are not a browser
+peculiarity.
+
+**It also found four ✗ cells the corpus does not probe**, which no failure count
+would have surfaced: `hasFocus`/`hasMouseFocus` return a constant `true` where a
+page genuinely knows (`document.hasFocus()`, `blur`/`focus`); `getSystemTheme`
+reports `unknown` where `prefers-color-scheme` is real; custom image cursors
+(a data-URL CSS cursor) are unbuilt; gamepad vibration (`vibrationActuator`) is
+unbuilt. None is in the 37.
+
+**Evidence: observed, not tested.** Every ✓ traces to a witness run or to the
+corpus at 303/37/15, and every blank to a named platform fact — but nothing
+re-checks the mapping on each change. The table is prose, and prose rots
+silently.
+
+### Step 3 — DONE, bar one loose end. The classification is executable.
+
+`wasi/corpus/run.sh` + `run-browser-corpus.mjs` + `expected.txt`. The corpus runs
+as an ordinary game — `testing/` IS the project, its own conf.lua sizes the
+canvas, boot.lua loads its main.lua — and the driver pumps until the suite calls
+`love.event.quit`, then reads the JUnit report **out of the save namespace** the
+engine wrote it to. Per-test names come from that XML, so nothing is scraped from
+a console.
+
+**The comparison is the witness**, and all three modes are demonstrated able to
+fail: a failure classified nowhere, an expected-fail entry that starts passing,
+and an entry naming a test the corpus does not have (a renamed or deleted test
+cannot hide a real failure behind a dead line).
+
+**305 pass / 35 fail / 15 skip**, deterministic across three back-to-back runs,
+**~18s** on a reused artifact — cheap enough for the per-push gate rather than
+on demand.
+
+**It is NOT in `witness.yml` yet, and that is the one loose end of step 3.** The
+workflow step is written and reviewed, but the push was rejected: this session's
+token has no `workflow` scope, so it cannot modify `.github/workflows/`. The
+step's text is in the session log; until it is committed, every document says
+"witnessed on demand" rather than "CI-enforced", because the second would be a
+claim above the evidence.
+The 35 are 30 divergence / 2 gesture / 3 defect.
+
+Two numbers moved from the recorded census (303/37): `mouse.setRelativeMode` and
+`getRelativeMode` now pass. The earlier ad-hoc census ran with the 6.4 input
+host's **baked event script** replaying, which polluted mouse state — and whose
+last record is a QUIT, which is why the first corpus run here died after one
+frame. The driver silences `input_poll`, which is the honest shape for a run
+with no user. Worth remembering: that fixture is a trap for any driver that
+reuses the input host.
+
+**The corpus immediately earned its keep.** Run against the rebuilt artifact it
+caught a regression this session's code review had just introduced: moving
+tracking into `Source::play()` was right, but it exposed that `playing` never
+clears when a clip ends on its own, so `love.audio.pause()` handed back every
+Source ever played (`audio/pause`: "check nothing paused, expected 0 got 1").
+Fixed properly rather than reverted — `isPlaying()` now runs a non-looping STATIC
+Source against the clock, since its duration is knowable, and `pause()` /
+`getActiveSourceCount()` reap before answering. STREAM and QUEUE keep the old
+behaviour, honestly, because their length is not known.
 
 ### 4. `love.thread` (build-order step 7)
 
@@ -257,8 +603,9 @@ the only faithful option.
 
 Video (Theora) stays dropped; a future `<video>` seam is the right path.
 Networking stays absent for Beta; a web-native transport is a later
-exploration. Archive/`.love`-zip mounting stays enumeration-only, with D7 left
-open until a real game needs a runtime mount.
+exploration. Runtime archive/`.love`-zip mounting is now a divergence in its
+own right: **D7 closed as not built** (#48), reopening only if a real game calls
+`mount` on an archive.
 
 ## Open decisions
 
@@ -267,14 +614,17 @@ These gate work, and only the Human closes them (`AGENTS.md`, "Records").
 | Decision | The fork | What it gates |
 |---|---|---|
 | #47 (D4) | reload granularity: whole-chunk re-eval vs function-body hotswap | deferred past Beta; module granularity plus restart is what ships |
-| #48 (D7) | who unzips a runtime-mounted archive: host JS vs a guest zip reader over the in-tree zlib | archive mounting; enumeration shipped without needing it |
 | step-7 divergences | which desktop `love.thread` behaviors we accept losing | enumerated when the thread design document is written |
 | #7 | packaging: single `.js` vs `.js` + `.wasm` | step 8, decided by measurement, post-Beta |
+| rasterisation tolerance | pixel-exact vs a stated tolerance for `compareImg` — `arc` 3069/3072, `circle` 1022/1024, `ellipse` 1023/1024, `setLineStyle` 224/256 | whether those four corpus tests are a **blank** (a different rasteriser, declared) or a **✗** (a defect) in `wasi/COMPATIBILITY.md`, and therefore whether they enter the expected-fail list |
 
 `DESIGN.md` records D1–D3, D5 and D6 as closed, carrying the alternatives that
-lost. D4 and D7 are open, so under `CONTRIBUTING.md` §3.3 they live in the
-tracker — #47 and #48 — and `DESIGN.md` keeps only what is settled about each
-and points at the issue. D8 (Lua dialect) closed this session and is recorded in
+lost. D4 is open, so under `CONTRIBUTING.md` §3.3 it lives in the tracker —
+#47 — and `DESIGN.md` keeps only what is settled and points at the issue. **D7
+closed this session** (#48), ruled *not built*: the survey was re-checked before
+closing and had a hole — both recorded options answered *who* unzips and so
+presupposed that we unzip at all. The full record, with both alternatives and
+why each lost, is in `DESIGN.md`. D8 (Lua dialect) closed this session and is recorded in
 `DESIGN.md` in full.
 
 ### The Lua dialect — CLOSED, and where it now lives

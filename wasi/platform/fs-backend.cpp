@@ -28,9 +28,14 @@
 // addition that backs getInfo/exists:
 //   fs_size(path,len)                    -> byte length, or -1 if absent
 //   fs_read(path,len, buf,cap)           -> bytes copied (<= cap), or -1
-//   fs_stat(path,len, *type,*size,*mtime)-> 0 ok / -1 absent; type is the
-//                                           FileType enum order (0 file, 1 dir,
-//                                           2 symlink, 3 other).
+//   fs_stat(path,len, *type,*size,*mtime,  -> 0 ok / -1 absent; type is the
+//           *readonly)                        FileType enum order (0 file, 1
+//                                             dir, 2 symlink, 3 other), and
+//                                             readonly is 1 for the read-only
+//                                             project, 0 for the writable save
+//                                             namespace. Only the host can say
+//                                             which store answered, because it
+//                                             is the one that resolves them.
 
 #include "fs-backend.h"
 
@@ -43,25 +48,162 @@
 #define FS_IMPORT(sym) __attribute__((import_module("love_fs"), import_name(sym)))
 
 extern "C" {
-FS_IMPORT("fs_size") int32_t wfs_size(const char *path, int32_t path_len);
-FS_IMPORT("fs_read") int32_t wfs_read(const char *path, int32_t path_len, uint8_t *buf, int32_t cap);
-FS_IMPORT("fs_stat") int32_t wfs_stat(const char *path, int32_t path_len,
-	int32_t *out_type, int64_t *out_size, int64_t *out_mtime);
+FS_IMPORT("fs_size") int32_t wfs_size_raw(const char *path, int32_t path_len);
+FS_IMPORT("fs_read") int32_t wfs_read_raw(const char *path, int32_t path_len, uint8_t *buf, int32_t cap);
+FS_IMPORT("fs_stat") int32_t wfs_stat_raw(const char *path, int32_t path_len,
+	int32_t *out_type, int64_t *out_size, int64_t *out_mtime, int32_t *out_readonly);
 // 6.7 write path. Every write targets the host's SEPARATE save namespace (never
 // the read-only project); the read imports above consult BOTH, save-dir first,
 // so a written file shadows a project file of the same name and reads it back.
 //   fs_write(path,len, buf,n) -> bytes written (== n), or -1 on failure
 //   fs_remove(path,len)       -> 0 removed / -1 absent
 //   fs_mkdir(path,len)        -> 0 created / -1 failure
-FS_IMPORT("fs_write") int32_t wfs_write(const char *path, int32_t path_len, const uint8_t *buf, int32_t len);
-FS_IMPORT("fs_remove") int32_t wfs_remove(const char *path, int32_t path_len);
-FS_IMPORT("fs_mkdir") int32_t wfs_mkdir(const char *path, int32_t path_len);
+FS_IMPORT("fs_write") int32_t wfs_write_raw(const char *path, int32_t path_len, const uint8_t *buf, int32_t len);
+FS_IMPORT("fs_remove") int32_t wfs_remove_raw(const char *path, int32_t path_len);
+FS_IMPORT("fs_mkdir") int32_t wfs_mkdir_raw(const char *path, int32_t path_len);
 // Directory enumeration (getDirectoryItems). Size-then-fill, mirroring fs_read:
 //   fs_list(path,len, buf,cap) -> total bytes needed (the child names, immediate
 //   children only, NUL-separated), or -1 if the path is a file (not a directory).
 // Consults BOTH namespaces and de-dupes, so a save file shadows a project file of
 // the same name exactly once.
-FS_IMPORT("fs_list") int32_t wfs_list(const char *path, int32_t path_len, uint8_t *buf, int32_t cap);
+FS_IMPORT("fs_list") int32_t wfs_list_raw(const char *path, int32_t path_len, uint8_t *buf, int32_t cap);
+}
+
+
+// ── Mount points (love.filesystem.mountFullPath) ──────────────────────────────
+//
+// The host store IS the source: there is no host filesystem behind this seam,
+// only the project the host loaded plus the writable save namespace. So a mount
+// here cannot open some unrelated directory on a machine — what it can do, and
+// what LOVE actually asks for, is make a directory that is ALREADY in the store
+// visible under a second name.
+//
+// That is enough for the real caller. testing/main.lua does
+//
+//     mountFullPath(love.filesystem.getSource() .. "/output", "tempoutput", "readwrite")
+//
+// and then reads its reference images from `tempoutput/expected/…`; the whole
+// job is to make that resolve to `output/expected/…`. A path that does not
+// resolve inside the store is REFUSED (false), not faked — mounting a real
+// host directory would need a host-side seam that does not exist, and mounting
+// an ARCHIVE is a different question again, still open as #48.
+//
+// The rewrite is applied in one place — these wrappers — so every operation
+// (read, stat, size, write, remove, mkdir, list) sees mounts identically, and
+// there is no cost at all while the table is empty, which is the normal case.
+namespace {
+
+struct MountPoint
+{
+	std::string point;   // what Lua says: "tempoutput"
+	std::string target;  // where it lives in the store: "output"
+};
+
+std::vector<MountPoint> &mountTable()
+{
+	static std::vector<MountPoint> t;
+	return t;
+}
+
+// true + `out` when a mount applies; false to use the path unchanged.
+bool mountRewrite(const char *path, int32_t len, std::string &out)
+{
+	auto &table = mountTable();
+	if (table.empty() || path == nullptr || len <= 0)
+		return false;
+
+	// Last mounted wins, matching physfs's append/prepend search order closely
+	// enough for a single-writer store: a later mount shadows an earlier one.
+	for (auto it = table.rbegin(); it != table.rend(); ++it)
+	{
+		const std::string &mp = it->point;
+		const size_t n = mp.size();
+		if ((size_t) len < n || std::strncmp(path, mp.c_str(), n) != 0)
+			continue;
+		// Exact match, or a real path separator after the mount point — never a
+		// prefix match inside a longer name ("tempoutputs/…" is not a hit).
+		if ((size_t) len != n && path[n] != '/')
+			continue;
+
+		const std::string rest((size_t) len == n ? "" : std::string(path + n + 1, (size_t) len - n - 1));
+		if (it->target.empty())
+			out = rest;
+		else if (rest.empty())
+			out = it->target;
+		else
+			out = it->target + "/" + rest;
+		return true;
+	}
+	return false;
+}
+
+// Reduce a game-built absolute path — getSource() .. "/output" — to the
+// store-relative path the host can address. The source prefix only counts when
+// the whole of it is followed by a separator or by nothing at all: a bare
+// std::string::compare would also strip "/game" out of "/gameassets/pack" and
+// leave "assets/pack", mounting or unmounting a directory the caller never
+// named.
+std::string storeRelative(const std::string &fullpath, const std::string &gameSource)
+{
+	std::string out = fullpath;
+	const size_t n = gameSource.size();
+	if (n != 0 && out.size() >= n && out.compare(0, n, gameSource) == 0
+		&& (out.size() == n || out[n] == '/' || out[n] == '\\'
+			|| gameSource.back() == '/' || gameSource.back() == '\\'))
+		out.erase(0, n);
+	while (!out.empty() && (out[0] == '/' || out[0] == '\\'))
+		out.erase(0, 1);
+	while (!out.empty() && (out.back() == '/' || out.back() == '\\'))
+		out.pop_back();
+	return out;
+}
+
+} // anonymous namespace
+
+static inline int32_t wfs_size(const char *p, int32_t n)
+{
+	std::string r;
+	return mountRewrite(p, n, r) ? wfs_size_raw(r.c_str(), (int32_t) r.size()) : wfs_size_raw(p, n);
+}
+
+static inline int32_t wfs_read(const char *p, int32_t n, uint8_t *buf, int32_t cap)
+{
+	std::string r;
+	return mountRewrite(p, n, r) ? wfs_read_raw(r.c_str(), (int32_t) r.size(), buf, cap)
+	                             : wfs_read_raw(p, n, buf, cap);
+}
+
+static inline int32_t wfs_stat(const char *p, int32_t n, int32_t *t, int64_t *sz, int64_t *mt, int32_t *ro)
+{
+	std::string r;
+	return mountRewrite(p, n, r) ? wfs_stat_raw(r.c_str(), (int32_t) r.size(), t, sz, mt, ro)
+	                             : wfs_stat_raw(p, n, t, sz, mt, ro);
+}
+
+static inline int32_t wfs_write(const char *p, int32_t n, const uint8_t *buf, int32_t len)
+{
+	std::string r;
+	return mountRewrite(p, n, r) ? wfs_write_raw(r.c_str(), (int32_t) r.size(), buf, len)
+	                             : wfs_write_raw(p, n, buf, len);
+}
+
+static inline int32_t wfs_remove(const char *p, int32_t n)
+{
+	std::string r;
+	return mountRewrite(p, n, r) ? wfs_remove_raw(r.c_str(), (int32_t) r.size()) : wfs_remove_raw(p, n);
+}
+
+static inline int32_t wfs_mkdir(const char *p, int32_t n)
+{
+	std::string r;
+	return mountRewrite(p, n, r) ? wfs_mkdir_raw(r.c_str(), (int32_t) r.size()) : wfs_mkdir_raw(p, n);
+}
+
+static inline int32_t wfs_list(const char *p, int32_t n, uint8_t *buf, int32_t cap)
+{
+	std::string r;
+	return mountRewrite(p, n, r) ? wfs_list_raw(r.c_str(), (int32_t) r.size(), buf, cap)
+	                             : wfs_list_raw(p, n, buf, cap);
 }
 
 namespace love
@@ -169,6 +311,21 @@ bool File::open(Mode mode)
 	int32_t size = wfs_size(filename.c_str(), (int32_t) filename.size());
 	if (size < 0)
 		throw love::Exception("Could not open file %s. Does not exist.", filename.c_str());
+
+	// A DIRECTORY answers fs_size with 0, not -1 — it exists, it just has no
+	// bytes. Without this it would open as an empty file and love.filesystem
+	// .read("somedir") would hand back "" instead of failing, which is neither
+	// what physfs does nor what a caller walking getDirectoryItems() can tell
+	// apart from a genuinely empty file. Only asked when the size is 0, so the
+	// ordinary read costs nothing extra.
+	if (size == 0)
+	{
+		int32_t type = 0, readonly = 1;
+		int64_t statsize = 0, mtime = 0;
+		if (wfs_stat(filename.c_str(), (int32_t) filename.size(), &type, &statsize, &mtime, &readonly) == 0
+			&& type == 1) // 1 == directory in the fs_stat wire contract at the top of this file.
+			throw love::Exception("Could not open file %s. Does not exist.", filename.c_str());
+	}
 
 	data.resize((size_t) size);
 	if (size > 0)
@@ -344,6 +501,11 @@ Filesystem::Filesystem()
 
 Filesystem::~Filesystem()
 {
+	// The mount table is file-static, so it outlives this module unless it is
+	// emptied here. love.event.quit("restart") tears the modules down and builds
+	// them again (D5=A's shipped reload); a surviving mount would keep rewriting
+	// paths for a game that never asked for it.
+	mountTable().clear();
 }
 
 void Filesystem::init(const char *)
@@ -389,12 +551,38 @@ const char *Filesystem::getIdentity() const
 
 bool Filesystem::setSource(const char *source)
 {
-	// Settable once, like physfs. The host store is the source, so this only
-	// records the path for getSource()/getSourceBaseDirectory().
-	if (!gameSource.empty())
+	// Settable once, like physfs.
+	if (!gameSource.empty() || source == nullptr)
 		return false;
-	if (source != nullptr)
-		gameSource = source;
+
+	// A source is a place a game actually lives, and saying so matters beyond
+	// tidiness. boot.lua:77 decides whether this is a FUSED game by whether
+	// setSource(<the executable>) succeeds — desktop physfs refuses to mount a
+	// plain executable, which is what makes an ordinary game non-fused. This
+	// accepted anything, so every game was reported fused, which turns
+	// love.setDeprecationOutput off and lies to any game that branches on
+	// love.filesystem.isFused().
+	//
+	// The host store has no executables and no directories outside the project,
+	// so the honest test is whether a game is there: main.lua or conf.lua, the
+	// two files boot.lua goes on to look for.
+	std::string rel = source;
+	while (!rel.empty() && (rel[0] == '/' || rel[0] == '\\'))
+		rel.erase(0, 1);
+	while (!rel.empty() && (rel.back() == '/' || rel.back() == '\\'))
+		rel.pop_back();
+
+	const std::string prefix = rel.empty() ? std::string() : rel + "/";
+	auto present = [](const std::string &p) {
+		int32_t type = 0, readonly = 1;
+		int64_t size = 0, mtime = 0;
+		return wfs_stat_raw(p.c_str(), (int32_t) p.size(), &type, &size, &mtime, &readonly) == 0;
+	};
+
+	if (!present(prefix + "main.lua") && !present(prefix + "conf.lua"))
+		return false;
+
+	gameSource = source;
 	return true;
 }
 
@@ -405,12 +593,89 @@ const char *Filesystem::getSource() const
 
 bool Filesystem::mount(const char *, const char *, bool) { return false; }
 bool Filesystem::mount(Data *, const char *, const char *, bool) { return false; }
-bool Filesystem::mountFullPath(const char *, const char *, MountPermissions, bool) { return false; }
+// Mount a directory that is already in the host store under a second name. See
+// the mount-point note above the wrappers for why that is the whole of what a
+// mount can mean behind this seam.
+//
+// `fullpath` arrives the way a game builds it — getSource() .. "/output" — so
+// the source prefix is stripped to get back to a store-relative path. A target
+// that does not stat as a directory is REFUSED, which is what keeps a mount of
+// something we cannot serve from silently looking like it worked.
+bool Filesystem::mountFullPath(const char *fullpath, const char *mountpoint, MountPermissions, bool)
+{
+	if (fullpath == nullptr || mountpoint == nullptr || *mountpoint == 0)
+		return false;
+
+	// Strip the source prefix, then any leading separator, leaving a path
+	// relative to the store — which is the only space the host can address.
+	std::string target = storeRelative(fullpath, gameSource);
+
+	// It must actually be a directory in the store. An absolute host path from
+	// outside the project fails here, which is the honest answer: this seam has
+	// no way to reach it.
+	if (!target.empty())
+	{
+		int32_t type = 0;
+		int64_t size = 0, mtime = 0;
+		int32_t readonly = 1;
+		if (wfs_stat_raw(target.c_str(), (int32_t) target.size(), &type, &size, &mtime, &readonly) != 0)
+			return false;
+		// 1 == directory in the fs_stat wire contract at the top of this file.
+		// Compared as the wire value, not as FILETYPE_DIRECTORY: the two agree
+		// today only because the enum happens to be in that order, and every
+		// other reader here goes through the explicit switch for the same reason.
+		if (type != 1)
+			return false;
+	}
+
+	std::string point = mountpoint;
+	while (!point.empty() && point.back() == '/')
+		point.pop_back();
+	if (point.empty())
+		return false;
+
+	auto &table = mountTable();
+	for (auto &m : table)
+	{
+		if (m.point == point) { m.target = target; return true; }
+	}
+	table.push_back({ point, target });
+	return true;
+}
 bool Filesystem::mountCommonPath(CommonPath, const char *, MountPermissions, bool) { return false; }
-bool Filesystem::unmount(const char *) { return false; }
+// Unmount by MOUNT POINT, the counterpart of mountFullPath's second argument.
+bool Filesystem::unmount(const char *mountpoint)
+{
+	if (mountpoint == nullptr)
+		return false;
+	std::string point = mountpoint;
+	while (!point.empty() && point.back() == '/')
+		point.pop_back();
+
+	auto &table = mountTable();
+	for (auto it = table.begin(); it != table.end(); ++it)
+	{
+		if (it->point == point) { table.erase(it); return true; }
+	}
+	return false;
+}
 bool Filesystem::unmount(Data *) { return false; }
 bool Filesystem::unmount(CommonPath) { return false; }
-bool Filesystem::unmountFullPath(const char *) { return false; }
+bool Filesystem::unmountFullPath(const char *fullpath)
+{
+	if (fullpath == nullptr)
+		return false;
+	// The same reduction mountFullPath applied, so the two agree on what a given
+	// `fullpath` names.
+	std::string target = storeRelative(fullpath, gameSource);
+
+	auto &table = mountTable();
+	for (auto it = table.begin(); it != table.end(); ++it)
+	{
+		if (it->target == target) { table.erase(it); return true; }
+	}
+	return false;
+}
 
 love::filesystem::File *Filesystem::openFile(const char *filename, File::Mode mode) const
 {
@@ -452,22 +717,24 @@ bool Filesystem::exists(const char *filepath) const
 {
 	int32_t type = 0;
 	int64_t size = 0, mtime = 0;
-	return wfs_stat(filepath, (int32_t) strlen(filepath), &type, &size, &mtime) == 0;
+	int32_t readonly = 1;
+	return wfs_stat(filepath, (int32_t) strlen(filepath), &type, &size, &mtime, &readonly) == 0;
 }
 
 bool Filesystem::getInfo(const char *filepath, Info &info) const
 {
 	int32_t type = 0;
 	int64_t size = 0, mtime = 0;
-	if (wfs_stat(filepath, (int32_t) strlen(filepath), &type, &size, &mtime) != 0)
+	int32_t readonly = 1;
+	if (wfs_stat(filepath, (int32_t) strlen(filepath), &type, &size, &mtime, &readonly) != 0)
 		return false;
 
 	info.size = (int64) size;
 	info.modtime = (int64) mtime;
-	// Reports the read-only project posture: fs_stat carries no per-file readonly
-	// out-param, so the writable save layer (6.7) is not surfaced here (declared
-	// deferral, EMBEDDING.md §5).
-	info.readonly = true;
+	// Whether a write to this path could succeed. The host reports which store
+	// answered — the read-only project or the writable save namespace — because
+	// it is the side that resolves them, and the two shadow each other.
+	info.readonly = (readonly != 0);
 
 	switch (type)
 	{

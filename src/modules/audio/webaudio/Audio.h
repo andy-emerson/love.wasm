@@ -93,9 +93,41 @@ public:
 	std::string getPlaybackDevice() override;
 	void getPlaybackDevices(std::vector<std::string> &list) override;
 
+	// Called BY Source::play()/stop(), which is where a Source actually starts
+	// and ends — `source:play()` in Lua reaches the Source directly and never
+	// passes through this module (wrap_Source.cpp), so registering on the module
+	// entry points alone would miss the common case entirely. pause() does NOT
+	// untrack, so the set survives the call that hands it back to Lua; the next
+	// reapFinished() then drops it, because a paused Source is not playing and
+	// nothing here distinguishes paused from finished (there is no host "ended"
+	// event and no separate pause voice-state — Source::pause() stops).
+	void trackPlaying(love::audio::Source *source);
+	void reapFinished();
+	void untrack(love::audio::Source *source);
+
 private:
 	float volume = 1.0f;
-	DistanceModel distanceModel = DISTANCE_NONE;
+	// Desktop's default (openal/Audio.cpp). It is stored and reported but not
+	// applied, like the rest of the spatialization state — see Source.h.
+	DistanceModel distanceModel = DISTANCE_INVERSE_CLAMPED;
+	float dopplerScale = 1.0f;
+
+	// Sources that are currently playing. love.audio.stop() / pause() /
+	// getActiveSourceCount() are ABOUT this set, so without it they had nothing
+	// to answer from: stop() was an empty function and getActiveSourceCount()
+	// returned a constant 0.
+	//
+	// Retained while tracked, as the OpenAL backend does: a played Source must
+	// outlive the last Lua reference to it, or stopping "all" would walk
+	// pointers the collector has already freed.
+	//
+	// A Source that reaches the END of its buffer is NOT reclaimed: the host
+	// reports no "ended" event, so nothing here can observe it. Such a Source
+	// stays tracked (and retained) until it is stopped explicitly, which
+	// overstates getActiveSourceCount() and holds the Source alive — a declared
+	// limitation until the love_audio seam grows an ended callback.
+	std::vector<love::audio::Source*> playingSources;
+
 	std::vector<love::audio::RecordingDevice*> capture;
 
 }; // Audio

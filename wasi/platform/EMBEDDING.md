@@ -68,10 +68,26 @@ beneath. Writes **never** touch the project.
 |---|---|
 | `fs_size(path, len) -> i32` | byte length, or `-1` if absent (directory → `0`) |
 | `fs_read(path, len, buf, cap) -> i32` | bytes copied (≤ `cap`) into `buf`, or `-1`; consults **both** namespaces, save-first |
-| `fs_stat(path, len, *type, *size, *mtime) -> i32` | `0` ok / `-1` absent; writes little-endian out-params. `type`: `0` file, `1` dir, `2` symlink, `3` other |
+| `fs_stat(path, len, *type, *size, *mtime, *readonly) -> i32` | `0` ok / `-1` absent; writes little-endian out-params. `type`: `0` file, `1` dir, `2` symlink, `3` other. `readonly`: `1` for the read-only project, `0` for the writable save namespace — only the host can tell, since it resolves the two |
 | `fs_write(path, len, buf, n) -> i32` | writes `n` bytes to the **save** namespace, returns `n` (or `-1`); replaces the whole file |
-| `fs_remove(path, len) -> i32` | `0` removed / `-1` absent — save namespace only (the project is immutable) |
-| `fs_mkdir(path, len) -> i32` | `0` — records a directory in the save namespace |
+| `fs_remove(path, len) -> i32` | `0` removed / `-1` refused — save namespace only (the project is immutable), and a **non-empty** directory is refused, as physfs does: `love.filesystem.remove` returns false rather than deleting a tree |
+| `fs_mkdir(path, len) -> i32` | `0` — records a directory in the save namespace, creating intermediate directories as physfs does |
+| `fs_list(path, len, buf, cap) -> i32` | total bytes needed for the NUL-separated **immediate child names** of `path`, writing up to `cap` of them into `buf`. Call with `cap = 0` to size, then again to fill — the same two-step `fs_read` uses. Consults **both** namespaces, so a save file and a project file in one directory are listed together, once |
+
+**How the project gets in is the host's business, and the contract asks for
+nothing but bytes.** These imports are the whole interface: a host answers them
+from whatever it has. `wasi/host/fs-host.mjs` keeps a plain `path -> Uint8Array`
+map and exposes it as `files`, so a consumer holding a project in memory —
+an in-browser editor, a live-edit IDE, a test harness generating a fixture —
+populates that map and is done. **There is no archive step**: the seam takes
+files, never a `.love` zip, so a host that already has the bytes should not
+zip them to hand them over.
+
+`wasi/shell/player.mjs` fetches its project from a base URL with a
+`manifest.json` beside it. That is one *way to produce* the map, convenient for
+a project served over HTTP, and it is not the contract — notably, a `blob:` URL
+has no relative children, so a host that generates its project in the page
+cannot use the URL form and should fill the map directly.
 
 The wasm side (`wasi/platform/fs-backend.cpp`, `love::filesystem::wasi_fs`)
 computes `getSaveDirectory()` as `save:<identity>` and routes
@@ -189,12 +205,18 @@ the write/invalidate handshake.
   within the last-write window — a declared cross-platform timing note. Desktop-
   exact **sync** durability needs the engine-in-Worker + OPFS sync-access-handle
   pivot, parked for a shipping variant that needs it.
-- **Real archive / `.love`-zip mounting** (`mount*`) and **directory enumeration**
-  (`getDirectoryItems`) remain unimplemented — loud `false`/throw, not faked.
-  The host store is flat + keyed by relative name; a real host that needs mount
-  ordering or listing extends the seam.
+- **Real archive / `.love`-zip mounting** (`mount*`) is unimplemented **by
+  decision** — a loud `false`, not a fake. **D7 is closed (#48): not built**, and
+  it is a declared divergence rather than a deferral. Note this does not affect
+  *`.love`-as-source*: the seam takes files, so a host with an archive unzips it
+  in its own JS (see §2). `mountFullPath` is implemented for a directory already
+  in the store; see the last entry below.
+  (**Directory enumeration is no longer deferred**: `getDirectoryItems` is real,
+  over the `fs_list` import in the table above, witnessed by
+  `wasi/platform/run-fs-list.sh` on node and Chromium.)
 - **D4 hotswap** (function-body, state-preserving) is not built; D5=A's
   whole-chunk re-eval + restart fallback is the shipped mechanism.
-- Per-file **read-only** reporting: `getInfo(...).readonly` reflects the read-only
-  project posture; the save layer's writability is not yet surfaced per-file (the
-  `fs_stat` ABI carries no readonly out-param). Not witness-critical.
+- Directory **mounting** is limited to a directory already in the host store
+  (`mountFullPath` gives it a second name); there is no host filesystem behind
+  the seam to reach anything else, and a path that does not resolve inside the
+  store is refused rather than faked. Archive mounting is #48, closed as not built.

@@ -108,14 +108,55 @@ export function makeFsHost() {
 
   const has = (obj, k) => Object.prototype.hasOwnProperty.call(obj, k);
 
+  // A flat key->bytes store has no directory ENTRIES, so a directory of the
+  // project is implicit: it exists exactly when some key lives beneath it. Only
+  // an fs_mkdir'd directory in the save namespace is explicit (the DIR
+  // sentinel).
+  //
+  // Without this, getInfo() on a real directory of the game's own source
+  // reported nil while getDirectoryItems() happily listed its children — the
+  // two halves of the same store disagreeing. It is also what
+  // love.filesystem.mountFullPath needs to verify its target before accepting
+  // a mount.
+  // `for…in` rather than Object.keys: this runs on every resolve() MISS, and
+  // misses are the common case (Lua's `require` searcher stats `?.lua` and
+  // `?/init.lua` per require-path entry, per module). Materialising a key array
+  // of a thousand-file project each time is pure garbage.
+  const isImplicitDir = (p) => {
+    if (p === "" || p === "/" || p === ".") return true;
+    const prefix = p.replace(/\/+$/, "") + "/";
+    for (const store of [files, saves]) {
+      for (const key in store) {
+        if (has(store, key) && key.startsWith(prefix)) return true;
+      }
+    }
+    return false;
+  };
+
+  // A directory is writable when anything of the save namespace lives in it —
+  // that is where a write to it would land.
+  const dirHasSaveChild = (p) => {
+    const prefix = p === "" || p === "/" || p === "." ? "" : p.replace(/\/+$/, "") + "/";
+    for (const key in saves) {
+      if (has(saves, key) && (prefix === "" || key.startsWith(prefix))) return true;
+    }
+    return false;
+  };
+
   // Resolve a path SAVE-FIRST, then the read-only project (physfs mount order:
   // the save dir shadows the game source on read). Returns { dir, bytes } or null.
+  //
+  // `readonly` says WHICH store answered, because that is the only thing that
+  // decides whether a write to this path can succeed: the save namespace is
+  // writable, the project is not. The backend cannot work this out for itself —
+  // resolution happens here — so fs_stat reports it.
   const resolve = (p) => {
     if (has(saves, p)) {
       const v = saves[p];
-      return v === DIR ? { dir: true } : { dir: false, bytes: v };
+      return v === DIR ? { dir: true, readonly: false } : { dir: false, bytes: v, readonly: false };
     }
-    if (has(files, p)) return { dir: false, bytes: files[p] };
+    if (has(files, p)) return { dir: false, bytes: files[p], readonly: true };
+    if (isImplicitDir(p)) return { dir: true, readonly: !dirHasSaveChild(p) };
     return null;
   };
 
@@ -162,14 +203,18 @@ export function makeFsHost() {
     // The out-params are written into wasm linear memory (little-endian, same
     // convention fs_read's buf uses). outType is the FileType enum order the
     // 6.2 backend maps from: 0=file 1=dir 2=symlink 3=other. mtime is a fixed
-    // stand-in (the IDE host will report real project timestamps).
-    fs_stat(pathPtr, pathLen, outType, outSize, outMtime) {
+    // stand-in (the IDE host will report real project timestamps). outReadonly
+    // is 1 when the entry came from the read-only project and 0 when it came
+    // from the writable save namespace — which only this side can tell, since
+    // resolution happens here.
+    fs_stat(pathPtr, pathLen, outType, outSize, outMtime, outReadonly) {
       const r = resolve(readPath(pathPtr, pathLen));
       if (!r) return -1;
       const dv = new DataView(memory.buffer);
       dv.setInt32(outType, r.dir ? 1 : 0, true);   // 1=DIRECTORY, 0=FILE
       dv.setBigInt64(outSize, BigInt(r.dir ? 0 : r.bytes.length), true);
       dv.setBigInt64(outMtime, 0n, true);
+      dv.setInt32(outReadonly, r.readonly ? 1 : 0, true);
       return 0;
     },
     // ── write path (6.7): every write targets the SAVE namespace ──
@@ -182,17 +227,36 @@ export function makeFsHost() {
       saves[p] = bytes;
       return len;
     },
-    // fs_remove(path, path_len) -> 0 removed / -1 if not present in the save
-    // namespace (the read-only project cannot be deleted).
+    // fs_remove(path, path_len) -> 0 removed / -1 refused. Only the save
+    // namespace can be deleted from (the read-only project cannot), and a
+    // NON-EMPTY directory is refused, which is physfs's rule and what
+    // love.filesystem.remove promises: it returns false rather than deleting a
+    // tree out from under the game.
     fs_remove(pathPtr, pathLen) {
       const p = readPath(pathPtr, pathLen);
+      const prefix = p.replace(/\/+$/, "") + "/";
+      for (const store of [files, saves]) {
+        for (const key in store) {
+          if (has(store, key) && key.startsWith(prefix)) return -1;   // something still lives under it
+        }
+      }
       if (!has(saves, p)) return -1;
       delete saves[p];
       return 0;
     },
-    // fs_mkdir(path, path_len) -> 0. Records a directory in the save namespace.
+    // fs_mkdir(path, path_len) -> 0. Records a directory in the save namespace,
+    // AND its parents: physfs's mkdir creates intermediate directories, so
+    // love.filesystem.createDirectory("foo/bar") has to leave "foo" behind as a
+    // directory too. Without that, removing "foo/bar" left "foo" as nothing at
+    // all and love.filesystem.remove("foo") could not succeed.
     fs_mkdir(pathPtr, pathLen) {
-      saves[readPath(pathPtr, pathLen)] = DIR;
+      const p = readPath(pathPtr, pathLen).replace(/\/+$/, "");
+      const parts = p.split("/").filter((seg) => seg.length > 0);
+      let acc = "";
+      for (const seg of parts) {
+        acc = acc === "" ? seg : acc + "/" + seg;
+        if (!has(saves, acc)) saves[acc] = DIR;
+      }
       return 0;
     },
     // fs_list(path, path_len, buf, cap) -> total bytes of the NUL-separated child

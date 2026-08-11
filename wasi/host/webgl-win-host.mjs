@@ -81,6 +81,49 @@ export function makeWebGLWinHost(newCanvas) {
     return p;
   };
 
+  // glReadPixels' destination view must MATCH the pixel type in WebGL2 — BYTE
+  // needs an Int8Array, FLOAT a Float32Array, and so on. A mismatch is not a
+  // silent widening: it raises INVALID_OPERATION and reads NOTHING, so the
+  // caller gets zeros. Allocating a Uint8Array for every type therefore broke
+  // every readback that was not UNSIGNED_BYTE — an integer render target came
+  // back all zeros, and so would a float one.
+  //
+  // The size was wrong for the same reason: w*h*4 assumes four bytes per pixel,
+  // which is true of RGBA8 and of little else.
+  const READ_TYPES = {
+    0x1400: [Int8Array, 1],     // BYTE
+    0x1401: [Uint8Array, 1],    // UNSIGNED_BYTE
+    0x1402: [Int16Array, 2],    // SHORT
+    0x1403: [Uint16Array, 2],   // UNSIGNED_SHORT
+    0x1404: [Int32Array, 4],    // INT
+    0x1405: [Uint32Array, 4],   // UNSIGNED_INT
+    0x1406: [Float32Array, 4],  // FLOAT
+    0x140B: [Uint16Array, 2],   // HALF_FLOAT
+    // The packed types below need an entry here too: they are as strict about
+    // the view as the unpacked ones, and defaulting them to Uint8Array is the
+    // very mismatch this table exists to avoid. LÖVE reaches them through real
+    // pixel formats — rgb565, rgb10a2, rg11b10f, depth24stencil8 (OpenGL.cpp).
+    0x8033: [Uint16Array, 2],   // UNSIGNED_SHORT_4_4_4_4
+    0x8034: [Uint16Array, 2],   // UNSIGNED_SHORT_5_5_5_1
+    0x8363: [Uint16Array, 2],   // UNSIGNED_SHORT_5_6_5
+    0x8368: [Uint32Array, 4],   // UNSIGNED_INT_2_10_10_10_REV
+    0x8C3B: [Uint32Array, 4],   // UNSIGNED_INT_10F_11F_11F_REV
+    0x8C3E: [Uint32Array, 4],   // UNSIGNED_INT_5_9_9_9_REV
+    0x84FA: [Uint32Array, 4],   // UNSIGNED_INT_24_8
+  };
+  // Components per pixel, by format. The packed types below override this with 1.
+  const READ_COMPONENTS = {
+    0x1903: 1, 0x8D94: 1,       // RED, RED_INTEGER
+    0x8227: 2, 0x8228: 2,       // RG, RG_INTEGER
+    0x1907: 3, 0x8D98: 3,       // RGB, RGB_INTEGER
+    0x1908: 4, 0x8D99: 4,       // RGBA, RGBA_INTEGER
+    0x1906: 1, 0x1909: 1,       // ALPHA, LUMINANCE
+    0x190A: 2,                  // LUMINANCE_ALPHA
+    0x1902: 1, 0x84F9: 1,       // DEPTH_COMPONENT, DEPTH_STENCIL
+  };
+  // Packed types carry the whole pixel in one element.
+  const READ_PACKED = new Set([0x8033, 0x8034, 0x8363, 0x8368, 0x8C3B, 0x8C3E, 0x84FA]);
+
   const glImports = {
     // --- strings / errors / queries (host-reported) ---
     glGetString(name) { return internString(HOST_STRINGS[name] ?? ''); },
@@ -185,7 +228,13 @@ export function makeWebGLWinHost(newCanvas) {
     glFramebufferRenderbuffer: (t, a, rt, id) => gl.framebufferRenderbuffer(t, a, rt, get(id)),
     glBlitFramebuffer: (sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1, mask, filter) => gl.blitFramebuffer(sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1, mask, filter),
     glInvalidateFramebuffer: (t, n, ptr) => { const h = HEAP32(); const a = []; for (let i = 0; i < n; i++) a.push(h[(ptr >> 2) + i]); gl.invalidateFramebuffer(t, a); },
-    glReadPixels: (x, y, w, h, fmt, type, ptr) => { const tmp = new Uint8Array(w * h * 4); gl.readPixels(x, y, w, h, fmt, type, tmp); HEAPU8().set(tmp, ptr); },
+    glReadPixels: (x, y, w, h, fmt, type, ptr) => {
+      const [View, elemBytes] = READ_TYPES[type] || [Uint8Array, 1];
+      const comps = READ_PACKED.has(type) ? 1 : (READ_COMPONENTS[fmt] ?? 4);
+      const tmp = new View(w * h * comps);
+      gl.readPixels(x, y, w, h, fmt, type, tmp);
+      HEAPU8().set(new Uint8Array(tmp.buffer, tmp.byteOffset, w * h * comps * elemBytes), ptr);
+    },
 
     // --- shaders / programs ---
     glCreateShader: (t) => put(gl.createShader(t)),
@@ -281,14 +330,35 @@ export function makeWebGLWinHost(newCanvas) {
     // closures target. depth + stencil per the requested settings (always on for
     // the witness), preserveDrawingBuffer so the presented backbuffer survives
     // until glReadPixels (Graphics::present's screenshot readback of FBO 0).
+    // love.window.setMode is not once-only: updateMode, a resolution change and
+    // a fullscreen toggle all come back through here, and LOVE calls it again
+    // itself (testing/main.lua's love.load does, on its second line).
+    //
+    // So a REPEAT call resizes the drawing buffer of the canvas we already have
+    // and keeps its context. Creating a second context would orphan every
+    // shader, buffer and texture LOVE made in the first one — and LOVE's very
+    // next act after setMode is to link a shader, so it fails immediately with
+    // "Cannot link shader program object". Nothing in the engine is wrong there;
+    // a browser simply has no notion of moving GL objects between contexts, and
+    // resizing in place is what a canvas is for.
     window_setmode(w, h, stencil, depth, _msaa, _vsync) {
+      if (gl && canvas) {
+        if (canvas.width !== w) canvas.width = w;
+        if (canvas.height !== h) canvas.height = h;
+        return 1;
+      }
       canvas = newCanvas ? newCanvas(w, h) : new OffscreenCanvas(w, h);
+      // depth + stencil are requested unconditionally, matching webgl-host.mjs:
+      // context attributes are fixed at creation and a later setMode asking for
+      // them could not be honoured without a new context, which is exactly what
+      // the reuse above exists to avoid. The cost is backbuffer memory; the
+      // alternative is a request we would have to silently drop.
       gl = canvas.getContext('webgl2', {
         preserveDrawingBuffer: true,
         alpha: true,
         antialias: false,
-        depth: !!depth,
-        stencil: !!stencil,
+        depth: true,
+        stencil: true,
       });
       return gl ? 1 : 0;
     },

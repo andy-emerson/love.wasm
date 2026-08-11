@@ -8,9 +8,9 @@ name: witness
 # prefers: every claim they carry re-earns itself on every push.
 on:
   push:
-    branches: [wasi]
+    branches: [main]
   pull_request:
-    branches: [wasi]
+    branches: [main]
 
 jobs:
   eh-witness:

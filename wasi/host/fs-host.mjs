@@ -96,8 +96,8 @@ export function makeFsHost() {
 
   // The writable SAVE namespace (build-order 6.7). Separate from the read-only
   // project `files` so the witness can prove writes never touch the project.
-  // This in-memory map stands in for D2's OPFS store keyed by t.identity; the
-  // real browser host swaps it for OPFS (eager-flush durability) behind the same
+  // This in-memory map is the save store every shipped host uses today. D2 rules
+  // the browser host swaps it for OPFS (eager-flush durability, #55) behind the same
   // three write imports. Keys are plain relative paths; values are Uint8Array
   // (a file) or the DIR sentinel (a directory made by fs_mkdir).
   const DIR = { dir: true };

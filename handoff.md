@@ -40,6 +40,36 @@ corpus never probes.
 
 `love.thread` is the one major module still stubbed (build-order step 7).
 
+**The unbuilt-work audit (this session): decisions were outrunning
+implementations, and three ideas existed nowhere but prose or conversation.**
+Now in the tracker, per `CONTRIBUTING.md` §3.3:
+
+- **#55 — D2's OPFS save store was decided, documented as built, and never
+  implemented.** Zero OPFS API calls exist in the tree; every host including the
+  shell keeps saves in-memory, so a save does not survive a page reload. The
+  present-tense claims in readme/EMBEDDING/DESIGN/fs-host are corrected to
+  ruled-not-built. This is the sharpest instance of the pattern.
+- **#56 — D4=B hotswap**, the implementation of the freshly closed ruling.
+- **#57 — the `boot({files, canvas, onLog})` library entry point**, which until
+  filing existed only in session conversation.
+- **#58 — the five constant-answer gaps** (wake lock, hasFocus/hasMouseFocus,
+  getSystemTheme, image cursors, gamepad rumble), previously visible only as
+  COMPATIBILITY ✗ cells.
+
+**#27 closed** — the warn-once mechanism shipped long ago and
+COMPATIBILITY.md + expected.txt are its "declared disposition table", exceeded.
+Its one unbuilt idea (LoveIDE-side static pre-scan) is noted in the closing
+comment as belonging downstream. **#51 closes when its branch merges.**
+Deliberately still open: #7 (pending the LoveIDE measurement), #23 and #54
+(standing upstream-contribution records).
+
+Parked ideas that stay in prose deliberately, each with a named trigger:
+D6 option B (structured console tap — if stdio proves insufficient for the
+agent), the engine-in-Worker + OPFS sync-handle pivot (a shipping variant that
+needs sync durability), `love.video` over a `<video>` seam, a web-native
+networking transport, and the COMPATIBILITY mobile column (whoever can ground
+it from love-ios/love-android).
+
 ## Beta
 
 **Beta = real games playable interactively from a standalone dev artifact, with

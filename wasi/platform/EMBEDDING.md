@@ -59,7 +59,8 @@ embed/fs builds link `love_fs` only; the union frame build links all of them).
 
 The host holds **two namespaces**: a read-only **project** (the game source /
 `.love` contents) and a separate, writable **save** namespace keyed by
-`t.identity` (D2: OPFS in the browser, eager-flush durability). Reads resolve
+`t.identity` (D2's design is OPFS-backed in the browser; unbuilt, #55 — every
+shipped host is in-memory). Reads resolve
 **save-first, then project** (physfs mount order), so a written file shadows a
 project file of the same name; removing the save copy reveals the project file
 beneath. Writes **never** touch the project.
@@ -197,14 +198,16 @@ the write/invalidate handshake.
 
 ## 5. Declared deferrals
 
-- **True cross-reload durability.** The reference host's save namespace is
-  in-memory (same-session read-after-write is what 6.7 proves). The browser host
-  backs it with **OPFS, eager-flush eventual durability** (D2): async OPFS under
-  the sync `fs_write`, flushed after each write + on `pagehide`/`visibilitychange`.
-  In-session behavior is desktop-identical; the only residual is a force-kill
-  within the last-write window — a declared cross-platform timing note. Desktop-
-  exact **sync** durability needs the engine-in-Worker + OPFS sync-access-handle
-  pivot, parked for a shipping variant that needs it.
+- **True cross-reload durability — decided (D2), NOT built (#55).** Every host
+  in this repository, the shell included, keeps the save namespace in-memory:
+  same-session read-after-write is what 6.7 proves, and a save does not survive a
+  page reload. D2's ruling — OPFS behind the same `fs_write` import, eager-flush
+  after each write plus on `pagehide`/`visibilitychange`, eventual durability
+  declared — is the design an implementing host follows; earlier revisions of
+  this document described that host in the present tense, which was a claim above
+  the evidence. Desktop-exact **sync** durability additionally needs the
+  engine-in-Worker + OPFS sync-access-handle pivot, parked for a shipping variant
+  that needs it.
 - **Real archive / `.love`-zip mounting** (`mount*`) is unimplemented **by
   decision** — a loud `false`, not a fake. **D7 is closed (#48): not built**, and
   it is a declared divergence rather than a deferral. Note this does not affect

@@ -237,7 +237,7 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
     `write`/`append`/`remove`/`createDirectory`/`File:open("w"/"a")` and the save
     dir, over three new `love_fs` write imports (`fs_write`/`fs_remove`/`fs_mkdir`,
     entirely in the out-of-tree `fs-backend.cpp` + host — **no new `src/` seam**).
-    The host holds a **separate writable save namespace** (D2, OPFS-backed in the
+    The host holds a **separate writable save namespace** (D2 rules it OPFS-backed in the
     browser) beside the read-only project; reads resolve **save-first then
     project** (physfs mount order), so a written file shadows a project file and
     removing the save copy reveals the pristine project beneath — the witness

@@ -12,7 +12,7 @@ name: publish-sysroot
 on:
   workflow_dispatch:
   push:
-    branches: [wasi]
+    branches: [main]
     paths:
       - 'wasi/toolchain/build-libcxx-eh.sh'
       - 'wasi/toolchain/Platform/**'

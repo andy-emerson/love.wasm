@@ -291,6 +291,7 @@ front-run any choice. Resolution status (Human-ratified):
 | D6 | Console channel | **A — pure stdio now**, architected so B (host structured tap) can layer on without engine changes. |
 | D7 | Archive/`.love` mounting: who unzips | **Closed — neither: not built** (#48). Directory enumeration (`getDirectoryItems` over `fs_list`) is built; runtime zip mounting is a declared divergence. See below. |
 | D8 | Lua dialect | **Closed — PUC Lua 5.4.** See below. |
+| D9 | Portability: constraint or goal | **Closed — B, a goal to maximise.** Run as many unedited desktop games as possible; bring the rest within reach of a small, *declared* auto-shim, which may therefore live in the engine. See below. |
 
 ### D1 — Filesystem seam: replace the module, or keep PhysFS and reseam its IO
 
@@ -566,6 +567,69 @@ the question is what replaces it.
   **Reopen if** the porting surface turns out to be wide rather than the handful
   of library and coercion differences observed so far, or if a LÖVE 12 feature
   is found that 5.4 cannot express.
+
+### D9 — Portability: a constraint on every game, or a target to maximise — CLOSED
+
+D8 left a claim behind that the project then repeated as a rule: *the same game
+source runs unmodified on desktop LÖVE* (`readme.md`). Held as a constraint it
+forbids the engine from restoring a 5.1 name, because a game that leaned on the
+restored name would then fail on desktop. The trouble is that the constraint is
+already false in two places nobody proposes to fix: 5.1 source can need edits
+under 5.4 (D8), and a game calling `love.graphics.newComputeShader` throws here
+while running on desktop, because `FEATURE_GLSL4` is false on WebGL2's ES 3.0
+(`opengl/Graphics.cpp:1591`, recorded as a divergence in `wasi/COMPATIBILITY.md`).
+A rule with standing exceptions is not governing anything; it is only selectively
+blocking work.
+
+- **Option A — keep it a constraint.** Portability is a property every game must
+  have, and the engine never restores a name the target Lua lacks.
+  - **Pros:** one simple sentence; no engine-side dialect surface to maintain.
+  - **Cons:** already untrue, so it decides nothing consistently; it pushes the
+    porting work onto every consumer separately, and yields no measure of how
+    portable the project actually is.
+- **Option B — make it a goal.** Run as many unedited desktop LÖVE games as
+  possible, and bring the rest within reach of a small, declared auto-shim.
+  - **Pros:** measurable, so it can improve — *N of M games run unedited, M−N
+    need the shim, K cannot be helped*. It puts the shim in the engine, where it
+    serves every consumer rather than only users of one IDE.
+  - **Cons:** the engine acquires a dialect-compatibility surface it must own
+    and document.
+
+- **DECIDED — Option B, the goal**, set by the Human. Portability is a target to
+  maximise, not a property demanded of every game.
+
+  **The shim is safe in both directions**, which is what makes B cheap. It
+  supplies *5.1 names into a 5.4 world*, and desktop LÖVE is LuaJIT/5.1
+  (`CMakeLists.txt:214`) and has those names natively. A game relying on them
+  runs natively there and shimmed here. The reverse — shimming 5.4 spellings
+  into 5.1 — is not proposed and would carry the export hazard this one does not.
+
+  **Declared, never silent.** B licenses the shim; it does not license hiding it.
+  A restored name is a divergence like any other and is written down in
+  `wasi/COMPATIBILITY.md` where the ✗/blank rows already live. The line this
+  project holds is not *no divergence* — it is *no divergence a consumer cannot
+  see*. A missing compute shader throws at its call site; a silently restored
+  global would not, and that is the difference that matters.
+
+  **Observed, on one game** (LoveIDE's `demo/legend-of-lua`, Legend of Lua at
+  upstream `351f2456`, LÖVE 11.5): three names — `unpack`, `table.getn`,
+  `math.atan2` — covered **41 call sites, 29 of them inside vendored libraries**
+  (hump, windfield, sti, mlib), and a 13-line prelude restored all of them. Eight
+  font sizes had to change *at the call site* instead: `love.graphics.newFont`
+  reads its size with `luaL_optinteger`, which truncates under 5.1 and **raises**
+  under 5.3+, and a wrong value has no prelude fix. **No `love.*` call was
+  touched at all** — every edit was a Lua version change, not a LÖVE one. One
+  game is one observation, not a rate; the *N of M* figure this goal asks for
+  needs a corpus of real games and does not exist yet.
+
+  **What it gates:** whether an auto-shim may ship inside love.wasm (under A it
+  was a violation; under B it is part of the deliverable), and what `readme.md`
+  may claim about desktop portability.
+
+  **Reopen if** the shim stops being a small fixed prelude — if it starts needing
+  per-game logic, or starts papering over value-semantics differences like the
+  font-size case, where restoring a name would mask a wrong result rather than
+  fix a missing one.
 
 ## Resolved by the reload invariant (recorded as decided, not open)
 

@@ -36,7 +36,7 @@ claim covering eight decisions of at least three different provenances.
 The failure mode this produced, concretely: a probe tried and abandoned inside
 one session became the durable rule **"No compatibility shim ships"** — written
 into documentation, never ruled, and contradicting the project's actual goal.
-See D14.
+See D9.
 
 The rule makes the record authoritative. The companion clause is what stops an
 Agent's mistake from becoming the Human's decision by default.
@@ -56,19 +56,21 @@ Agent's mistake from becoming the Human's decision by default.
 | D6 | Console / diagnostic channel | **Closed — A**, plain stdio. Ruled 2026-08-16 |
 | D7 | Runtime archive mounting | **Closed — build it**, host unzips. Ruled 2026-08-16 |
 | D8 | Lua dialect | **Closed — PUC Lua 5.4.** Ruled 2026-08-16 |
-| D9 | What love.wasm ships | **Closed** — the artifact and its interface specification. Ruled 2026-08-16 |
+| D9 | Lua compatibility posture | **Closed** — a preference; auto-shim, deferred. Ruled 2026-08-16 |
 | D10 | Rendering backend | **Closed — WebGPU only.** Ruled 2026-08-16 |
 | D11 | Shader language | **Closed — LÖVE-WGSL.** Ruled 2026-08-16 |
-| D12 | Relationship to upstream LÖVE | **Closed** — mirror is reference-only. Ruled 2026-08-16 |
-| D13 | Deployment packaging | **Closed** — fetched for development, one `.html` for export. Ruled 2026-08-16 |
-| D14 | Lua compatibility posture | **Closed** — a preference; auto-shim, deferred. Ruled 2026-08-16 |
+| D12 | What love.wasm ships | **Closed** — the artifact and its interface specification. Ruled 2026-08-16 |
+| D13 | Relationship to upstream LÖVE | **Closed** — mirror is reference-only. Ruled 2026-08-16 |
+| D14 | Deployment packaging | **Closed** — fetched for development, one `.html` for export. Ruled 2026-08-16 |
 | Q1 | AOT compilation of game Lua | **Open** — closed by data, on a trigger |
 | Q2 | WGSL reflection | **Open** — recommendation recorded |
 | Q3 | `file://` viability for the one-file export | **Open** — verifiable, not arguable |
 
-No D9 record was found in any prior document; the number was unused and is
-assigned here. If a D9 existed in a previous session's conversation, it was
-never written down.
+**On the numbering.** D9, D10 and D11 were assigned in a session on 2026-08-16
+whose records went to GitHub Issues (#61–#68) and never reached a design
+document — issue #64 cites *"decision: D9, closed (`wasi/platform/DESIGN.md`)"*
+against a file that has never contained a D9. Their numbers are honoured here
+and their substance is recorded for the first time. D12, D13 and D14 are new.
 
 ---
 
@@ -268,7 +270,7 @@ an edit* and *what happens to the leftovers* — into a single pair of options.
   not, and the host offers a restart.
 
 **Why E won:** no silent staleness, no forced restart, and no classifier in the
-consumer — which matters because D9 makes the consumer's burden the thing we
+consumer — which matters because D12 makes the consumer's burden the thing we
 are minimizing. A's cost lands squarely on the consumer, and the engine is
 better placed to make the judgement anyway.
 
@@ -412,7 +414,7 @@ directly useful for game development. It pairs with LÖVE 12 on the same
 reasoning: both are chosen forward rather than backward.
 
 **What this decision is not:** a claim that 5.1 game code runs untouched. It
-does not always. See D14 for the posture on that, which changed on 2026-08-16.
+does not always. See D9 for the posture on that, which changed on 2026-08-16.
 
 **Reopen if** the porting surface turns out to be wide rather than the handful
 of library and coercion differences observed, or if a LÖVE 12 feature is found
@@ -420,51 +422,59 @@ that 5.4 cannot express.
 
 ---
 
-## D9 — What love.wasm ships
+## D9 — Lua compatibility posture
 
-**Closed. Ruled 2026-08-16.**
+**Closed. Ruled 2026-08-16.** Supersedes the durable-document claim *"No
+compatibility shim ships,"* which was never ruled — see D0.
 
-**The ruling: love.wasm ships the `.wasm` artifact and its interface
-specification. It ships no host.**
+**Compatibility is a preference, not a requirement.** The bar: **most games
+written for LÖVE 11.5 / Lua 5.1 play, either directly or after a minimal,
+predictable patch that love.wasm applies automatically.** The word *most*
+disqualifies it as a requirement; the conditional *or with a patch* sets the bar
+well below 100%. The same reasoning governs every compatibility question here,
+desktop parity included.
 
-love.wasm is a component, not a program: it cannot run alone, because wasm can
-reach neither the filesystem, the GPU, the canvas, input, nor audio. Every one
-of those arrives as a function supplied by the embedder. The artifact therefore
-has two published surfaces:
+**An auto-shim ships.** It is the deliverable that makes "or with a patch" true
+without the patch being the game author's problem. Two mechanisms, both
+observed sufficient against Legend of Lua's 41 call sites and 8 font sizes:
 
-- **Exports** — functions love.wasm offers, which a consumer calls.
-- **Imports** — functions love.wasm requires, which a consumer supplies before
-  it will instantiate.
+- **Broad** — `-DLUA_FLOORN2I=F2Ifloor`, making float-to-integer coercion floor
+  rather than raise. Fixes `newFont(path, 4.5 * scale)`, but changes coercion
+  semantics for all of the game's Lua, which is wider than the problem.
+- **Surgical** — a seam on LÖVE's own size parameters, `luaL_optinteger` to
+  `luaL_optnumber` plus floor. Narrower, but touches engine source.
 
-Both are documented; neither is implemented on the consumer's behalf. A
-consumer writes whatever they like, in whatever style they like, and love.wasm
-dictates nothing beyond the signatures. `wasi/host/*.mjs` exists to drive the
-witnesses and is not a deliverable.
+plus a boot-wrapper preamble restoring `unpack`, `table.getn` and `math.atan2`.
 
-**Why this rather than shipping a host.** Shipping a host makes love.wasm a
-two-part product whose JavaScript half is the shape love.js already has —
-which is the thing this project exists to be an alternative to. The distinction
-is not that our JavaScript would be smaller; it is that it is not ours to ship.
+**The argument that reversed the prior position:** desktop LÖVE runs Lua 5.1 via
+LuaJIT, where all three names exist and where `newFont(path, 4.5)` works. **The
+shim moves this build toward desktop behavior, not away from it.** It is
+parity-increasing. The prior framing had it backwards.
 
-**What follows from it, and is the real obligation:** the import surface is the
-product boundary, and every import is API owed to consumers permanently. It is
-kept minimal and specified. As of 2026-08-16 it stands at roughly 208 functions
-— `love_gl` 163, `love_audio` 11, `love_fs` 9, `love_input` 8, `love_system` 7,
-`love_win` 6, `love_gamepad` 4, plus the WASI preview1 subset. **163 of those,
-78%, are OpenGL entry points**, and D10 removes them: WebGPU is object-based
-and coarse-grained rather than a flat list of C entry points. D10 is therefore
-also the largest single act of service to this decision.
+**A shimmed name is a declared name.** This decision licenses the shim; it does
+not license hiding it. Every restored name is a row in `COMPATIBILITY.md` — the
+line this project holds is not *no divergence*, it is *no divergence a consumer
+cannot see* (R3).
 
-**Watch item, not a plan.** The WebAssembly Component Model would let bindings
-be generated from an interface definition by third-party tooling rather than
-written at all. As of 2026-08 this does not deliver: browsers do not run
-components, so `jco transpile` emits JavaScript glue alongside the binary, and
-the graphics interfaces are explicitly unstable — `wasi:surface` and
-`wasi:frame-buffer` were moved out of core WASI in 2026 because they still
-require significant evolution. Because our import surface is already an
-interface definition in all but format, keeping it small and specified makes
-that migration a translation rather than a rewrite, should `wasi-gfx` reach
-Phase 3.
+**Deliberately deferred to among the last development steps.** Built early, the
+shim would be rebuilt repeatedly against a moving engine, so it waits until the
+engine stops moving under it. The mechanism choice above is made when it is
+built, not now.
+
+**Scope, and where it stops.** Issue **#64** carries the implementation and its
+three tiers: the mechanical names that a prelude restores (`unpack`,
+`loadstring`, `table.getn`, `math.pow`, `math.log10`, `math.atan2`,
+`math.ldexp`/`frexp`, LuaJIT's `bit.*` over 5.4's native operators, `jit.*`
+stubs); the detectable-but-not-shimmable cases that warn instead
+(`setfenv`/`getfenv`, `module()`, `require("ffi")`, `goto` as an identifier);
+and the value-level changes no prelude reaches, because 5.3's integer subtype is
+a *value* change rather than a name change — `/` always returning a float so
+`"Score: " .. score` renders `100.0`, and `luaL_optinteger` raising where 5.1
+truncated.
+
+**Reopen if** the shim stops being a shim. Patching `newFont`, then the next
+binding, then the next, is the signal: at that point this is a compatibility
+layer, which is a different decision from the one closed here.
 
 ---
 
@@ -548,7 +558,7 @@ compilation to many targets; the need here is online compilation to one.
 large dependency to translate between two languages we would then both carry.
 
 **What C costs, stated plainly:** a game's shader source no longer runs
-unmodified on desktop LÖVE. Under D14 that is acceptable — compatibility is a
+unmodified on desktop LÖVE. Under D9 that is acceptable — compatibility is a
 preference, not a requirement — but it is a real loss and it is declared, not
 hidden. Game *logic* portability is unaffected.
 
@@ -556,7 +566,55 @@ hidden. Game *logic* portability is unaffected.
 
 ---
 
-## D12 — Relationship to upstream LÖVE
+## D12 — What love.wasm ships
+
+**Closed. Ruled 2026-08-16.**
+
+**The ruling: love.wasm ships the `.wasm` artifact and its interface
+specification. It ships no host.**
+
+love.wasm is a component, not a program: it cannot run alone, because wasm can
+reach neither the filesystem, the GPU, the canvas, input, nor audio. Every one
+of those arrives as a function supplied by the embedder. The artifact therefore
+has two published surfaces:
+
+- **Exports** — functions love.wasm offers, which a consumer calls.
+- **Imports** — functions love.wasm requires, which a consumer supplies before
+  it will instantiate.
+
+Both are documented; neither is implemented on the consumer's behalf. A
+consumer writes whatever they like, in whatever style they like, and love.wasm
+dictates nothing beyond the signatures. `wasi/host/*.mjs` exists to drive the
+witnesses and is not a deliverable.
+
+**Why this rather than shipping a host.** Shipping a host makes love.wasm a
+two-part product whose JavaScript half is the shape love.js already has —
+which is the thing this project exists to be an alternative to. The distinction
+is not that our JavaScript would be smaller; it is that it is not ours to ship.
+
+**What follows from it, and is the real obligation:** the import surface is the
+product boundary, and every import is API owed to consumers permanently. It is
+kept minimal and specified. As of 2026-08-16 it stands at roughly 208 functions
+— `love_gl` 163, `love_audio` 11, `love_fs` 9, `love_input` 8, `love_system` 7,
+`love_win` 6, `love_gamepad` 4, plus the WASI preview1 subset. **163 of those,
+78%, are OpenGL entry points**, and D10 removes them: WebGPU is object-based
+and coarse-grained rather than a flat list of C entry points. D10 is therefore
+also the largest single act of service to this decision.
+
+**Watch item, not a plan.** The WebAssembly Component Model would let bindings
+be generated from an interface definition by third-party tooling rather than
+written at all. As of 2026-08 this does not deliver: browsers do not run
+components, so `jco transpile` emits JavaScript glue alongside the binary, and
+the graphics interfaces are explicitly unstable — `wasi:surface` and
+`wasi:frame-buffer` were moved out of core WASI in 2026 because they still
+require significant evolution. Because our import surface is already an
+interface definition in all but format, keeping it small and specified makes
+that migration a translation rather than a rewrite, should `wasi-gfx` reach
+Phase 3.
+
+---
+
+## D13 — Relationship to upstream LÖVE
 
 **Closed. Ruled 2026-08-16.**
 
@@ -573,7 +631,7 @@ the consequence above stops mattering.
 
 ---
 
-## D13 — Deployment packaging
+## D14 — Deployment packaging
 
 **Closed. Ruled 2026-08-16.**
 
@@ -623,41 +681,6 @@ not persist. See Q3.
 **Assets are why this is needed regardless of Q1:** a game is not only
 `main.lua`. AOT would compile game Lua and do nothing for images, sounds, fonts
 or maps, so any self-contained artifact needs the data-embedding path anyway.
-
----
-
-## D14 — Lua compatibility posture
-
-**Closed. Ruled 2026-08-16.** Supersedes the durable-document claim *"No
-compatibility shim ships,"* which was never ruled — see D0.
-
-**Compatibility is a preference, not a requirement.** The bar: **most games
-written for LÖVE 11.5 / Lua 5.1 play, either directly or after a minimal,
-predictable patch that love.wasm applies automatically.** The word *most*
-disqualifies it as a requirement; the conditional *or with a patch* sets the bar
-well below 100%. The same reasoning governs every compatibility question here,
-desktop parity included.
-
-**An auto-shim ships.** It is the deliverable that makes "or with a patch" true
-without the patch being the game author's problem. Two mechanisms, both
-observed sufficient against Legend of Lua's 41 call sites and 8 font sizes:
-
-- **Broad** — `-DLUA_FLOORN2I=F2Ifloor`, making float-to-integer coercion floor
-  rather than raise. Fixes `newFont(path, 4.5 * scale)`, but changes coercion
-  semantics for all of the game's Lua, which is wider than the problem.
-- **Surgical** — a seam on LÖVE's own size parameters, `luaL_optinteger` to
-  `luaL_optnumber` plus floor. Narrower, but touches engine source.
-
-plus a boot-wrapper preamble restoring `unpack`, `table.getn` and `math.atan2`.
-
-**The argument that reversed the prior position:** desktop LÖVE runs Lua 5.1 via
-LuaJIT, where all three names exist and where `newFont(path, 4.5)` works. **The
-shim moves this build toward desktop behavior, not away from it.** It is
-parity-increasing. The prior framing had it backwards.
-
-**Deliberately deferred to among the last development steps.** Built early, the
-shim would be rebuilt repeatedly against a moving engine. Filed as an issue; the
-mechanism choice is made when it is built.
 
 ---
 
@@ -739,7 +762,7 @@ replace glslang and SPIRV-Cross with something owned end to end.
 
 **Open. Verifiable, not arguable.**
 
-D13's export is meant to open directly from disk. Two things must be confirmed
+D14's export is meant to open directly from disk. Two things must be confirmed
 rather than assumed:
 
 - **Does WebGPU work under `file://`?** It requires a secure context.

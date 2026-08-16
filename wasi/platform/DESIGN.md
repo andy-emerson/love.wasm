@@ -292,6 +292,8 @@ front-run any choice. Resolution status (Human-ratified):
 | D7 | Archive/`.love` mounting: who unzips | **Closed — neither: not built** (#48). Directory enumeration (`getDirectoryItems` over `fs_list`) is built; runtime zip mounting is a declared divergence. See below. |
 | D8 | Lua dialect | **Closed — PUC Lua 5.4.** See below. |
 | D9 | Portability: constraint or goal | **Closed — B, a goal to maximise.** Run as many unedited desktop games as possible; bring the rest within reach of a small, *declared* auto-shim, which may therefore live in the engine. See below. |
+| D10 | Browser graphics backend | **Closed — B, WebGPU preferred with WebGL2 fallback.** Lifts the permanent WebGL2 feature ceiling; keeps the witnessed GL path as the fallback rather than discarding it. See below. |
+| D11 | Shader compiler | **Closed — Slang, keeping GLSL as the authoring language. Implementation deferred pending the spike.** Replaces glslang + SPIRV-Cross; authors write exactly what they write today. See below. |
 
 ### D1 — Filesystem seam: replace the module, or keep PhysFS and reseam its IO
 
@@ -630,6 +632,141 @@ blocking work.
   per-game logic, or starts papering over value-semantics differences like the
   font-size case, where restoring a name would mask a wrong result rather than
   fix a missing one.
+
+### D10 — Browser graphics backend: WebGL2, WebGPU, or both — CLOSED
+
+WebGL2 *is* OpenGL ES 3.0, and that identity is what let this project reseam a
+loader and reuse upstream's 7,792-line `opengl` backend instead of writing one.
+It also imposes a ceiling that no amount of work removes: `FEATURE_GLSL4` is
+`GLAD_ES_VERSION_3_1 || (core && GLAD_VERSION_4_3)` (`opengl/Graphics.cpp:1591`),
+and ES 3.0 is neither. `FEATURE_INDIRECT_DRAW` is *defined as* `FEATURE_GLSL4`,
+and `BUFFERUSAGE_SHADER_STORAGE` gates the same way (`OpenGL.cpp:1301`). So
+compute shaders, indirect draw and storage buffers — LÖVE 12's headline graphics
+additions — are unreachable on WebGL2 by API version, not by effort.
+
+- **Option A — WebGL2 only.** The status quo.
+  - **Pros:** nothing to build; one backend to maintain; universal browser
+    coverage.
+  - **Cons:** the ceiling is permanent, so LÖVE 12's graphics module can never
+    be whole in a browser.
+- **Option B — WebGPU preferred, WebGL2 fallback.** The pattern Unity, Unreal,
+  Godot and Bevy converged on.
+  - **Pros:** lifts the ceiling; keeps every witnessed WebGL2 leg as the
+    fallback rather than discarding it; the ordered-preference machinery already
+    exists upstream (`boot.lua:283` → `Graphics.h:110`), so selection is not ours
+    to write.
+  - **Cons:** two backends to maintain, and the corpus must run on both.
+- **Option C — WebGPU only.** Simplest to maintain; drops every browser without
+  WebGPU, currently including Firefox on Linux and most of Safari's installed
+  base. Discards a proven path to avoid a maintenance cost the new backend
+  incurs anyway.
+
+- **DECIDED — Option B**, set by the Human, with performance ranked above
+  compatibility and "ship the best possible product" as the stated goal.
+
+  **The asymmetry to hold in view.** `opengl` is upstream's, exercised by every
+  desktop LÖVE user on Linux and Windows. A `webgpu` backend would be ours,
+  exercised by us alone. There is precedent in this repository — `LOVE_AUDIO_WEBAUDIO`
+  is already a backend module upstream does not have — but graphics is roughly
+  ten times the size, so upstream's appetite for it should be asked before the
+  bulk of the work, not after.
+
+  **Corpus honesty.** "306 pass" is today a claim about *upstream's* backend. If
+  WebGPU becomes the default and the corpus runs only the default, that number
+  silently becomes a claim about a backend we wrote. The corpus runs on both, or
+  the number stops meaning what it says.
+
+  **Phase 1 needs no shader translator.** LÖVE has four standard shaders
+  (`Shader.h:86` — `STANDARD_DEFAULT`, `VIDEO`, `ARRAY`, `POINTS`), and `VIDEO`
+  is moot here because `love.video` is not linked into the build at all. That is
+  six shader sources, hand-writable in WGSL. A first cut can therefore serve
+  games that never call `love.graphics.newShader` and route the rest to the
+  WebGL2 fallback, deferring the translator question entirely — and D11 may
+  remove it permanently.
+
+  **Sequenced behind evidence:** the draw-call sweep (`wasi/bench/`) on real
+  hardware decides whether this is urgent or merely completing, and the D11 spike
+  decides how expensive the shader half is. Neither reopens the direction.
+
+  **Reopen if** WebGPU adoption stalls such that the fallback, not the preferred
+  path, is what nearly every player runs — at which point B has the costs of two
+  backends and the benefits of one.
+
+### D11 — Shader compiler: glslang + SPIRV-Cross, or Slang — CLOSED (implementation deferred)
+
+glslang is not merely LÖVE's shader compiler, it is LÖVE's **reflection system**.
+The backend-independent `graphics/Shader.cpp` includes glslang's *internal*
+headers (`glslang/Include/Types.h`, `MachineIndependent/localintermediate.h`) and
+walks its AST — `getBaseType(glslang::TBasicType)` at line 1038 — to build
+LÖVE's own `DataFormat`/`DataBaseType` descriptors for every backend. So the
+shader toolchain is welded into shared code through another project's private
+guts, which is a fragile dependency independent of any translation question.
+
+The translation paths are the visible half. Metal is
+GLSL → glslang → SPIR-V → SPIRV-Cross → MSL; a WebGPU backend would be
+GLSL → glslang → SPIR-V → Tint → WGSL, because browsers accept **only** WGSL and
+neither glslang nor SPIRV-Cross has a WGSL backend.
+
+- **Option A — keep glslang + SPIRV-Cross.** 170,722 vendored lines
+  (105,963 + 64,759), and a third translator (Tint or naga) added for WebGPU.
+  Tint is C++ but accepts only SPIR-V; naga takes GLSL directly but is Rust.
+- **Option B — Slang, replacing both, GLSL kept as the authoring language.**
+  Slang emits SPIR-V, GLSL, MSL and WGSL directly, and has a GLSL *input* mode
+  (`SlangGlobalSessionDesc::enableGLSL`, `-allow-glsl`) providing most GLSL
+  intrinsics and GLSL binding syntax.
+  - **Pros:** every path becomes one hop; WGSL comes out directly, so the
+    translator question disappears along with the Tint/naga/Rust fork;
+    reflection moves onto a public API (`slang-reflection-api.cpp`) instead of
+    another project's internal headers. One vendored toolchain instead of two,
+    going on three.
+  - **Cons:** 404,877 lines in `source/slang` versus 170,722 replaced — 2.4×
+    the source, with compiled size unmeasured. Its WGSL and Metal backends are
+    experimental (the whole WGSL path is ~2,400 lines). GLSL compatibility is
+    "most" intrinsics, not all.
+- **Option C — replace GLSL with Slang as the authoring language.** Rejected:
+  it breaks every LÖVE shader, tutorial and community library, for a benefit
+  users never see. Most LÖVE games never write a shader at all.
+
+- **DECIDED — Option B, with implementation deferred** until the spike reports.
+
+  **The Emscripten question, settled.** Slang builds `source/slang-wasm` with
+  emsdk in its own CI, which is how the Slang playground runs. That is *their*
+  build, not a dependency of the source. We would compile Slang with clang-20 and
+  wasi-libc exactly as this repository already compiles glslang, FreeType,
+  HarfBuzz, Box2D, libvorbis, libmodplug and zlib — none of which ship a wasi
+  build either. Their wasm target is evidence *for* portability (no x86 assembly,
+  no JIT) and silent on wasi specifically.
+
+  **Size is a configuration question, not a fixed cost.** `SLANG_ENABLE_DXIL`,
+  `SLANG_ENABLE_GFX`, `SLANG_ENABLE_SLANGD/SLANGC/SLANGI/SLANGRT`,
+  `SLANG_ENABLE_REPLAYER` and `SLANG_SLANG_LLVM_FLAVOR` are all switchable. We
+  need the compiler library alone. Any size figure must be measured with those
+  off; a default build measures something we would not ship.
+
+  **The spike, cheapest killer first.** (1) Does `-allow-glsl` accept LÖVE's
+  *generated* GLSL — its preamble, injected uniforms and `effect`/`position`/
+  `vertexmain`/`pixelmain` entry points — tested against the four standard
+  shaders and everything in `testing/`? (2) Does Slang's reflection expose what
+  `Shader.cpp:1238–1531` needs: uniform formats, block layouts, std430 packing,
+  storage-texture formats, storage-buffer structure? Both are answerable with a
+  prebuilt host `slangc` and no wasm build at all. Only then (3) does
+  `source/slang` build for `wasm32-wasi` without the embind wrapper and without
+  assuming threads, and (4) how large is it trimmed.
+
+  **The failure mode to watch.** "Slang is cleaner, we maintain nothing" holds
+  only if 1–3 pass cleanly. Partial GLSL acceptance means maintaining a shim;
+  incomplete reflection means maintaining an adapter; a wasi build needing source
+  changes means maintaining a fork of a 404,877-line compiler. Any of those is
+  worse than the glslang dependency it replaces, so the spike decides *which
+  world we are in* before any code is written.
+
+  **Not ours alone if it reaches the authoring language.** Keeping GLSL is what
+  makes this an implementation change rather than a LÖVE-wide contract change. A
+  love.wasm that accepted a shader desktop LÖVE rejected would be exactly the
+  silent divergence D9 forbids.
+
+  **Reopen if** the spike shows partial GLSL acceptance or incomplete reflection,
+  or if trimmed compiled size exceeds what glslang costs today.
 
 ## Resolved by the reload invariant (recorded as decided, not open)
 

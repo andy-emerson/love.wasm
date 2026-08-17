@@ -247,7 +247,7 @@ love.wasm started from `love2d/love` and no longer tracks it. **`main` carries o
 
 **Retirement:** the mirror is dropped altogether at v1.0.
 
-**On deviation.** This is not a fork trying to stay mergeable, and it is not a port trying to be adopted. It deviates where deviating is an improvement — the Lua VM (D8), the rendering backend (D10), the shader language (D11) — while spending real effort to stay compatible with LÖVE 12, and with 11.5 where that is reachable. Deviation is never the goal; every one is recorded with the alternative that lost. Where a fix is generic enough that LÖVE itself wants it, offering it upstream is worthwhile on its own merits (#23, #54) and is not a dependency of anything here.
+**On deviation.** This is not a fork trying to stay mergeable, and it is not a port trying to be adopted. It deviates where deviating is an improvement — the Lua VM (D8), the rendering backend (D10), the shader language (D11) — while spending real effort to stay compatible with LÖVE 12, and with 11.5 where that is reachable. Deviation is never the goal; every one is recorded with the alternative that lost. Nothing is offered upstream: this project has never sent a patch to `love2d/love` and does not plan to, so fixes that would once have been framed as upstream contributions (#23, #54) are ordinary local work. LÖVE's contribution policy would bar them in any case — its pull request template requires confirming a change contains no generative-AI output, and this project records agent co-authorship in every commit.
 
 ## Constitution
 

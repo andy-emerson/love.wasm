@@ -55,4 +55,7 @@ runs:
       # The #33 probe records "not installed" rather than failing.
       if: inputs.webkit == 'best-effort'
       shell: bash
-      run: npx playwright install --with-deps webkit || echo "::warning::webkit install failed; #33 probe will skip WebKit"
+      # Block scalar on purpose: in a plain scalar YAML starts a comment at
+      # " #", which truncated this line mid-quote the first time it ran.
+      run: |
+        npx playwright install --with-deps webkit || echo "::warning::webkit install failed; #33 probe will skip WebKit"

@@ -48,7 +48,7 @@ Compile LÖVE's actual C++ engine — real bindings, real Box2D, real decoders, 
 
 - **Run real LÖVE source.** Not a JS reimplementation of the `love.*` API. A reimplementation was considered and rejected: multi-year effort, and never bit-exact. The fidelity bar is concrete — e.g. every Lua-facing engine call funnels through `luax_catchexcept`'s typed C++ exception handling (145 call sites); imitations get details like this subtly wrong forever.
 - **Need no Emscripten, no pthreads, no SharedArrayBuffer, no COOP/COEP headers.** The IDE must be able to run its preview on any static host. (love.js requires cross-origin isolation because its engine build bakes in `-pthread`; that is unremovable by swapping the Lua VM — it's why this project exists.)
-- **Keep the project tree `.love`-compatible.** The same game source runs unmodified on desktop LÖVE — a game made in the browser can go to desktop and back. The **primary target is a LÖVE game that runs natively in the browser**, and a high-fidelity **desktop preview** is the second, valued use of the same engine. The fused per-game artifact for standalone shipping is a later packaging step (#7).
+- **Keep the project tree `.love`-compatible.** A game made in the browser can go to desktop and back. Desktop portability is a **goal to maximise, not a constraint on every game** (D9): run as many unedited desktop LÖVE games as possible, and bring the rest within reach of a small auto-shim that restores the 5.1 standard-library names 5.4 moved — every such restoration declared in `wasi/COMPATIBILITY.md`, never silent. The shim is safe in both directions because desktop LÖVE is LuaJIT/5.1 and already has those names. The **primary target is a LÖVE game that runs natively in the browser**, and a high-fidelity **desktop preview** is the second, valued use of the same engine. The fused per-game artifact for standalone shipping is a later packaging step (#7).
 - **Prefer faithful primitives over emulation** where the browser has the real thing (real Web Workers for `love.thread`, not coroutines pretending to be threads).
 
 ## The fidelity standard — browser-native correctness first
@@ -245,7 +245,7 @@ love.wasm started from `love2d/love` and no longer tracks it. **`main` carries o
 
 **Retirement:** the mirror is dropped altogether at v1.0.
 
-**On deviation.** This is not a fork trying to stay mergeable, and it is not a port trying to be adopted. It deviates where deviating is an improvement — the Lua VM (D8), the rendering backend (D10), the shader language (D11) — while spending real effort to stay compatible with LÖVE 12, and with 11.5 where that is reachable. Deviation is never the goal; every one is recorded with the alternative that lost. Where a fix is generic enough that LÖVE itself wants it, offering it upstream is worthwhile on its own merits (#23, #54) and is not a dependency of anything here.
+**On deviation.** This is not a fork trying to stay mergeable, and it is not a port trying to be adopted. It deviates where deviating is an improvement — the Lua VM (D8) is the settled example, and the rendering backend (D10) and shader toolchain (D11) are open — while spending real effort to stay compatible with LÖVE 12, and with 11.5 where that is reachable. Deviation is never the goal; every one is recorded with the alternative that lost. Where a fix is generic enough that LÖVE itself wants it, offering it upstream is worthwhile on its own merits (#23, #54) and is not a dependency of anything here.
 
 ## Constitution
 

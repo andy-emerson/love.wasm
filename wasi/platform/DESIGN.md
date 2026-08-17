@@ -86,9 +86,10 @@ game using one cannot be previewed at all (D10).
 - **R1 over P1** — browser-native correctness beats desktop parity. A browser
   cannot match desktop on storage durability, HRTF, microphone rates or
   threading, and is not expected to.
-- **P1 over P3** — the preview's fidelity beats shader-source portability. A
-  game's shaders no longer run unmodified on desktop LÖVE (D11); its logic
-  still does.
+- **P1 over P3** — the preview's fidelity beats shader-source portability, *if
+  it comes to that*. Whether it does is D11, which is **reopened**: the standing
+  ruling keeps GLSL as the authoring language, so no such conflict arises. The
+  ranking above says which way it would fall, not that it has fallen.
 - **P2 over P4** — a minimal import surface beats a small artifact where they
   disagree, because the surface is API owed permanently and bytes are not.
 

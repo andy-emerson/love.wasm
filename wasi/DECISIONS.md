@@ -324,15 +324,19 @@ filter; frame numbers and timestamps are known to the host, which drives the
 pump; source location is `debug.getinfo`, callable from the probe itself in
 Lua; errors are already on fd 2.
 
-**Evidence: tested for the tap, observed for the engine half.**
-`wasi/host/run-stdout-tap.mjs` drives `fd_write` directly over a bare
-`WebAssembly.Memory`, so it needs no artifact and no browser, and it holds the
-delivery shape: whole lines, split writes rejoined, nothing retained in a live
-session, and the default accumulating path unchanged for the ~40 witnesses that
-read `shim.stdout`. What is still read-from-source rather than run is the
-engine half — that `print` reaches `fd_write` within its own frame. Raising it
-needs a browser leg printing from inside `love.update`, and it is owed when
-this area is next touched.
+**Evidence: tested.** `wasi/host/run-stdout-tap.mjs` drives `fd_write` directly
+over a bare `WebAssembly.Memory`, so it needs no artifact and no browser, and it
+holds the delivery shape: whole lines, split writes rejoined, nothing retained
+in a live session, and the default accumulating path unchanged for the ~40
+witnesses that read `shim.stdout`.
+
+The engine half — that `print` reaches the consumer within its own frame — is
+run rather than read as of 2026-08-16: `wasi/shell/run.sh` in Chromium against
+the union artifact, where each game `print` arrives as its own console entry
+(`SHELL-LOAD`, three `SHELL-TOUCH*` lines, the live-edit notices), which is the
+whole chain — `print` flushing per call (`lauxlib.h:265`), the shim streaming
+through `onWrite`, `boot.mjs` splitting whole lines, the page rendering one
+entry each.
 
 **Two defects found in the re-put**, both host-side, both fixed:
 
@@ -833,6 +837,27 @@ Four constraints follow, cheap if designed in and painful to retrofit:
 
 **Declared limitations:** under `file://` there is no true origin, so saves may
 not persist. See Q3.
+
+**Measured, 2026-08-16**, on the union artifact
+(`wasi/platform/build-game.sh` → `wasi/shell/love-game.wasm`, clang-20, the
+published wasm-EH sysroot; graphics + window + filesystem + input + touch +
+joystick + sensor + timer + system + audio + sound + physics):
+
+| | bytes | over the wire |
+|---|--:|--:|
+| raw `.wasm` | 8,258,119 (7.9 MiB) | — |
+| gzip -9 — **option D**, fetched | 2,529,410 (2.4 MiB) | baseline |
+| base64 inline | 11,010,828 (10.5 MiB) | — |
+| base64 + gzip -9 — **option C**, one `.html`| 3,447,373 (3.3 MiB) | **+36%, ~918 KB** |
+
+So C costs about 36% more bandwidth than D, not the ~33% that base64's expansion
+suggests: base64 of already-dense binary compresses worse than the binary does.
+It is paid per game, because nothing caches across titles. 3.3 MB for a
+self-contained playable game is well inside what a browser game costs, which is
+what makes the D-for-development / C-for-export split affordable rather than a
+compromise. A measurement is never stronger than its latest run; rebuild and
+re-measure when the artifact's contents change — notably when D10's WebGPU
+backend lands.
 
 **Assets are why this is needed regardless of Q1:** a game is not only
 `main.lua`. AOT would compile game Lua and do nothing for images, sounds, fonts

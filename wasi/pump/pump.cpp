@@ -295,12 +295,70 @@ local function join(new, old)
   end
 end
 
-local applied = 0
+-- D5=E: swap what can be swapped, and REPORT WHAT COULD NOT BE. The count
+-- alone cannot distinguish "applied everything you edited" from "applied some
+-- of it", which is the silent staleness D4's invariant exists to forbid.
+--
+-- The report is tab-separated lines, one per binding:
+--   applied\t<name>\tswapped   both sides Lua functions; upvalues joined, so
+--                              file-scope state carried across the edit
+--   applied\t<name>\tdefined   no previous value; a fresh binding, exactly as
+--                              a fresh run of the new code would have it
+--   applied\t<name>\treplaced  a previous value existed but one side is not a
+--                              Lua function, so nothing was joined; whatever
+--                              state the old function captured is gone
+--   residue\t<name>\tdeleted   THE ONE THAT MATTERS: this file defined the
+--                              binding on a previous swap and no longer does.
+--                              Nothing overwrites it, so the OLD value is
+--                              still live and the deletion has not taken
+--                              effect. A fresh run would not have it at all.
+--
+-- Deletions are reported, not removed. D5=E asks the engine to report the
+-- residue, and D4 sets the responsibility line at the engine performing the
+-- swap rather than judging it — removing a binding another function still
+-- calls would break the running game mid-frame, which is a decision, not an
+-- implementation detail.
+local reg = dbg.getregistry()
+local defs = reg["love.pump.hotswap.defs"]
+if not defs then defs = {}; reg["love.pump.hotswap.defs"] = defs end
+local prev = defs[path]
+
+local lines, now, applied = {}, {}, 0
 for _, r in ipairs(records) do
   applied = applied + 1
-  if is_lua_fn(r.new) and is_lua_fn(r.old) then join(r.new, r.old) end
+  local name = (r.t == reallove and "love." or "") .. tostring(r.k)
+  now[name] = true
+  local status
+  if r.old == nil then
+    status = "defined"
+  elseif is_lua_fn(r.new) and is_lua_fn(r.old) then
+    join(r.new, r.old)
+    status = "swapped"
+  else
+    status = "replaced"
+  end
+  lines[#lines + 1] = "applied\t" .. name .. "\t" .. status
 end
-return applied
+
+-- Sorted so the report is stable across runs; pairs() order is not.
+if prev then
+  local gone = {}
+  for name in pairs(prev) do
+    if not now[name] then gone[#gone + 1] = name end
+  end
+  table.sort(gone)
+  for _, name in ipairs(gone) do
+    lines[#lines + 1] = "residue\t" .. name .. "\tdeleted"
+  end
+end
+defs[path] = now
+
+-- Known limitation: `prev` is written by this chunk, so the FIRST swap of a
+-- given path after boot has nothing to compare against and reports no
+-- deletions. A binding dropped between boot and that first swap is missed.
+-- Closing it means recording the definition set at boot, which pump_boot does
+-- not run this chunk to do.
+return applied, table.concat(lines, "\n")
 )lua";
 
 static const char PUMP_HOTSWAP_KEY[] = "love.pump.hotswap";
@@ -339,16 +397,20 @@ PUMP_EXPORT("pump_hotswap") int32_t pump_hotswap(uint32_t len) {
     return PUMP_ERROR;
   }
   lua_pushlstring(g_L, g_in.data(), len);
-  if (lua_pcall(g_L, 1, 1, msgh) != LUA_OK) {
+  // Two results: the applied count, and D5=E's residue report. On error
+  // lua_pcall pushes exactly one object whatever nresults asked for.
+  if (lua_pcall(g_L, 1, 2, msgh) != LUA_OK) {
     size_t elen = 0;
     const char *e = lua_tolstring(g_L, -1, &elen);
     g_out.assign(e, elen);
     lua_pop(g_L, 2);  // error + msgh
     return PUMP_ERROR;  // the lua_State and the resident coroutine live on
   }
-  int32_t applied = static_cast<int32_t>(lua_tointeger(g_L, -1));
-  lua_pop(g_L, 2);  // result + msgh
-  g_out.clear();
+  size_t rlen = 0;
+  const char *report = lua_tolstring(g_L, -1, &rlen);  // report
+  g_out.assign(report ? report : "", report ? rlen : 0);
+  int32_t applied = static_cast<int32_t>(lua_tointeger(g_L, -2));  // count
+  lua_pop(g_L, 3);  // report + count + msgh
   return applied;
 }
 
@@ -360,8 +422,8 @@ static int pump_l_hotswap(lua_State *L) {
   lua_settop(L, 1);
   if (!pump_push_hotswap_fn(L)) return lua_error(L);
   lua_insert(L, 1);
-  lua_call(L, 1, 1);
-  return 1;
+  lua_call(L, 1, 2);  // count, residue report (D5=E)
+  return 2;
 }
 
 PUMP_EXPORT("pump_boot") int32_t pump_boot(uint32_t len) {

@@ -283,9 +283,38 @@ consumer — which matters because D12 makes the consumer's burden the thing we
 are minimizing. A's cost lands squarely on the consumer, and the engine is
 better placed to make the judgement anyway.
 
-**What is already built, and the delta.** `pump_hotswap` re-runs the edited
-chunk in a capture environment and rejoins upvalues — the swapping half of E.
-It does not report the residue. That report is the outstanding work.
+**Built 2026-08-16.** `pump_hotswap` re-runs the edited chunk in a capture
+environment and rejoins upvalues — the swapping half — and now returns a
+per-binding report through the out-slot alongside the count: `swapped` (both
+sides Lua functions, upvalues joined, state carried), `defined` (no previous
+value), `replaced` (a previous value existed but one side is not a function, so
+nothing joined) and, the case E exists for, `residue ... deleted`.
+
+**The residue is a deletion, which is not where it was expected to be.** Within
+the recorded writes nothing actually fails — either side not being a function
+still assigns, which is what a fresh run would do. What the swap cannot apply is
+what the records do not contain: delete `function love.keypressed()` and save,
+and no record is created, nothing overwrites the old function, and it stays live
+in the running game. The edit silently does not happen. Detecting it needs the
+file's previous definition set, remembered in the registry and diffed per swap.
+
+**Deletions are reported, not removed** — E says report the residue, and D4 puts
+the responsibility line at the engine performing the swap rather than judging
+it. The reload invariant arguably wants removal, since a fresh run of the new
+code would not have the binding at all; removing one that another function still
+calls would break the game mid-frame. That is a decision, and it is not made
+here.
+
+**Known limitation, recorded in the source:** the previous definition set is
+written by the hotswap chunk, so the *first* swap of a path after boot has
+nothing to compare against and reports no deletions. A binding dropped between
+boot and that first save is missed. Closing it means recording definitions at
+boot, which `pump_boot` does not run this chunk to do.
+
+**Evidence: tested.** `wasi/shell/run-hotswap.sh` LEG5 adds a binding, swaps,
+deletes it, swaps again and asserts the report names it; LEG6 asserts the game
+is still running afterwards, which is the observable consequence of reporting
+rather than removing. Both pass in Chromium alongside the four original legs.
 
 ---
 

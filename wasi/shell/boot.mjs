@@ -223,12 +223,25 @@ export async function boot({
     // error} carrying the edit's OWN Lua error — the engine performs the swap,
     // it does not validate it, and the game keeps running on the old code
     // either way.
+    //
+    // D5=E: `swapped` is a count and cannot tell "applied everything" from
+    // "applied some", so the engine also reports per binding. `applied` is what
+    // took effect; `residue` is what the swap could NOT apply — today that is a
+    // binding this file used to define and no longer does, whose old value is
+    // still live because nothing overwrote it. A consumer that ignores
+    // `residue` shows the user a success for an edit that did not happen.
     hotswap: (path) => {
       const st = x.pump_hotswap(put(path));
       drainTap();
       if (st === -3) return { ok: false, error: 'the pump is not booted' };
       if (st === -2) return { ok: false, error: out() };
-      return { ok: true, swapped: st };
+      const applied = [], residue = [];
+      for (const line of (out() || '').split('\n')) {
+        if (!line) continue;
+        const [kind, name, status] = line.split('\t');
+        (kind === 'residue' ? residue : applied).push({ name, status });
+      }
+      return { ok: true, swapped: st, applied, residue };
     },
     // A browser tab has no close button the game owns, so quitting is explicit:
     // push the quit event and let love.run wind down normally next frame.

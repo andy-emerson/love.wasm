@@ -1,9 +1,15 @@
 name: witness
 # Re-run every witness on each push/PR to the trunk, so no behavioral claim
 # rots silently. Step-by-step rationale lives with each witness script.
+#
+# Working branches are in the push trigger too (#76): a merge was already gated
+# by the pull_request trigger, but a working branch could accumulate commits
+# with nothing checking them, so the first signal arrived against the whole
+# stack at once -- exactly when a bisect is needed and there is nothing to
+# bisect against.
 on:
   push:
-    branches: [main]
+    branches: [main, 'claude/**']
   pull_request:
     branches: [main]
 

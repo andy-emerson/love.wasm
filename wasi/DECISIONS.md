@@ -54,7 +54,7 @@ Agent's mistake from becoming the Human's decision by default.
 | D4 | Reload granularity | **Closed — B**, function-body hotswap. Ruled 2026-08-11 (#47) |
 | D5 | Supported-edit class | **Closed — E**, swap what applies, report the residue. Ruled 2026-08-16 |
 | D6 | Console / diagnostic channel | **Closed — A**, plain stdio. Ruled 2026-08-16 |
-| D7 | Runtime archive mounting | **Closed — build it**, host unzips. Ruled 2026-08-16 |
+| D7 | Runtime archive mounting | **Closed — build it**, host unzips. Ruled 2026-08-16. Work deferred 2026-08-17 until #67 lands (#72) |
 | D8 | Lua dialect | **Closed — PUC Lua 5.4.** Ruled 2026-08-16 |
 | D9 | Lua/game compatibility posture | **Closed — B**, a goal to maximise. Ruled earlier, re-affirmed 2026-08-16 |
 | D10 | Browser graphics backend | **Closed — C**, WebGPU only. Ruled 2026-08-16, superseding an earlier B |
@@ -283,9 +283,55 @@ consumer — which matters because D12 makes the consumer's burden the thing we
 are minimizing. A's cost lands squarely on the consumer, and the engine is
 better placed to make the judgement anyway.
 
-**What is already built, and the delta.** `pump_hotswap` re-runs the edited
-chunk in a capture environment and rejoins upvalues — the swapping half of E.
-It does not report the residue. That report is the outstanding work.
+**Built 2026-08-16.** `pump_hotswap` re-runs the edited chunk in a capture
+environment and rejoins upvalues — the swapping half — and now returns a
+per-binding report through the out-slot alongside the count: `swapped` (both
+sides Lua functions, upvalues joined, state carried), `defined` (no previous
+value), `replaced` (a previous value existed but one side is not a function, so
+nothing joined) and, the case E exists for, `residue ... deleted`.
+
+**The residue is a deletion, which is not where it was expected to be.** Within
+the recorded writes nothing actually fails — either side not being a function
+still assigns, which is what a fresh run would do. What the swap cannot apply is
+what the records do not contain: delete `function love.keypressed()` and save,
+and no record is created, nothing overwrites the old function, and it stays live
+in the running game. The edit silently does not happen. Detecting it needs the
+file's previous definition set, remembered in the registry and diffed per swap.
+
+**Deletions are reported, not removed** — E says report the residue, and D4 puts
+the responsibility line at the engine performing the swap rather than judging
+it. The reload invariant arguably wants removal, since a fresh run of the new
+code would not have the binding at all; removing one that another function still
+calls would break the game mid-frame. That is a decision, and it is not made
+here.
+
+**Known limitation, recorded in the source:** the previous definition set is
+written by the hotswap chunk, so the *first* swap of a path after boot has
+nothing to compare against and reports no deletions. A binding dropped between
+boot and that first save is missed. Closing it means recording definitions at
+boot, which `pump_boot` does not run this chunk to do.
+
+**Evidence: tested, and the test is itself tested.**
+`wasi/shell/run-hotswap.sh` LEG5 adds a binding, swaps, deletes it, swaps again
+and asserts the report names it. LEG6 asserts the game is still running
+afterwards.
+
+Both pass in Chromium alongside the four original legs — but passing legs are
+not evidence that a leg can fail, so the engine was mutated (`local prev = nil`,
+disabling the diff against the previous definition set and nothing else) and
+rebuilt. Against that artifact:
+
+| leg | mutant | what it means |
+|---|---|---|
+| LEG1–4 | PASS | untouched by the feature; the swap machinery is independent |
+| **LEG5** | **FAIL** — `residue=false v4swap=true` | a real detector, and it fails *specifically*: the swap still happened, only the residue vanished |
+| LEG6 | PASS | **not evidence for this decision** |
+
+LEG6 passing under mutation is the useful half of that result. It is a **guard,
+not a detector** — its job is to catch a future change that starts *removing*
+deleted bindings rather than reporting them, which would break a running game
+mid-frame. It says nothing about whether deletion detection works, and an
+earlier draft of this record counted it as though it did.
 
 ---
 
@@ -407,6 +453,19 @@ that both involve zips:
 The load path was never in question. Notably, a consumer whose Run control
 restarts and re-runs `love.load` — the obvious editor workflow, and LoveIDE's —
 never reaches runtime `mount` at all when opening a project.
+
+**Deferred 2026-08-17, and why the costing above is incomplete (#72).** Before
+any code was written, reading the call path found that `love.filesystem.mount()`
+is **synchronous** — `wrap_Filesystem` → `Filesystem::mount()` → the host import
+→ a `bool`, all inside one wasm call — while `DecompressionStream` is a
+`TransformStream` and therefore **async**. A wasm import cannot await a promise.
+The round-trip was priced above; the await was not, so "the decompression is the
+browser's" does not hold as written. The ruling stands as ruled — nothing here
+reopens it — and the Human deferred the work until the WebGPU backend (#67)
+lands, on the reasoning that #67 faces the same sync-engine/async-browser-API
+shape in `mapAsync` readback, as D3 did in device acquisition. #72 carries the
+finding, the option survey, and the fixture trap that would let a stored-only
+implementation pass the corpus while failing every real compressed zip.
 
 ---
 

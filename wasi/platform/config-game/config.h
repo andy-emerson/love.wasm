@@ -12,8 +12,11 @@
  *
  * love.joystick + love.sensor are linked here too. Both have real, witnessed
  * wasm backends (joystick-backend.cpp over the Gamepad API; the #27 warned-stub
- * sensor-backend.cpp), and love.joystick will not link with LOVE_ENABLE_SENSOR
- * off (upstream bug #23). Stubbing a module whose backend already exists and is
+ * sensor-backend.cpp). love.joystick used not to compile with LOVE_ENABLE_SENSOR
+ * off at all — #23, two non-sensor device wrappers trapped inside the sensor
+ * guard — which is fixed in wrap_Joystick.cpp, so the two modules are now
+ * independent and this pairing is a choice rather than a constraint. Stubbing a
+ * module whose backend already exists and is
  * CI-enforced would hide a working feature: a game's `if love.joystick then`
  * would take the absent path and silently lose gamepad support.
  *

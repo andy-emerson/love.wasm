@@ -104,7 +104,38 @@ The single place this tempts a fidelity violation is the console-control idea
 became a `love.log()` the game *calls*, it would break on other engines. It
 stays faithful instead — `print` is `print`; control is host-side.
 
-## Sub-step ledger (proposed — the Human owns the ordering)
+## The build order
+
+The step numbers cited across the repository — CI step names in
+`witness.yml`, build-script headers, `EMBEDDING.md`'s title, `readme.md`'s
+status line — were defined in a handoff document retired in `03ab2ae`; this
+ledger is their durable home. Two sequences, engine first:
+
+**Build-order steps** — the engine, bottom up. Each step's witness is its
+evidence.
+
+| step | what | where it stands |
+|---|---|---|
+| 0 | wasm-EH C++ toolchain: typed catch, carried payload, destructors on unwind | done — `wasi/witness/run.sh`, artifact 1 |
+| 1 | setjmp/longjmp beside wasm-EH in one module (wasi-libc omits SjLj; FreeType needs it) | done — `wasi/witness/run.sh`, artifact 2 |
+| 2 | the frame pump: the pump ABI over embedded Lua | done — `wasi/pump/` |
+| 3 | `love.boot`: LÖVE's own boot wrapper to a first yielded frame | done — `wasi/boot/` |
+| 4 | `love.graphics` on real WebGL2 | done — `wasi/graphics/` |
+| 5 | `love.audio`: the webaudio seam | done — `wasi/audio/` (its `DESIGN.md`) |
+| 6 | the platform seams, 6.1–6.7 in the ledger below | **complete** |
+| 7 | `love.thread` on Web Workers | unbuilt; design-doc-first (#66) |
+| 8 | *(dropped)* was packaging / LoveIDE integration | packaging is now D14; the surviving measurement question is #7, its disposition #82 |
+
+**Beta steps** — playability on top of the built engine ("Beta" says only
+that no release exists yet):
+
+| step | what | where it stands |
+|---|---|---|
+| 1 | the interactive shell — serve a project, play it, live-edit it | done — `wasi/shell/run.sh`, CI |
+| 2 | a real third-party game ported and playable | witnessed on demand — `wasi/games/run.sh` (fetches a third party's repo, so deliberately not in the per-push gate) |
+| 3 | corpus parity against `testing/` with every failure classified | done — `wasi/corpus/run.sh`, CI |
+
+## Sub-step ledger (step 6 — all landed)
 
 Boot order puts filesystem first: LÖVE reads `conf.lua`/`main.lua` before it
 opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the

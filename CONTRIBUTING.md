@@ -509,6 +509,24 @@ When you add a guard, **verify it trips.** Break the fix, watch the guard
 fail, restore the fix — and record the number it failed with. A guard
 never observed failing is an untested test.
 
+### 4.4 A new witness is mutation-tested before it counts
+
+§4.3's rule, generalized from bug-closing tests to every witness: a test
+passes for one of two reasons — the code is right, or the test cannot
+tell — and from the outside the two are identical. Before a new witness
+leg counts as evidence, break the code in exactly the way the leg claims
+to detect, watch it go **red**, restore, and say in the commit which
+mutation was used.
+
+This is not hypothetical care. The same mutation run that validated one
+D5 hotswap leg proved its sibling could not fail — a leg that had been
+counted as evidence and demonstrated nothing (`d330bed`). A witness that
+skips this step may be that sibling, and nothing else will ever say so:
+an incapable test's failure mode is permanent green.
+
+Ruled by the Human 2026-08-17. This paragraph replaced the rule's prior
+home, a comment in the deleted pull-request template.
+
 ---
 
 ## 5. Writing measurements

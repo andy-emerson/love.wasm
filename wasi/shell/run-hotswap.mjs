@@ -182,6 +182,40 @@ try {
   const loads = ((await shellLog()).match(/HOT-LOAD once/g) || []).length;
   leg('LEG4 (love.load did not re-run)', loads === 1, `the load marker printed ${loads} time(s)`);
 
+  // ── D5=E: the residue. A DELETED binding is the case a count cannot show ──
+  // Add a binding, swap so the engine records it, then take it away. Nothing
+  // overwrites it on the second swap, so the old function is still live and the
+  // deletion has not taken effect — the engine must say so rather than report
+  // a bare success.
+  log('adding love.keypressed (v4), then deleting it (v5)');
+  const swapsBefore = ((await shellLog()).match(/main\.lua hotswapped/g) || []).length;
+  writeFileSync(join(work, 'main.lua'),
+    game(4, '+') + '\nfunction love.keypressed(k)\n  print("HOT-KEY " .. tostring(k))\nend\n');
+  if (!(await waitFor((t) => states(t, 4).length >= 2, 'v=4 HOT-STATE lines'))) throw new Error('v4 never ran');
+  const sawDefined = await waitFor(
+    (t) => ((t.match(/main\.lua hotswapped/g) || []).length > swapsBefore) || null,
+    'the v4 swap report');
+
+  writeFileSync(join(work, 'main.lua'), game(5, '+'));
+  if (!(await waitFor((t) => states(t, 5).length >= 2, 'v=5 HOT-STATE lines'))) throw new Error('v5 never ran');
+  const residueLine = await waitFor((t) => {
+    const m = /love\.keypressed was deleted but is still live/.exec(t);
+    return m ? m[0] : null;
+  }, 'the residue report naming love.keypressed');
+
+  // Leg 5 — the deletion is reported, and reported as NOT applied.
+  leg('LEG5 (a deleted binding is reported as residue, not as success)',
+    !!residueLine && !!sawDefined,
+    `residue=${!!residueLine} v4swap=${!!sawDefined}`);
+
+  // Leg 6 — and it really is still live: the engine reports rather than
+  // removes (D5=E reports the residue; D4 leaves the judgement to the host),
+  // so the game is unbroken and still running on the old body.
+  const aliveAfter = /running/.test(await status());
+  const v5kept = await waitFor((t) => states(t, 5).length >= 4, 'the game continuing past the deletion');
+  leg('LEG6 (reporting a deletion does not break the running game)',
+    aliveAfter && !!v5kept, `running=${aliveAfter} v5lines=${!!v5kept}`);
+
   if (pageErrors.length) { log('--- page errors ---\n' + pageErrors.join('\n')); fail('the page raised an error'); }
 } catch (e) {
   fail(e && e.message ? e.message : String(e));

@@ -168,9 +168,15 @@ function watchProject(project, handle, intervalMs = 700) {
             if (!r.ok) { log(`live-edit: ${p} vanished (${r.status})`); continue; }
             handle.files[p] = new Uint8Array(await r.arrayBuffer());
             const res = handle.hotswap(p);
-            if (res.ok)
+            if (res.ok) {
               log(`live-edit: ${p} hotswapped — ${res.swapped} binding(s) applied, state intact (#56)`);
-            else
+              // D5=E: the count says how much applied, never how much did not.
+              // A deleted binding is still live because nothing overwrote it,
+              // so saying nothing here would report success for an edit that
+              // did not happen.
+              for (const r of res.residue)
+                log(`live-edit: ${p} — ${r.name} was ${r.status} but is still live; reload the page to apply`);
+            } else
               log(`live-edit: ${p} failed on the edit's own code (the game runs on; fix and save again):\n${res.error}`);
           }
           if (needsRestart.length)

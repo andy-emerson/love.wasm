@@ -1285,9 +1285,16 @@ love.test.graphics.arc = function(test)
     -- on macosx runners, the arcs are not drawn as accurately at low res
     -- there's a couple pixels different in the curve of the arc but as we
     -- are at such a low resolution I think that can be expected
-    -- on real hardware the test passes fine though  
+    -- on real hardware the test passes fine though
     test:assertTrue(true, 'skip test')
   else
+    -- a browser rasteriser puts 1 of 1024 boundary pixels on the neighbouring
+    -- pixel, which matches the reference there exactly. Tolerated rather than
+    -- skipped as the macOS branch above does — a skip asserts nothing, and the
+    -- arc is still worth comparing everywhere it does not tie
+    if test:isOS('Web') then
+      test.pixel_tolerance = 1
+    end
     test:compareImg(imgdata1)
     test:compareImg(imgdata2)
     test:compareImg(imgdata3)
@@ -1312,6 +1319,12 @@ love.test.graphics.circle = function(test)
     love.graphics.setColor(1, 1, 1, 1)
   love.graphics.setCanvas()
   local imgdata = love.graphics.readbackTexture(canvas)
+  -- a browser's rasteriser breaks fill-rule ties differently from a desktop
+  -- driver, so 2 of 1024 boundary pixels land on the neighbouring pixel; each
+  -- differing pixel matches a neighbour in the reference exactly
+  if test:isOS('Web') then
+    test.pixel_tolerance = 1
+  end
   test:compareImg(imgdata)
 end
 
@@ -1416,6 +1429,11 @@ love.test.graphics.ellipse = function(test)
     love.graphics.setColor(1, 1, 1, 1)
   love.graphics.setCanvas()
   local imgdata = love.graphics.readbackTexture(canvas)
+  -- as love.graphics.circle: 1 of 1024 boundary pixels differs on a browser
+  -- rasteriser, and matches a neighbouring reference pixel exactly
+  if test:isOS('Web') then
+    test.pixel_tolerance = 1
+  end
   test:compareImg(imgdata)
 end
 
@@ -2304,9 +2322,16 @@ love.test.graphics.setLineStyle = function(test)
     love.graphics.origin()
   love.graphics.setCanvas()
   local imgdata = love.graphics.readbackTexture(canvas)
-  -- linux runner needs a 1/255 tolerance for the blend between a rough line + bg 
+  -- linux runner needs a 1/255 tolerance for the blend between a rough line + bg
   if GITHUB_RUNNER and test:isOS('Linux') then
     test.rgba_tolerance = 1
+  end
+  -- a browser blends the same antialiased edge to 175 where the reference has
+  -- 178 — one channel, uniform, and the largest delta in the image. Not gated
+  -- on GITHUB_RUNNER: that flag comes from --isRunner, which a wasm host has no
+  -- argv to pass, so a runner-gated branch never executes on Web at all
+  if test:isOS('Web') then
+    test.rgba_tolerance = 3
   end
   test:compareImg(imgdata)
 end

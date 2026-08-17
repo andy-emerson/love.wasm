@@ -483,7 +483,7 @@ blocking work.
 
   **The shim is safe in both directions**, which is what makes B cheap. It
   supplies *5.1 names into a 5.4 world*, and desktop LÖVE is LuaJIT/5.1
-  (`CMakeLists.txt:214`) and has those names natively. A game relying on them
+  (`upstream-mirror:CMakeLists.txt:214`) and has those names natively. A game relying on them
   runs natively there and shimmed here. The reverse — shimming 5.4 spellings
   into 5.1 — is not proposed and would carry the export hazard this one does not.
 
@@ -740,6 +740,13 @@ witnesses and is not a deliverable.
 two-part product whose JavaScript half is the shape love.js already has —
 which is the thing this project exists to be an alternative to. The distinction
 is not that our JavaScript would be smaller; it is that it is not ours to ship.
+
+**The specification already exists: `wasi/platform/EMBEDDING.md`**, written at
+build-order step 6.7. It documents both surfaces — the pump ABI a consumer calls
+(`pump_in`/`pump_out`, `pump_boot`, `pump_frame`, `pump_invalidate`,
+`pump_hotswap`, with the status codes) and the import surface a consumer
+supplies, module by module. D12 does not ask for it to be written; it says that
+document plus the artifact is the whole deliverable.
 
 **What follows from it.** The import surface is the product boundary, and every
 import is API owed to consumers permanently — a published interface cannot be

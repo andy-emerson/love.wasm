@@ -6,7 +6,7 @@
 
 **What it ships: the `.wasm` artifact and its interface specification.** love.wasm is a component, not a program — wasm can reach no filesystem, no GPU, no canvas, no input and no audio, so an embedder supplies all of them. Both surfaces are published: the **exports** a consumer calls, and the **imports** a consumer supplies. Neither is implemented on the consumer's behalf, and love.wasm dictates nothing about how they write theirs. The hosts under `wasi/host/` drive this repository's witnesses; they are not a deliverable. That is the difference from love.js, which is an engine plus a generated JavaScript runtime you must ship and cannot replace.
 
-**The obligation that follows** is that the import surface is the product boundary, and every import is API owed permanently. It is kept minimal and specified. See `wasi/DECISIONS.md` D12.
+**The specification is [`wasi/platform/EMBEDDING.md`](wasi/platform/EMBEDDING.md)** — the pump ABI a consumer calls (`pump_boot`, `pump_frame`, `pump_in`/`pump_out`, `pump_invalidate`, `pump_hotswap`) and the import surface a consumer supplies (`love_fs`, `love_win`, `love_gl`, `love_input`, `love_gamepad`, `love_system`, `love_audio`, plus WASI preview1). Every import is API owed permanently: a published interface cannot be quietly withdrawn. See `wasi/DECISIONS.md` D12.
 
 This engine started from [love2d/love](https://github.com/love2d/love) (the `main` / 12.0-development branch) and was altered for a WebAssembly/WASI target. Per the zlib license: this is an altered version, plainly marked, and not the original software — LÖVE itself lives upstream, and its documentation is the [LÖVE wiki](https://love2d.org/wiki). It **no longer tracks upstream**: `upstream-mirror` is kept as a reference to diff against, and deviations are deliberate and recorded (`wasi/DECISIONS.md` D13).
 
@@ -22,7 +22,7 @@ There is an **interactive shell**: a page that loads a LÖVE project from disk, 
 
 **Modules a game may use.** LÖVE enables all twenty modules by default and `boot.lua` hard-errors on a missing one, so a build shipping a subset has to answer for the rest. The union artifact links nineteen — everything except `video` and `thread`. Those two are supplied by the boot wrapper (`wasi/platform/witness-frame.lua`) as absent modules: `require` succeeds so a game boots, `love.<name>` stays `nil` exactly as it is on desktop with `t.modules.<name> = false`, and reading it emits one `[love.wasm preview]` notice naming the module. A game therefore needs no `conf.lua` edit to boot, and a game that genuinely uses one of the two says so in the log rather than failing anonymously.
 
-**Eleven guarded seams.** Edits to shared engine source are eleven small guarded seams, each byte-unchanged for default builds. The discipline is not about mergeability upstream — it is that a small, guarded, reviewable diff against LÖVE's own source is how the "real LÖVE, compiled" claim stays checkable. Everything else this engine adds lives outside `src/`.
+**Eleven guarded seams.** Edits to shared engine source are eleven small guarded seams, each written to be inert for a non-wasm build. The discipline is that a small, guarded, reviewable diff against LÖVE's own source is how the "real LÖVE, compiled" claim stays checkable. **Evidence: read from the guards, not run.** Until D13 the inherited upstream CI compiled desktop LÖVE on every push and so exercised them; that build is deleted with the rest of the desktop tree, and no witness has replaced it, so "inert on desktop" is now a claim about how the guards are written rather than a tested one. Everything else this engine adds lives outside `src/`.
 
 | Seam | Shared source it touches | What the guard selects |
 |---|---|---|
@@ -75,7 +75,7 @@ The semantically hard code stays verbatim: physics, decoders, render math, modul
 
 ## The Lua dialect
 
-Desktop LÖVE 12 runs **Lua 5.1** — LuaJIT 2.1 by default, or PUC Lua 5.1 with `LOVE_JIT=OFF`, which is the default on macOS (`CMakeLists.txt:214`). LuaJIT cannot target wasm, so this build runs **PUC Lua 5.4**, deliberately: it is the current reference interpreter, it compiles cleanly under this toolchain's wasm-EH, and it pairs with LÖVE 12 on the same reasoning — both chosen forward. Recorded as D8 in `wasi/platform/DESIGN.md`.
+Desktop LÖVE 12 runs **Lua 5.1** — LuaJIT 2.1 by default, or PUC Lua 5.1 with `LOVE_JIT=OFF`, which is the default on macOS (`upstream-mirror:CMakeLists.txt:214`). LuaJIT cannot target wasm, so this build runs **PUC Lua 5.4**, deliberately: it is the current reference interpreter, it compiles cleanly under this toolchain's wasm-EH, and it pairs with LÖVE 12 on the same reasoning — both chosen forward. Recorded as D8 in `wasi/DECISIONS.md`.
 
 The engine is unaffected: LÖVE's C++ carries the `LUA_VERSION_NUM >= 504` branches it needs, and the `love.*` modules behave identically. Game *Lua* is where the dialect shows. A game written for 5.1 can need edits — that is a language port, not a lost LÖVE feature, and a ported game is still a LÖVE game. **The compatibility question this project measures is whether a LÖVE feature works, not how a game's Lua was wired up.**
 
@@ -164,7 +164,7 @@ Everything else the host supplies as imports, which is the same role an OS plays
 | LLVM libc++ / libc++abi | 20.1.2, wasm-EH build | wasi-sdk's stock libc++ ships without exception support, and LÖVE's error path needs full C++ EH |
 | wasi-libc `setjmp`/`longjmp` | — | Ubuntu's wasi-libc omits it entirely and FreeType needs it |
 
-**Excluded from the wasi build — but NOT deleted from the tree:** `graphics/vulkan` + `graphics/metal` backends and their support libraries (`volk`, `vulkanheaders`, `vma`, `vk_video`, `spirv_cross`) · `video/` + Theora (deferred; `t.modules.video = false`) · `enet`, `luasocket`, `luahttps` (networking — no faithful browser primitive; declared divergence) · `platform/xcode`, `extra/nsis`, `extra/windows` (other platforms' build glue).
+**Excluded from the wasi build:** `graphics/vulkan` + `graphics/metal` backends and their support libraries (`volk`, `vulkanheaders`, `vma`, `vk_video`, `spirv_cross`) · `video/` + Theora (deferred; `t.modules.video = false`) · `enet`, `luasocket`, `luahttps` (networking — no faithful browser primitive; declared divergence). The desktop build itself — `CMakeLists.txt`, `platform/`, the Windows and macOS packaging under `extra/` — is **deleted**, not excluded: `main` carries only what this engine uses (D13). It stays available on `upstream-mirror`.
 
 Exclusion happens in the build, not with `rm`: deleting upstream files would bloat the diff, poison rebases, and break the "diff is the evidence" rule. The tree stays upstream-shaped; the wasi build compiles the subset.
 

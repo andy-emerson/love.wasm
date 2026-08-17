@@ -215,33 +215,40 @@ See **The Lua dialect** in `readme.md`, and D8 in `wasi/platform/DESIGN.md`.
 
 ## What this says about the corpus
 
-The `testing/` corpus stands at **306 pass / 34 fail / 15 skip** across 21 suites
+The `testing/` corpus stands at **309 pass / 31 fail / 15 skip** across 21 suites
 — measured by `wasi/corpus/run.sh`, which is where these counts now come from.
-Read through this table, the 34 stop being one number:
+(Three graphics near-misses — `circle`, `ellipse`, `setLineStyle` — closed under
+the Web tolerance gates of #54, and `arc` reclassified from divergence to
+defect; 34 fails became 31.) Read through this table, the 31 stop being one
+number:
 
 | | count | |
 |---|:--:|---|
-| *(blank)* — not supposed to work here | **30** | declared divergences. A test asserting them here is asserting something about a desktop, and it should be marked expected-fail rather than fixed |
+| *(blank)* — not supposed to work here | **26** | declared divergences. A test asserting them here is asserting something about a desktop, and it should be marked expected-fail rather than fixed |
 | **~** — real, but gated behind what no test can supply | **4** | `setFullscreen` / `getFullscreen` (a user gesture) and `setDisplaySleepEnabled` / `isDisplaySleepEnabled` (#58 — the Screen Wake Lock is wired, but the grant is async and headless Chromium refuses it, and the honest state reports only a lock actually held). A game can reach all four; a test driving them cold cannot |
 | **✗** — the browser has it and we do not | **0** | the wake lock was the last one; #58 closed it and the other four ✗ cells this table had (`hasFocus`/`hasMouseFocus`, `getSystemTheme`, image cursors, gamepad rumble) |
+| **defect** — we are wrong and the test is right | **1** | `graphics/arc`: `'fill'` + `"open"` does not cover a region it should, 255/255 on the blue channel (#71). Surfaced when #54's tolerance removed the tie-break failure that had been recorded ahead of it — the classification mechanism that let it hide is #73 |
 
-The 30, by suite — and `wasi/corpus/expected.txt` is the same list, executable:
+The 26, by suite — and `wasi/corpus/expected.txt` is the same list, executable:
 
 | suite | n | |
 |---|:--:|---|
 | audio | 6 | mic sample rate; `setEffect`, `getEffect`, `getActiveEffects`, `Source:setFilter`; output-device selection |
 | window | 8 | `setPosition`, `getPosition`, `maximize`, `minimize`, `isMaximized`, `isMinimized`, `setIcon`, `getIcon` |
-| graphics | 6 | `Video()`, `newVideo()` (`love.video` absent); `arc`, `circle`, `ellipse`, `setLineStyle` (rasteriser) |
-| filesystem | 4 | `mountCommonPath`, `getRealDirectory`, and `mount` / `unmount` — archive mounting, **D7 closed as not-built** |
+| graphics | 2 | `Video()`, `newVideo()` (`love.video` absent) |
+| filesystem | 4 | `mountCommonPath`, `getRealDirectory`, and `mount` / `unmount` — archive mounting, **D7 re-ruled 2026-08-16 as build-it, work deferred until the WebGPU backend lands (#72)** |
 | timer | 2 | `sleep` and `getTime` are one fact: `love::sleep` is an honest no-op, so `getTime` is measuring a sleep that did not happen |
 | mouse | 1 | `setGrabbed` |
 | joystick | 1 | `setGamepadMapping` (24 asserts) |
 | system | 1 | `getOS` returns `"Web"`; the test asserts a closed desktop-only list |
 | sound | 1 | `SoundData:getSample(0.001)` — a **D8** consequence, not a sound defect: `luaL_checkinteger` truncates under 5.1 and raises under 5.4 |
 
-Four of them — the rasterisation near-misses — are not a decision after all:
-measured (#54), they are upstream test-harness tolerance gates that have not
-met a Web target, and the fix is an upstream patch, not a ruling here.
+The four rasterisation near-misses that used to sit in the graphics row —
+`arc`, `circle`, `ellipse`, `setLineStyle` — turned out not to be divergences
+at all: measured (#54), they were upstream tolerance gates that had never met
+a Web target. Three now pass under `isOS('Web')` gates carried in `testing/`
+(kept local by D13 — nothing is offered upstream), and `arc` moved to the
+defect row above (#71).
 
 The ✗ column is the honest to-do list, and it is now empty: #58 closed the wake
 lock (to **~**, grant-gated) and the four ✗ cells the corpus never probed —
@@ -261,7 +268,7 @@ test that failed while classified nowhere. All three are demonstrated able to
 fail. So a divergence that quietly becomes supported, and a fix that quietly
 regresses, both turn CI red instead of ageing in a document.
 
-This document is therefore **tested** where the corpus reaches it — 306/34/15,
+This document is therefore **tested** where the corpus reaches it — 309/31/15,
 re-earned on every push — and **observed** elsewhere: rows the corpus does not
 probe rest on the platform witnesses (`hasFocus`, `getSystemTheme`, image
 cursors and rumble are asserted by `wasi/platform/run-win.sh`, `run-input.sh`

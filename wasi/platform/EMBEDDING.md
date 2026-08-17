@@ -249,8 +249,12 @@ upvalue of the old function to the old function's cell (`debug.upvaluejoin` —
 an alias, not a copy, so two functions sharing a file-scope local keep sharing
 it). The next call of `love.update`/`love.draw`/any replaced function runs the
 new body against the evolved state. A Lua twin `__pump_hotswap(path)` is
-registered beside `__pump_invalidate()`; `boot()`'s handle exposes it as
-`hotswap(path)`, and the shell's watcher routes a `main.lua` change to it.
+registered beside `__pump_invalidate()` (both witnessed by
+`wasi/platform/run-embed.sh`); `boot()`'s handle exposes it as `hotswap(path)`,
+returning `{ok, swapped, applied, residue}` with the pump's report parsed into
+per-binding entries — a consumer that ignores `residue` shows success for an
+edit that did not happen — and the shell's watcher routes a `main.lua` change
+to it.
 
 The engine **performs the swap, it does not validate it** (the D4 record's
 responsibility line): a syntax-broken save comes back as `PUMP_ERROR` with the
@@ -298,12 +302,15 @@ session. Each leg demonstrated able to fail.
   keep the in-memory store. Desktop-exact **sync** durability additionally needs
   the engine-in-Worker + OPFS sync-access-handle pivot, parked for a shipping
   variant that needs it.
-- **Real archive / `.love`-zip mounting** (`mount*`) is unimplemented **by
-  decision** — a loud `false`, not a fake. **D7 is closed (#48): not built**, and
-  it is a declared divergence rather than a deferral. Note this does not affect
-  *`.love`-as-source*: the seam takes files, so a host with an archive unzips it
-  in its own JS (see §2). `mountFullPath` is implemented for a directory already
-  in the store; see the last entry below.
+- **Real archive / `.love`-zip mounting** (`mount*`) is unimplemented today —
+  a loud `false`, not a fake. **D7 was re-ruled 2026-08-16 as *build it* (the
+  host unzips), superseding #48's not-built**, and the work is deferred until
+  the WebGPU backend lands: `mount()` is synchronous to the host import while
+  `DecompressionStream` is async, the same sync-engine/async-browser shape #67
+  faces — the finding, option survey and fixture trap are #72. Note this does
+  not affect *`.love`-as-source*: the seam takes files, so a host with an
+  archive unzips it in its own JS (see §2). `mountFullPath` is implemented for
+  a directory already in the store; see the last entry below.
   (**Directory enumeration is no longer deferred**: `getDirectoryItems` is real,
   over the `fs_list` import in the table above, witnessed by
   `wasi/platform/run-fs-list.sh` on node and Chromium.)

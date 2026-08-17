@@ -315,18 +315,28 @@ filter; frame numbers and timestamps are known to the host, which drives the
 pump; source location is `debug.getinfo`, callable from the probe itself in
 Lua; errors are already on fd 2.
 
-**Evidence: read from source, not run.** The witness that would raise this to
-tested — print from inside `love.update`, assert the host saw it that frame —
-is not written. It is owed when this area is next touched.
+**Evidence: tested for the tap, observed for the engine half.**
+`wasi/host/run-stdout-tap.mjs` drives `fd_write` directly over a bare
+`WebAssembly.Memory`, so it needs no artifact and no browser, and it holds the
+delivery shape: whole lines, split writes rejoined, nothing retained in a live
+session, and the default accumulating path unchanged for the ~40 witnesses that
+read `shim.stdout`. What is still read-from-source rather than run is the
+engine half — that `print` reaches `fd_write` within its own frame. Raising it
+needs a browser leg printing from inside `love.update`, and it is owed when
+this area is next touched.
 
-**Two defects found in the re-put**, both host-side and both filed:
+**Two defects found in the re-put**, both host-side, both fixed:
 
-- The shim accumulates stdout with `stdout += ...` and never truncates, while
-  the tap's cursor only advances. A long session with a chatty game retains
-  every byte ever printed. This is exactly the session shape live editing
-  encourages.
-- `drainTap` passes chunks rather than lines and `trimEnd()`s them, so a chunk
-  boundary can swallow the newline between two lines.
+- The shim accumulated stdout with `stdout += ...` and never truncated, while
+  the tap's cursor only advanced — a long session with a chatty game retained
+  every byte ever printed, which is exactly the session shape live editing
+  encourages. Fixed opt-in: `makeWasiShim({ onWrite })` streams and retains
+  nothing, and called bare it behaves as before.
+- `drainTap` passed chunks rather than lines and `trimEnd()`ed them, so two
+  lines printed in one frame arrived as one entry with a newline inside it.
+  `boot.mjs` now buffers partial lines and emits whole ones; `drainTap` keeps
+  only its remaining job, flushing a trailing partial line at the frame
+  boundary.
 
 **Reopen if** stdio proves insufficient for the agent in practice — B remains
 the design to build, host-side, with no engine change.

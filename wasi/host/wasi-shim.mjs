@@ -22,7 +22,8 @@
 //   shim.bind(instance.exports.memory);           // before any import fires
 //   instance.exports._initialize();               // reactor  (or _start() for a command)
 //   shim.stdout                                    // accumulated fd_write text
-export function makeWasiShim() {
+export function makeWasiShim(opts) {
+  const onWrite = (opts && opts.onWrite) || null;
   let memory;
   let stdout = '';
   const td = new TextDecoder();
@@ -33,7 +34,13 @@ export function makeWasiShim() {
       for (let i = 0; i < iovsLen; i++) {
         const ptr = dv().getUint32(iovs + i * 8, true);
         const len = dv().getUint32(iovs + i * 8 + 4, true);
-        stdout += td.decode(new Uint8Array(memory.buffer, ptr, len));
+        const text = td.decode(new Uint8Array(memory.buffer, ptr, len));
+        // A witness reads shim.stdout once, at the end of a run lasting
+        // seconds, so accumulating everything is right for it. A live session
+        // runs for hours with a game printing every frame, and retaining all
+        // of that is a leak — so a consumer that wants the output as it
+        // arrives passes onWrite, and then nothing is retained.
+        if (onWrite) onWrite(text); else stdout += text;
         n += len;
       }
       dv().setUint32(nwritten, n, true);
@@ -79,7 +86,8 @@ export function makeWasiShim() {
       }
     },
     // Accumulated fd_write output across every fd (the witnesses only write to
-    // stdout/stderr and match on substrings).
+    // stdout/stderr and match on substrings). Empty when the consumer passed
+    // onWrite, which streams instead of accumulating.
     get stdout() { return stdout; },
   };
 }

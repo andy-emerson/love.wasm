@@ -61,7 +61,22 @@ export async function boot({
   onLog = () => {}, onStatus = () => {},
   opfs = true, identity = null,
 } = {}) {
-  const shim = makeWasiShim();
+  // The game's stdout streams to the consumer as the engine writes it — Lua's
+  // print flushes per call — so an agent's probe inside love.update surfaces in
+  // the frame it fired rather than whenever a buffer happened to fill. Whole
+  // lines only: a write can end mid-line, and splitting one line across two
+  // onLog calls corrupts a console that treats each call as an entry.
+  let pending = '';
+  const shim = makeWasiShim({
+    onWrite(text) {
+      pending += text;
+      let nl;
+      while ((nl = pending.indexOf('\n')) >= 0) {
+        onLog(pending.slice(0, nl));
+        pending = pending.slice(nl + 1);
+      }
+    },
+  });
   const input = makeBrowserInputHost();
   // The consumer says where a canvas comes from; wiring the input listeners to
   // it and focusing it (so keys land without a click) is invariant, so it
@@ -153,11 +168,9 @@ export async function boot({
     return td.decode(new Uint8Array(x.memory.buffer).slice(p, p + x.pump_out_len()));
   };
 
-  let tapped = 0;
-  const drainTap = () => {
-    const s = shim.stdout || '';
-    if (s.length > tapped) { onLog(s.slice(tapped).trimEnd()); tapped = s.length; }
-  };
+  // Whole lines already left through onWrite; this flushes a trailing partial
+  // line (io.write without a newline) so it is not held back to the next one.
+  const drainTap = () => { if (pending) { onLog(pending); pending = ''; } };
 
   let st = x.pump_boot(put(bootSrc));
   drainTap();

@@ -1,51 +1,94 @@
-# love.wasm platform seam — design decisions (build-order step 6)
+# love.wasm — design
 
-Build-order step 6 reseams the roles SDL plays for desktop LÖVE — window + GL
-context, input, filesystem, timer, system — onto browser primitives, under the
-same guarded-seam discipline as the graphics (`opengl` → WebGL2) and audio
-(OpenAL → WebAudio) seams. This note records the decisions the seam is built on,
-and — because step 6 is where the roadmap starts leaning into agentic,
-live-edited development — the decisions the downstream **live-edit / agent**
-consumer forces, which are surfaced here **while still open** (AGENTS.md: never
-hand the Human a result built on choices they never saw).
+What love.wasm is, what it is for, and the principles every seam is measured
+against. Design forks and their rulings are in
+[`../DECISIONS.md`](../DECISIONS.md); open work is in
+[GitHub Issues](https://github.com/andy-emerson/love.wasm/issues). This
+document changes rarely — if a passage here needs updating every session, it is
+living status wearing a design document's clothes and belongs in Issues.
 
-Where a passage reads as a plan, the code has not landed it yet. **Step 6 is
-COMPLETE — 6.1–6.7 are all built** (the `love_fs` read seam; the real
-`love.filesystem` replacing PhysFS; the real `love.window` replacing SDL; the real
-`love.event`/`keyboard`/`mouse` on the `love_input` push seam; the real
-`love.joystick`/`gamepad` on the `love_gamepad` poll seam; the real `love.touch`
-on the same `love_input` record (6.5b, added after step 6 closed); the real
-`love.timer`/`love.system`; the **first full `main.lua` frame** (`conf` → canvas →
-`love.load` → `love.draw` → present, pixel recovered); and — the capstone — **the
-embedding contract** (6.7): the `love.filesystem` write path + save dir on new
-`love_fs` write imports, the host-callable `pump_invalidate()` reload primitive
-(write → invalidate → re-require = live-edit), and the documented host-import seam
-(`EMBEDDING.md`) — see the ledger below), and issue #27's warning mechanism +
-`love.sensor` warned stub have landed. The former "step 8" IDE work is dropped
-from this repo's scope; the IDE is a downstream consumer of the 6.7 contract.
+## 1. Goals
 
-## The fidelity standard (project-wide): browser-native correctness first
+Stated as **constraints** — the rules on *how* — and **objectives** — what we
+are trying to do. Objectives are either **requirements**, which always win a
+conflict, or **preferences**, which are ranked. Each is either a **threshold**,
+which is satisfied and then stops pulling, or an **optimization**, which is
+never satisfied because more is always better.
 
-Two use-cases share this one engine: a **LÖVE game that actually runs in the
-browser** (the priority), and a **desktop-fidelity preview** of a game bound for
-desktop. They imply two different bars, and the priority order is:
+Two requirements in conflict is an inconsistency in the design, not a trade-off
+to manage. It is resolved immediately, usually by demoting one to a preference.
 
-1. **100% correct browser game — the must-hit bar.** As a *browser* game, the
-   engine must be complete and correct. This is achievable and non-negotiable.
-2. **`.love` source-compatibility — a pillar.** The same source runs unmodified
-   on desktop LÖVE; a game made here can go to desktop and back.
-3. **Desktop *behavioral* parity — aspirational, the reference not the pass/fail
-   line.** The browser genuinely cannot match desktop 100% (async storage
-   durability, HRTF, mic rates, threading), and nobody expects it to. Where it
-   can't be met, the divergence is *declared*, never faked.
+### 1.1 Constraints
 
-The consequence for every seam decision: measure it against **"what does a
-correct browser game do?"**, not "does it byte-match desktop?" Desktop is the
-reference; browser-native correctness is the standard we hold to 100%. This
-generalizes the principle already stated for audio (`wasi/audio/DESIGN.md`,
-Decision 3: *"the bar is device-agnostic fidelity, not desktop parity"*) to the
-whole engine, and it is why "browser preview only" is no longer the framing —
-browser-native games are a first-class target (readme.md, Mission).
+**Machine-given** — not chosen, and not negotiable:
+
+- A wasm module can reach nothing on its own: no filesystem, no GPU, no canvas,
+  no input, no audio. Everything arrives as a function the embedder supplies.
+- wasm forbids runtime code generation, so there is no JIT. Every Lua-in-wasm is
+  interpreter-class, LuaJIT included — which is why it is not an option here.
+- wasm32-wasi is single-threaded. Real concurrency means real Web Workers with
+  message passing.
+- Browser WebGPU accepts WGSL only; SPIR-V was dropped from the web API.
+- A frame is roughly 16.7 ms, and the main thread must never block.
+
+**Principle-given** — chosen, and therefore excluding options:
+
+- **The engine is real LÖVE, compiled.** Not a reimplementation of the `love.*`
+  API. A reimplementation was considered and rejected: multi-year effort, and
+  never bit-exact. Every Lua-facing engine call funnels through
+  `luax_catchexcept`'s typed C++ exception handling at 145 call sites;
+  imitations get details like that subtly wrong forever.
+- **No Emscripten, no pthreads, no SharedArrayBuffer, no COOP/COEP.** The
+  artifact must run on any static host, with no server configuration. This is
+  the constraint the project exists to satisfy — love.js requires cross-origin
+  isolation because its build bakes in `-pthread`, and no amount of swapping the
+  Lua VM removes that.
+- **The project tree stays `.love`-shaped.** The unit of a game is Lua source
+  and assets, not a compiled artifact.
+
+### 1.2 Requirements
+
+| | Objective | Type |
+|---|---|---|
+| **R1** | A game that runs in the browser is **correct** — complete and faithful as a *browser* game | Threshold, held at 100% of what the browser can do |
+| **R2** | An edit to a running game **applies live**, with state intact | Threshold — it works or it does not |
+| **R3** | Every divergence from desktop is **declared, never faked** | Threshold |
+
+R1 is the bar every seam decision is measured against: judge by *"what does a
+correct browser game do?"*, not *"does it byte-match desktop?"*
+
+R2 is why ahead-of-time compilation of game Lua cannot be the default path — it
+is mutually exclusive with hotswap, and a preference never beats a requirement
+(D0 / Q1).
+
+R3 is what makes `COMPATIBILITY.md` a design document rather than a scoreboard:
+a blank means the browser does not have the feature at all, which is a declared
+divergence, not a gap.
+
+### 1.3 Preferences, in order
+
+| | Objective | Type |
+|---|---|---|
+| **P1** | **The preview predicts desktop.** A game built in the browser for desktop should look, feel and behave in the preview as it will on desktop | Optimization |
+| **P2** | **Existing LÖVE games play** — most games written for 11.5 / Lua 5.1, directly or after an automatic shim | Optimization, with a floor at *most* |
+| **P3** | **The artifact is small** | Optimization |
+| **P4** | **The engine is fast** | Optimization |
+
+P1 is why the engine is compiled real LÖVE rather than an imitation, and why
+WebGPU is not optional: LÖVE 12 has compute shaders and WebGL2 has none, so a
+game using one cannot be previewed at all (D10).
+
+**Conflicts already resolved, and the rulings they produced:**
+
+- **R2 over P4** — live edit beats speed. Closes ahead-of-time compilation out
+  of the preview path (Q1).
+- **R1 over P1** — browser-native correctness beats desktop parity. A browser
+  cannot match desktop on storage durability, HRTF, microphone rates or
+  threading, and is not expected to.
+- **P1 over P2** — the preview's fidelity beats shader-source portability. A
+  game's shaders no longer run unmodified on desktop LÖVE (D11); its logic
+  still does.
+
 
 ## The other principle: the game stays pure LÖVE; the host holds the powers
 
@@ -57,9 +100,9 @@ visible to Lua. The IDE mutates the project *out of band* through host imports;
 the game never references any of it.
 
 The single place this tempts a fidelity violation is the console-control idea
-(below, D6): if "control what's in the console" became a `love.log()` the game
-*calls*, it would break on other engines. It stays faithful instead — `print`
-is `print`; control is host-side.
+([`../DECISIONS.md`](../DECISIONS.md), D6): if "control what's in the console"
+became a `love.log()` the game *calls*, it would break on other engines. It
+stays faithful instead — `print` is `print`; control is host-side.
 
 ## Sub-step ledger (proposed — the Human owns the ordering)
 
@@ -277,295 +320,16 @@ opens a window. Step 3's boot witness proves LÖVE's `main()` dies *at* the
 
 ## Decisions
 
-Each is stated with options, trade-offs, and a recommendation. 6.1 depended on
-none of them (the raw seam is shared by every option), so building it did not
-front-run any choice. Resolution status (Human-ratified):
+Design forks and their rulings live in [`../DECISIONS.md`](../DECISIONS.md),
+not here. This document says what the system is and why; that one says what was
+chosen where more than one answer was available, and what the rejected answers
+were.
 
-| # | Topic | Resolution |
-|---|---|---|
-| D1 | Filesystem seam | **A — replace the module.** Gates 6.2. |
-| D2 | Save-dir backing | **Closed — OPFS, separate untracked namespace, eager-flush (eventual durability, declared).** See below. |
-| D3 | Window/context | **A — `setMode` drives the real canvas/context.** Gates 6.3. |
-| D4 | Reload granularity | **Closed — B, function-body hotswap** (#47), **built** (#56, `pump_hotswap`). Chosen for play-testing: state survives the edit; a broken edit fails on the user's code. Module-granularity live-edit stays for `require`'d files; restart stays the fallback for what the swap cannot apply. See below. |
-| D5 | Supported-edit class | **A — minimal & explicit**, restart fallback. |
-| D6 | Console channel | **A — pure stdio now**, architected so B (host structured tap) can layer on without engine changes. |
-| D7 | Archive/`.love` mounting: who unzips | **Closed — neither: not built** (#48). Directory enumeration (`getDirectoryItems` over `fs_list`) is built; runtime zip mounting is a declared divergence. See below. |
-| D8 | Lua dialect | **Closed — PUC Lua 5.4.** See below. |
-
-### D1 — Filesystem seam: replace the module, or keep PhysFS and reseam its IO
-
-The real backend is PhysFS-based (`src/modules/filesystem/physfs/`). Two ways to
-back it with the host:
-
-- **Option A — replace the module.** Write a `love::filesystem::Filesystem`
-  backend implementing the abstract interface (`filesystem/Filesystem.h`) whose
-  `read`/`write`/`getInfo`/`mount`/`setSource`/`setIdentity`/`getDirectoryItems`
-  call `love_fs` host imports, plus a matching `File`. Replace the boot stub's
-  `luaopen_love_filesystem`.
-  - **Pros:** no `src/libraries/physfs` tree in the build (readme already lists
-    PhysFS as *replaced at the seams, not compiled*); the host controls every
-    path, so the live-edit **invalidate** and the save dir are just host calls;
-    smallest wasm; the `.love` and save namespaces are host concepts, not OS
-    ones.
-  - **Cons:** reimplements the whole `Filesystem.h` surface (a real backend, as
-    `webaudio` was); risk of subtle divergence from PhysFS semantics (mount
-    ordering, path canonicalization, symlink policy, `.love` zip mounting) that
-    the `testing/` corpus must catch.
-- **Option B — keep PhysFS, reseam its IO.** Compile `src/libraries/physfs` and
-  back it with a `PHYSFS_Io` (or custom archiver) whose callbacks pull bytes
-  from the `love_fs` host; provide a writable path for the save dir.
-  - **Pros:** PhysFS's real mount/path/zip logic stays verbatim — least semantic
-    divergence on the read side.
-  - **Cons:** drags the whole PhysFS tree (currently excluded) into the build;
-    PhysFS still wants a real writable FS + directory scans via OS calls that
-    don't exist on wasm/browser (the save dir needs a shim either way); the
-    live-edit invalidate must poke *through* PhysFS's own caching; more
-    indirection for no browser-visible benefit.
-- **Recommendation: Option A (replace).** It is the readme's committed direction,
-  gives the host the clean control the live-edit write/invalidate path needs, and
-  avoids dragging PhysFS's OS-dependent write/scan machinery onto wasm. The cost
-  (reimplementing the interface) is bounded and directly checkable against the
-  `testing/` filesystem suite. **DECIDED — Option A.** Gates 6.2.
-
-### D2 — Save directory (writable) backing — CLOSED
-
-Where `love.filesystem.write` / save data lives. Mechanism, store, layout, and
-durability are all settled:
-
-- **Mechanism — host-backed writable namespace** via `love_fs` write imports (not
-  a WASI preopen; the browser has no fd layer). Same seam as the read path.
-- **Store — OPFS (Origin Private File System).** Chosen over localStorage
-  (~5 MB, strings, sync-but-janky — a hard cap desktop doesn't impose, so it
-  breaks the tail of games that write user content/replays/worlds) and over
-  IndexedDB (would model a filesystem on a key-value store). OPFS *is* a
-  per-origin filesystem: large, binary-native, hierarchical — a direct fit for
-  `love.filesystem`'s tree + `t.identity`. No permission prompt; needs only a
-  secure context (HTTPS/localhost), already met. Requires **no** Emscripten, **no**
-  COOP/COEP, **no** SharedArrayBuffer — it lives in the JS host behind the seam,
-  exactly like the WebGL2 and WebAudio hosts, so it changes nothing on the wasm
-  side.
-- **Layout — a separate, untracked namespace,** keyed by `t.identity`, beside (not
-  inside) any git-wasm working tree. Save data must never dirty the source repo or
-  pollute history; keeping save-dir ≠ source is also the desktop-faithful shape.
-  (git-wasm is the *source* axis; the save dir is the *runtime* axis — different
-  problems, possibly sharing OPFS as substrate in separate directories.)
-- **Durability — eager-flush, eventual durability, declared.** OPFS on the main
-  thread is async under a sync `write()`, so the host serves `write`/`read` from
-  an in-memory cache and flushes to OPFS asynchronously (flush after each write +
-  on `pagehide`/`visibilitychange`; request `navigator.storage.persist()` against
-  eviction). Under the project standard this is not a compromise but **the correct
-  browser-game behavior held to 100%** — it is exactly how shipped browser games
-  persist (Unity WebGL's IDBFS is the same async-flush model). In-session
-  read-after-write / `getInfo` / listing behave identically to desktop; the only
-  residual is a force-kill within the last-write window, a declared cross-platform
-  timing note, shared by every browser game. **True sync durability** (desktop-
-  exact) is available *only* via the engine-in-Worker + OPFS-sync-access-handle
-  pivot — a deployment-architecture upgrade (not COOP/COEP, not SAB), parked for a
-  shipping variant that genuinely needs it; not required here.
-- **Scope:** the read/boot path (6.2) needs none of the write path; the save-dir
-  write path is its own sub-step, now fully specced by the above.
-
-### D3 — Window / GL-context creation
-
-- **Option A — `love.window.setMode` drives the host** to size the `<canvas>`
-  and create the WebGL2 context, then hands that context to the step-4 static GL
-  imports.
-  - **Pros:** faithful (LÖVE creates its own context, as on desktop); retires the
-    `graphics-ext.cpp` fake `setMode`; unblocks `present()`/`captureScreenshot`.
-  - **Cons:** the witness harness currently creates the context itself; this
-    inverts that — the wasm now asks the host, so the graphics legs must move to
-    the real window seam.
-- **Option B — keep context creation in the harness**, `love.window` a thin stub
-  reporting size. Lower effort, but leaves a permanent fake in the graphics path
-  and never witnesses the real create.
-- **DECIDED — Option A**, at 6.3 — the point of step 6 is to *build* the seam
-  graphics faked.
-
-### D4 — Reload granularity (live-edit) — CLOSED (2026-08-11, #47)
-
-**The ruling: B — function-body hotswap.** Replace the compiled bodies inside
-the existing function objects, preserving upvalues, so an edit to `love.update`
-or `love.draw` takes effect on the function's next call with the game's live
-state intact. `conf.lua` and `love.load` run at game init only; edits change
-the future, not the past — the invariant 6.7 already ships.
-
-**The deciding argument is play-testing.** Live-edit exists so a bug found two
-hours into a session can be fixed and re-verified *in that session*. Any
-mechanism that resets state (a restart, or A's re-run of the top level wiping
-file-scope locals) forfeits exactly the thing the feature is for — replaying
-hours of play to retest one fix. That cost dominates every implementation risk
-B carries.
-
-**The responsibility line, set by the Human:** if the saved edit is broken, the
-next call fails on the user's own code — that is on the user, not the engine.
-The engine's job is to perform the swap, not to validate it. This narrows B's
-classic risks considerably: the leaky edges (added/removed upvalues, stale
-references held elsewhere) are failure modes of the *user's edit*, reported as
-Lua errors, not silent engine corruption to be defended against.
-
-**Why the alternatives lost:**
-
-- **A — whole-chunk re-eval** loses on the play-testing argument directly:
-  re-running the top level re-declares file-scope locals, so state assigned in
-  `love.load` (which is deliberately not re-run) comes back nil and the session
-  is effectively restarted. Its simplicity was its whole case, and simplicity
-  that loses the feature's point is no case. It also loses its "silent
-  wrongness is worse" argument to the responsibility line above.
-- **C — convention plus re-eval** loses because it imposes a state-location
-  convention on the game, which violates "the game stays pure LÖVE"; a game
-  written for desktop should not need restructuring to be live-editable here.
-
-What was already settled and stays true: the mechanism must satisfy the reload
-invariant below; the difficulty is that a file-scope `local` is how both a
-tuning constant and evolved state get written, which Lua cannot tell apart
-syntactically — B sidesteps this by never re-running the scope that declares
-them. Restart remains the blessed fallback for whatever the swap cannot apply.
-Module-granularity invalidate (`pump_invalidate()`) stays: it is the right tool
-for a `require`'d library edit; B is what makes `main.lua`-direct edits — the
-notebook consumer's whole model — live.
-
-**Built (#56).** `pump_hotswap` sits beside `pump_invalidate` in the pump
-(`wasi/pump/pump.cpp`; the mechanism and its supported-edit class are
-EMBEDDING.md §4): the edited chunk's top level runs in a capture environment
-(writes captured and applied, reads falling through to the live globals), and
-each replaced function's same-named upvalues are `debug.upvaluejoin`ed to the
-old function's cells — aliased, not copied, so functions sharing a file-scope
-local keep sharing it. Witnessed by `wasi/shell/run-hotswap.sh` in the order
-this record asked for: edit `love.update` on disk → the next frames run the new
-body → file-scope state survives, still shared → a syntax-broken save errors on
-the user's `main.lua:<line>` with the session running on (and a good save
-hotswaps into the same session) → `love.load` printed once for the whole
-session. Each leg demonstrated able to fail. The leaky edges the responsibility
-line anticipated are declared restart-only in EMBEDDING.md §4 (deleted
-bindings, a function newly capturing a pre-existing local, function values
-evolved as state).
-
-### D5 — Supported-edit class (live-edit): what is guaranteed live
-
-- **Option A — minimal & explicit:** function-body edits to callbacks and the
-  functions they call, plus file-scope constant literals. Everything else →
-  restart.
-  - **Pros:** small, predictable, documentable; the invariant holds by
-    construction; matches "fine-tuning variables" as the intended use.
-  - **Cons:** the IDE must classify an edit's tier (and offer restart for the
-    rest).
-- **Option B — attempt-any, restart-on-failure.** Try every edit live; restart
-  only when hotswap throws.
-  - **Pros:** fewer explicit restarts.
-  - **Cons:** silently keeps stale state on edits that *appear* to apply but
-    shouldn't — the failure mode the invariant exists to forbid.
-- **DECIDED — Option A** — the invariant wants a *classifier*, not best-effort.
-  Restart is the correct answer for anything outside the class.
-
-### D6 — Console / diagnostic channel shape
-
-The agent needs sight on a live game's output, and (the Human's ask) some
-control over what's included — kept faithful.
-
-- **Option A — pure stdio.** `print` → fd 1, errors → fd 2, host taps both. No
-  new API.
-  - **Pros:** perfectly faithful; already how WASI works; zero divergence.
-  - **Cons:** unstructured; no verbosity control beyond host-side string
-    filtering; callbacks (`keypressed`, …) invisible unless the game prints them.
-- **Option B — stdio + host-side structured tap.** Keep `print` faithful; the
-  host tags/timestamps/filters lines and optionally taps the pump (it already
-  drives `update`/`draw` and sees `love.errorhandler`), so the agent gets a
-  richer, filterable signal — the "control what's included," done host-side.
-  - **Pros:** faithful game side; the control the Human wants; callback/error
-    visibility for the agent.
-  - **Cons:** the callback tap needs a hook in the pump; more host code.
-- **Option C — a game-facing `love.log()` API.** **Rejected:** a divergence that
-  breaks on other engines unless it degrades to `print`.
-- **DECIDED — Option A now, architected toward B.** Ship pure stdio (`print` stays
-  `print`, host taps fd 1/2); keep that tap a single clean seam so B's structured/
-  verbosity/callback layer can be added **host-side** later with no engine change,
-  if A proves insufficient. The stdio half exists already (the witnesses read
-  fd 1).
-
-### D7 — Archive / `.love`-zip mounting: who unzips — CLOSED (2026-08-10, #48)
-
-**The ruling: neither option. Runtime archive mounting is not built**, and that
-is a declared divergence rather than a deferral. `mountFullPath` stays — a
-directory already in the store, given a second name — and an archive target
-returns a loud `false`, never a fake.
-
-Replacing PhysFS split its two roles, and they were settled separately.
-**Directory enumeration** is built: an `fs_list` host import returns a
-directory's immediate children, and the host merges the read-only project with
-the writable save namespace and de-dupes, reproducing the merged listing PhysFS
-gave across a mounted search path (`wasi/platform/run-fs-list.sh`). **Archive
-mounting** is what D7 was about, because PhysFS's zip archiver went with it.
-
-**The framing had a hole, found by re-checking the survey before closing.** Both
-recorded options — the host unzips in JS, or a guest zip reader over the in-tree
-zlib — answer *who* unzips, and so both presuppose that we unzip at all. The
-prior question was never on the list, and it is the one that wins.
-
-**The alternatives, and why each lost:**
-
-- **A guest-side zip reader over `wasi/vendor/zlib`** loses on cost against
-  demand. It partially rebuilds in wasm the archive machinery D1=A deliberately
-  shed, to serve two corpus tests and no observed game.
-- **The host unzipping in JS** loses on the same demand argument and on nothing
-  else. It remains the right design if this is ever built: `DecompressionStream`
-  is native in the browser and needs no new wasm code, and its only real cost is
-  that `mount(Data*)` must send bytes already in wasm memory back out to JS to be
-  decoded. **If a reopen condition fires, build this one.**
-
-**The evidence that closed it.** The decision named the `testing/` corpus as the
-right measure of which use case was worth building. The corpus now runs, and
-`mount`/`unmount` are 2 of its 34 expected failures — the whole demand signal.
-The other half of the reopen trigger never fired: Legend of Lua reached a
-playable state without a runtime mount.
-
-Settled with it, and worth stating because it was the one thing that might have
-forced the decision: ***`.love`*-as-source needs no engine work and no archive
-reader.** The `love_fs` seam takes a path→bytes map, so a host holding a `.love`
-unzips it in its own JS and fills the map. A downstream consumer coming from
-love.js is not blocked by this.
-
-**Reopen conditions:** a real game calls `love.filesystem.mount` on an archive at
-runtime, or a downstream consumer needs it for something the boot-time path
-cannot serve. Corpus tests alone do not reopen it — they are counted above, and
-recorded as an expected divergence in `wasi/COMPATIBILITY.md`.
-
-### D8 — Lua dialect: which Lua the engine runs — CLOSED
-
-LuaJIT is not available under wasm: it needs runtime codegen and has no wasm
-interpreter backend. So the LuaJIT LÖVE ships by default is off the table, and
-the question is what replaces it.
-
-- **Option A — PUC Lua 5.4.** The current reference interpreter. Compiles
-  cleanly under this build's wasm-EH toolchain, and is already the vendored VM
-  (`lua.wasm`), whose `LUAW_EXTERNAL_EH` wiring makes libc++abi own exception
-  dispatch — the property the whole EH story here depends on.
-  - **Pros:** current and maintained; integers, `goto`, and 5.4's own fixes; one
-    toolchain story shared with `lua.wasm`.
-  - **Cons:** LÖVE 12's own build system produces only 5.1
-    (`CMakeLists.txt:214`: LuaJIT 2.1, or `find_package(Lua51)` when
-    `LOVE_JIT=OFF`), so 5.4 is a configuration upstream compiles for but does
-    not ship. Game Lua written for 5.1 can need edits — see "The Lua dialect"
-    in `readme.md` for the surface.
-- **Option B — PUC Lua 5.1.** What LuaJIT implements, and what LÖVE's non-JIT
-  build uses.
-  - **Pros:** the dialect every existing LÖVE game was written against.
-  - **Cons:** an end-of-life interpreter; no integers; and the wasm work is
-    5.4-shaped — `onelua.c` is a 5.4 amalgamation, and `LUAW_EXTERNAL_EH` plus
-    the vendored `setjmp` shim would need redoing against a 5.1 tree.
-- **DECIDED — Option A, PUC Lua 5.4.** Deliberate, on two grounds the Human
-  set: 5.4 fits wasm better, and Lua's 5.x line is incremental by design — this
-  is why there is no Lua 6. It pairs with LÖVE 12 for the same reason: 12 is
-  where LÖVE is going, so the engine and the VM are both chosen forward rather
-  than backward.
-
-  What this decision is *not*: a claim that 5.1 game code runs untouched. It
-  does not always, and `readme.md` states the surface. Porting a game's Lua into
-  5.4 leaves it a LÖVE game — the compatibility question that matters is whether
-  a LÖVE **feature** works, not how a game's Lua was wired up.
-
-  **Reopen if** the porting surface turns out to be wide rather than the handful
-  of library and coercion differences observed so far, or if a LÖVE 12 feature
-  is found that 5.4 cannot express.
+D1 (filesystem seam), D3 (window and rendering-context creation), D5
+(supported-edit class), D6 (console channel) and D7 (runtime archive mounting)
+were re-put and re-ruled on 2026-08-16 after an audit found no evidence that
+they had ever been ruled. D0 records what a closed decision means, and why that
+needed writing down.
 
 ## Resolved by the reload invariant (recorded as decided, not open)
 

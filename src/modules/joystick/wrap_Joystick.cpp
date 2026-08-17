@@ -447,6 +447,8 @@ int w_Joystick_getSensorData(lua_State *L)
 	return (int) data.size();
 }
 
+#endif // LOVE_ENABLE_SENSOR
+
 int w_Joystick_getDevicePowerInfo(lua_State *L)
 {
 	Joystick *j = luax_checkjoystick(L, 1);
@@ -479,8 +481,6 @@ int w_Joystick_getDeviceConnectionState(lua_State *L)
 
 	return 1;
 }
-
-#endif // LOVE_ENABLE_SENSOR
 
 // List of functions to wrap.
 static const luaL_Reg w_Joystick_functions[] =

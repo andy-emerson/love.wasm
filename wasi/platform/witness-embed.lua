@@ -119,5 +119,24 @@ check("require('mod').v == 2 after write + invalidate (LIVE EDIT)", type(m2) == 
 check("love survives invalidate (still a table)", type(require("love")) == "table")
 check("love.filesystem survives invalidate (still a table)", type(require("love.filesystem")) == "table")
 
+-- HOTSWAP TWIN (D4=B / D5=E). EMBEDDING.md registers __pump_hotswap(path)
+-- beside __pump_invalidate(); until this leg, the invalidate twin was witnessed
+-- above and the hotswap twin was documented but never once executed. Same
+-- contract as the export: count + residue report, effect visible immediately,
+-- and the caller's own error contained by pcall rather than killing the state.
+pcall(fs.write, "hot.lua", "function __hot() return 1 end\n")
+local n1, rep1 = __pump_hotswap("hot.lua")
+check("__pump_hotswap defines a new binding (count == 1)", n1 == 1, n1)
+check("the report says so (applied\\t__hot\\tdefined)",
+  type(rep1) == "string" and rep1:find("applied\t__hot\tdefined", 1, true) ~= nil, rep1)
+check("the definition is live (__hot() == 1)", type(__hot) == "function" and __hot() == 1)
+pcall(fs.write, "hot.lua", "function __hot() return 2 end\n")
+local n2, rep2 = __pump_hotswap("hot.lua")
+check("a re-swap applies the new body (count == 1, __hot() == 2)", n2 == 1 and __hot() == 2, n2)
+check("and reports it as swapped, not defined",
+  type(rep2) == "string" and rep2:find("applied\t__hot\tswapped", 1, true) ~= nil, rep2)
+local ok = pcall(__pump_hotswap, "missing.lua")
+check("a missing path is the caller's error (pcall false), state intact", ok == false and __hot() == 2)
+
 coroutine.yield(("checks done, %d failures"):format(failures))
 return failures == 0 and "STEP67-EMBED-WITNESS: PASS" or "STEP67-EMBED-WITNESS: FAIL"

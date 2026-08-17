@@ -74,9 +74,10 @@ An earlier revision of this file stated that they "never reached a design
 document" and that `wasi/platform/DESIGN.md` "has never contained a D9". **That
 was false.** It was written after grepping a single checked-out working tree
 without fetching, and reported as a survey of every prior document. The
-mistake was not cosmetic: two of the three decisions were then re-ruled against
-an option list that omitted the standing record, which is why D10 and D11 are
-reopened above rather than closed.
+mistake was not cosmetic: D10 and D11 were then re-ruled against an option list
+that omitted the standing record. Both rulings stand — the Human ruled them and
+re-affirmed them with the record in view — and each carries what the earlier
+record said, so a later reader sees both.
 
 D12, D13 and D14 are genuinely new.
 
@@ -445,7 +446,7 @@ that 5.4 cannot express.
 **Closed — Option B, the goal. Ruled on `claude/project-roadmap-handoff-evlsl7`
 and re-affirmed 2026-08-16.** Today's re-put reached the same answer by the same
 argument, so the record below stands as written; what today added is the
-vocabulary (`DESIGN.md` §1: compatibility is a *preference*, ranked P3, not a
+vocabulary (`DESIGN.md` §1: compatibility is a *preference*, ranked P2, not a
 requirement) and the scheduling — the shim is deferred to among the last
 development steps so it is not rebuilt against a moving engine. Implementation
 and its three tiers are issue #64.
@@ -740,14 +741,14 @@ two-part product whose JavaScript half is the shape love.js already has —
 which is the thing this project exists to be an alternative to. The distinction
 is not that our JavaScript would be smaller; it is that it is not ours to ship.
 
-**What follows from it, and is the real obligation:** the import surface is the
-product boundary, and every import is API owed to consumers permanently. It is
-kept minimal and specified. As of 2026-08-16 it stands at roughly 208 functions
-— `love_gl` 163, `love_audio` 11, `love_fs` 9, `love_input` 8, `love_system` 7,
-`love_win` 6, `love_gamepad` 4, plus the WASI preview1 subset. **163 of those,
-78%, are OpenGL entry points**, and D10 removes them: WebGPU is object-based
-and coarse-grained rather than a flat list of C entry points. D10 is therefore
-also the largest single act of service to this decision.
+**What follows from it.** The import surface is the product boundary, and every
+import is API owed to consumers permanently — a published interface cannot be
+quietly withdrawn. That is a fact about publishing an interface, not a target to
+minimise: a consumer embedding this engine is building a web page and is already
+writing JavaScript, so calling these functions is part of work they are doing
+anyway. As of 2026-08-16 the surface is roughly 208 functions — `love_gl` 163,
+`love_audio` 11, `love_fs` 9, `love_input` 8, `love_system` 7, `love_win` 6,
+`love_gamepad` 4, plus the WASI preview1 subset.
 
 **Watch item, not a plan.** The WebAssembly Component Model would let bindings
 be generated from an interface definition by third-party tooling rather than

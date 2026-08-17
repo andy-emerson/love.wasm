@@ -70,10 +70,9 @@ divergence, not a gap.
 | | Objective | Type |
 |---|---|---|
 | **P1** | **The preview predicts desktop.** A game built in the browser for desktop should look, feel and behave in the preview as it will on desktop | Optimization |
-| **P2** | **Consumers carry as little as possible** — the import surface is minimal and specified | Optimization |
-| **P3** | **Existing LÖVE games play** — most games written for 11.5 / Lua 5.1, directly or after an automatic shim | Optimization, with a floor at *most* |
-| **P4** | **The artifact is small** | Optimization |
-| **P5** | **The engine is fast** | Optimization |
+| **P2** | **Existing LÖVE games play** — most games written for 11.5 / Lua 5.1, directly or after an automatic shim | Optimization, with a floor at *most* |
+| **P3** | **The artifact is small** | Optimization |
+| **P4** | **The engine is fast** | Optimization |
 
 P1 is why the engine is compiled real LÖVE rather than an imitation, and why
 WebGPU is not optional: LÖVE 12 has compute shaders and WebGL2 has none, so a
@@ -81,16 +80,14 @@ game using one cannot be previewed at all (D10).
 
 **Conflicts already resolved, and the rulings they produced:**
 
-- **R2 over P5** — live edit beats speed. Closes ahead-of-time compilation out
+- **R2 over P4** — live edit beats speed. Closes ahead-of-time compilation out
   of the preview path (Q1).
 - **R1 over P1** — browser-native correctness beats desktop parity. A browser
   cannot match desktop on storage durability, HRTF, microphone rates or
   threading, and is not expected to.
-- **P1 over P3** — the preview's fidelity beats shader-source portability. A
+- **P1 over P2** — the preview's fidelity beats shader-source portability. A
   game's shaders no longer run unmodified on desktop LÖVE (D11); its logic
   still does.
-- **P2 over P4** — a minimal import surface beats a small artifact where they
-  disagree, because the surface is API owed permanently and bytes are not.
 
 
 ## The other principle: the game stays pure LÖVE; the host holds the powers

@@ -164,7 +164,9 @@ Everything else the host supplies as imports, which is the same role an OS plays
 | LLVM libc++ / libc++abi | 20.1.2, wasm-EH build | wasi-sdk's stock libc++ ships without exception support, and LÖVE's error path needs full C++ EH |
 | wasi-libc `setjmp`/`longjmp` | — | Ubuntu's wasi-libc omits it entirely and FreeType needs it |
 
-**Excluded from the wasi build:** `graphics/vulkan` + `graphics/metal` backends and their support libraries (`volk`, `vulkanheaders`, `vma`, `vk_video`, `spirv_cross`) · `video/` + Theora (deferred; `t.modules.video = false`) · `enet`, `luasocket`, `luahttps` (networking — no faithful browser primitive; declared divergence). The desktop build itself — `CMakeLists.txt`, `platform/`, the Windows and macOS packaging under `extra/` — is **deleted**, not excluded: `main` carries only what this engine uses (D13). It stays available on `upstream-mirror`.
+**Deleted from the tree** (D13 — `main` carries only what this engine uses; all of it stays on `upstream-mirror`): the `graphics/vulkan` and `graphics/metal` backends and their support libraries `volk`, `vulkanheaders`, `vma`, `vk_video`, `spirv_cross` — 19.5 MB, of which `vulkanheaders` alone was 16 MB. Both backends sat behind `#ifdef LOVE_GRAPHICS_VULKAN` / `LOVE_GRAPHICS_METAL`, which this build never defines, and the five libraries were reachable only from inside them; removing all seven left the artifact **byte-identical** (8,258,119 bytes, `try_table=7604`), which is the evidence that none of it was ever compiled in.
+
+**Excluded from the wasi build but still in the tree:** `video/` + Theora (deferred; `t.modules.video = false`) · `enet`, `luasocket`, `luahttps` (networking — no faithful browser primitive; declared divergence) · `physfs` (replaced by D1, but reachable from a guarded seam and from `common/android.cpp`, so removing it would mean editing shared source rather than deleting a leaf). The desktop build itself — `CMakeLists.txt`, `platform/`, the Windows and macOS packaging under `extra/` — is **deleted**, not excluded: `main` carries only what this engine uses (D13). It stays available on `upstream-mirror`.
 
 Exclusion happens in the build, not with `rm`: deleting upstream files would bloat the diff, poison rebases, and break the "diff is the evidence" rule. The tree stays upstream-shaped; the wasi build compiles the subset.
 
@@ -245,7 +247,7 @@ love.wasm started from `love2d/love` and no longer tracks it. **`main` carries o
 
 **Retirement:** the mirror is dropped altogether at v1.0.
 
-**On deviation.** This is not a fork trying to stay mergeable, and it is not a port trying to be adopted. It deviates where deviating is an improvement — the Lua VM (D8), the rendering backend (D10), the shader language (D11) — while spending real effort to stay compatible with LÖVE 12, and with 11.5 where that is reachable. Deviation is never the goal; every one is recorded with the alternative that lost. Where a fix is generic enough that LÖVE itself wants it, offering it upstream is worthwhile on its own merits (#23, #54) and is not a dependency of anything here.
+**On deviation.** This is not a fork trying to stay mergeable, and it is not a port trying to be adopted. It deviates where deviating is an improvement — the Lua VM (D8), the rendering backend (D10), the shader language (D11) — while spending real effort to stay compatible with LÖVE 12, and with 11.5 where that is reachable. Deviation is never the goal; every one is recorded with the alternative that lost. Nothing is offered upstream: this project has never sent a patch to `love2d/love` and does not plan to, so fixes that would once have been framed as upstream contributions (#23, #54) are ordinary local work. LÖVE's contribution policy would bar them in any case — its pull request template requires confirming a change contains no generative-AI output, and this project records agent co-authorship in every commit.
 
 ## Constitution
 

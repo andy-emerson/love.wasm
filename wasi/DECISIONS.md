@@ -311,10 +311,27 @@ nothing to compare against and reports no deletions. A binding dropped between
 boot and that first save is missed. Closing it means recording definitions at
 boot, which `pump_boot` does not run this chunk to do.
 
-**Evidence: tested.** `wasi/shell/run-hotswap.sh` LEG5 adds a binding, swaps,
-deletes it, swaps again and asserts the report names it; LEG6 asserts the game
-is still running afterwards, which is the observable consequence of reporting
-rather than removing. Both pass in Chromium alongside the four original legs.
+**Evidence: tested, and the test is itself tested.**
+`wasi/shell/run-hotswap.sh` LEG5 adds a binding, swaps, deletes it, swaps again
+and asserts the report names it. LEG6 asserts the game is still running
+afterwards.
+
+Both pass in Chromium alongside the four original legs — but passing legs are
+not evidence that a leg can fail, so the engine was mutated (`local prev = nil`,
+disabling the diff against the previous definition set and nothing else) and
+rebuilt. Against that artifact:
+
+| leg | mutant | what it means |
+|---|---|---|
+| LEG1–4 | PASS | untouched by the feature; the swap machinery is independent |
+| **LEG5** | **FAIL** — `residue=false v4swap=true` | a real detector, and it fails *specifically*: the swap still happened, only the residue vanished |
+| LEG6 | PASS | **not evidence for this decision** |
+
+LEG6 passing under mutation is the useful half of that result. It is a **guard,
+not a detector** — its job is to catch a future change that starts *removing*
+deleted bindings rather than reporting them, which would break a running game
+mid-frame. It says nothing about whether deletion detection works, and an
+earlier draft of this record counted it as though it did.
 
 ---
 

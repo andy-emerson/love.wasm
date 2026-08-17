@@ -57,13 +57,13 @@ Agent's mistake from becoming the Human's decision by default.
 | D7 | Runtime archive mounting | **Closed — build it**, host unzips. Ruled 2026-08-16 |
 | D8 | Lua dialect | **Closed — PUC Lua 5.4.** Ruled 2026-08-16 |
 | D9 | Lua/game compatibility posture | **Closed — B**, a goal to maximise. Ruled earlier, re-affirmed 2026-08-16 |
-| D10 | Browser graphics backend | **REOPENED 2026-08-16** — two rulings disagree; decided by D11 |
-| D11 | Shader compiler | **REOPENED 2026-08-16** — the later ruling answered an option that was never on the table |
+| D10 | Browser graphics backend | **Closed — C**, WebGPU only. Ruled 2026-08-16, superseding an earlier B |
+| D11 | Shader language | **Closed — LÖVE-WGSL.** Ruled 2026-08-16, superseding an earlier B |
 | D12 | What love.wasm ships | **Closed** — the artifact and its interface specification. Ruled 2026-08-16 |
 | D13 | Relationship to upstream LÖVE | **Closed** — mirror is reference-only. Ruled 2026-08-16 |
 | D14 | Deployment packaging | **Closed** — fetched for development, one `.html` for export. Ruled 2026-08-16 |
 | Q1 | AOT compilation of game Lua | **Open** — closed by data, on a trigger |
-| Q2 | WGSL reflection | **Superseded** — a sub-problem of a ruling no longer in force; see D11 |
+| Q2 | WGSL reflection | **Open** — gates the WebGPU backend; the earlier size estimate was wrong |
 | Q3 | `file://` viability for the one-file export | **Open** — verifiable, not arguable |
 
 **On the numbering, and a correction.** D9, D10 and D11 were recorded in full —
@@ -517,33 +517,33 @@ blocking work.
 
 ## D10 — Browser graphics backend
 
-**REOPENED 2026-08-16.** Two rulings exist and they disagree, so neither is in
-force until the Human closes it again with both in view.
+**Closed — Option C, WebGPU only. Ruled 2026-08-16.** WebGL2 is retained until
+WebGPU actually replaces it; C is the destination, not an instruction to delete
+the working backend.
 
-- **The standing ruling — Option B**, WebGPU preferred with WebGL2 as the
-  fallback, recorded below with its full survey and evidence.
-- **2026-08-16 — Option C**, WebGPU only, ruled in a session that did not have
-  the record below in front of it. The option list it was ruled against was
-  incomplete, and `AGENTS.md` requires a survey to be re-checked before a
-  decision closes.
+This supersedes an earlier ruling of **Option B** (WebGPU preferred, WebGL2
+fallback), whose full record is kept below — the reasons a rejected option lost
+stay in the record, and so do the reasons a superseded one did.
 
-**What the standing record says about C, which the later session never saw:** it
-"discards a proven path to avoid a maintenance cost the new backend incurs
-anyway", and it drops every browser without WebGPU — currently including Firefox
-on Linux and much of Safari's installed base.
+**Found after the ruling, and recorded because the Human may want it.** The
+superseded record argues against C on two grounds the 2026-08-16 session did not
+have in front of it, because the Agent had not fetched the branch it was on:
 
-**What the later session added, which the standing record does not have:** the
-2026-08 adoption picture from the gpuweb implementation-status wiki (Chrome and
-Edge shipped since 113 on macOS/Windows/ChromeOS and 121 on Android 12+; Firefox
-141 on Windows and 147 on all macOS; Safari in macOS Tahoe 26 / iOS 26; the gaps
-are Chrome on Linux, partial since 144/147, and Firefox on Linux and Android,
-Nightly only with Mozilla targeting 2026), and the argument that a single shader
-language forces a single backend — see D11.
+- C "discards a proven path to avoid a maintenance cost the new backend incurs
+  anyway", and drops every browser without WebGPU.
+- **Corpus honesty.** "306 pass" is today a claim about *upstream's* backend. If
+  WebGPU becomes the default and the corpus runs only the default, that number
+  silently becomes a claim about a backend we wrote. The corpus runs on both, or
+  the number stops meaning what it says. This applies to C as much as to B, and
+  is the sharper of the two.
 
-**The two are coupled.** If D11 keeps GLSL as the authoring language, a WebGL2
-fallback costs nothing extra and B is cheap. If D11 makes WGSL the authoring
-language, the fallback needs a second shader source per game or a reverse
-translator, and C follows. **D11 decides D10.**
+It also carries something that makes C cheaper than the 2026-08-16 session
+assumed: **phase 1 needs no shader translator at all.** LÖVE has four standard
+shaders (`Shader.h:86`), and `VIDEO` is moot because `love.video` is not linked
+— six sources, hand-writable in WGSL.
+
+None of that reopens anything. It is here so the ruling can be revisited if the
+Human chooses, and ignored if not.
 
 ### The standing record — WebGL2, WebGPU, or both
 
@@ -606,41 +606,35 @@ additions — are unreachable on WebGL2 by API version, not by effort.
 
 ---
 
-## D11 — Shader compiler
+## D11 — Shader language
 
-**REOPENED 2026-08-16**, and this one was reopened by an error rather than by
-new evidence.
+**Closed — LÖVE's dialect becomes a dialect of WGSL. Ruled 2026-08-16.**
 
-- **The standing ruling — Option B**, Slang replacing glslang + SPIRV-Cross with
-  **GLSL kept as the authoring language**, implementation deferred behind a
-  spike. Recorded below in full.
-- **2026-08-16 — LÖVE-WGSL as the authoring language.** Ruled after the Agent
-  argued that Slang was fatally disqualified because it is a different language
-  that would break every existing LÖVE shader.
+This supersedes an earlier ruling of **Option B** — Slang replacing glslang +
+SPIRV-Cross with GLSL kept as the authoring language, implementation deferred
+behind a spike — whose full record is kept below.
 
-**That argument described Option C, which the standing record had already
-rejected for exactly that reason — and Option C was never what B proposed.**
-Option B keeps GLSL; Slang appears only as the compiler behind it. The
-disqualifying objection therefore did not apply to the option on the table, and
-it *does* apply to what was ruled in its place: LÖVE-WGSL breaks every existing
-LÖVE shader, tutorial and community library, which is the standing record's
-stated reason C loses.
+**A defect in how this decision was put, recorded because the Human ruled
+without it.** The Agent argued that Slang was disqualified because it is a
+different language that would break every existing LÖVE shader. That describes
+the superseded record's **Option C** — "replace GLSL with Slang as the authoring
+language" — which that record had already rejected for exactly that reason.
+Option B never proposed it: under B, Slang is the compiler and GLSL stays the
+authoring language. The objection did not apply to the option it was used
+against.
 
-**Two further things the later session got wrong for want of this record:**
+**Two figures the Agent also got wrong, corrected here:**
 
-- It described dropping glslang as shedding a dependency. glslang is LÖVE's
-  **reflection system**: the backend-independent `graphics/Shader.cpp` includes
-  glslang's *internal* headers and walks its AST (`getBaseType` at line 1038) to
-  build LÖVE's `DataFormat`/`DataBaseType` descriptors for every backend.
-- It estimated WGSL reflection at "a few hundred lines — a declaration scanner,
-  not a compiler", on the ground that WGSL annotates its bindings explicitly.
-  What `Shader.cpp:1238–1531` actually needs is uniform formats, block layouts,
-  std430 packing, storage-texture formats and storage-buffer structure. The
-  estimate was not close.
+- Dropping glslang is not shedding a dependency. glslang is LÖVE's **reflection
+  system** — the backend-independent `graphics/Shader.cpp` includes glslang's
+  *internal* headers and walks its AST (`getBaseType`, line 1038) to build
+  LÖVE's `DataFormat`/`DataBaseType` descriptors for every backend.
+- WGSL reflection was estimated at "a few hundred lines, a declaration scanner
+  not a compiler". `Shader.cpp:1238–1531` needs uniform formats, block layouts,
+  std430 packing, storage-texture formats and storage-buffer structure. See Q2.
 
-**Superseded by this record:** Q2 (WGSL reflection) as previously written. It is
-a sub-problem of an option that is no longer the ruling one, and its
-recommendation rested on the underestimate above.
+**The ruling stands.** It is recorded here so that if the Human revisits it, it
+is against the option that was actually on the table.
 
 ### The standing record — glslang + SPIRV-Cross, or Slang
 
@@ -887,19 +881,23 @@ milliseconds.
 
 ## Q2 — WGSL reflection
 
-**Superseded 2026-08-16.** This asked how a WGSL-authoring engine would recover
-the reflection glslang provides. It is a sub-problem of a D11 ruling that is no
-longer in force, and its recommendation — "LÖVE's preprocessor owns the built-in
-layout, and a small WGSL declaration scanner handles the rest, a few hundred
-lines" — rested on an underestimate. `graphics/Shader.cpp` walks glslang's
-internal AST to build LÖVE's descriptors for *every* backend, and
-`Shader.cpp:1238–1531` needs uniform formats, block layouts, std430 packing,
-storage-texture formats and storage-buffer structure.
+**Open. Gates the WebGPU backend.**
 
-The live version of this question is inside D11's standing record, as spike
-step (2): does Slang's reflection expose what `Shader.cpp` needs? That is
-answerable with a prebuilt host `slangc` and no wasm build at all.
+D11 makes WGSL the authoring language, so the reflection glslang provides has to
+come from somewhere else. `graphics/Shader.cpp` walks glslang's internal AST to
+build LÖVE's descriptors for every backend, and `Shader.cpp:1238–1531` needs
+uniform formats, block layouts, std430 packing, storage-texture formats and
+storage-buffer structure.
 
+**An earlier estimate here — "a few hundred lines, a declaration scanner, not a
+compiler" — was wrong**, and is corrected rather than deleted: it counted only
+the `@group`/`@binding`/`@location` annotations WGSL makes explicit, and not the
+layout and packing detail above.
+
+**What does not need solving to start.** D10's record notes phase 1 needs no
+translator: LÖVE's four standard shaders minus `VIDEO` are six sources,
+hand-writable in WGSL, and their layouts are ours to fix by construction. The
+reflection question arrives with `love.graphics.newShader`, not before it.
 ---
 
 ## Q3 — `file://` viability for the one-file export

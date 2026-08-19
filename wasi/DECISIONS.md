@@ -68,7 +68,7 @@ Agent's mistake from becoming the Human's decision by default.
 | D18 | Game-visible API additions | **Open** — the Human's position is recorded; the wording awaits confirmation |
 | D19 | Portal / host message seam | **Open** — recommendation recorded |
 | D20 | The target audience, and what it implies for the ranking | **Open** — the audience is ruled; the ranking consequence is not |
-| D21 | What the shim is, what it will never be, and when it is built | **Open** — recommendation recorded |
+| D21 | What the shim is, what it will never be, and when it is built | **Closed** — three tiers, a non-goal list, built now. Ruled 2026-08-19 |
 | Q1 | AOT compilation of game Lua | **Open** — closed by data, on a trigger |
 | Q2 | WGSL reflection | **Open** — gates the WebGPU backend; the earlier size estimate was wrong |
 | Q3 | `file://` viability for the one-file export | **Open** — verifiable, not arguable |
@@ -1303,7 +1303,36 @@ scheme.
 
 ## D21 — What the shim is, what it will never be, and when it is built
 
-**Open, with a recommendation.**
+**Closed. Ruled 2026-08-19: the three tiers below, the non-goal list, and
+`love.shim` is built now rather than late.** Two amendments the Human made in
+ruling it are recorded first, because they change the shape the record
+recommended.
+
+**Amendment 1 — it is a module, and its size is not a constraint.** `love.shim`
+sits peer to the other `love.*` modules rather than being a prelude smuggled in
+ahead of game code. Size is explicitly not something to manage: as pure Lua it
+costs almost nothing against P4, and the guards that matter were never about
+line count.
+
+That is consistent with D9 read closely. D9's reopen condition — "if the shim
+stops being a small fixed prelude" — defines that phrase with the two clauses
+that follow it: *needing per-game logic*, and *papering over value-semantics
+differences*. Those two are the guards. Growing past thirteen lines is not one
+of them, so this amendment does not trip D9.
+
+**Amendment 2, and the open question it leaves.** Making it a module raises a
+D18 question the prelude form did not: **is `love.shim` game-visible API?** If a
+game can call `love.shim.*`, that is surface desktop LÖVE lacks, and D18 governs
+it.
+
+There is a good reason to want a *small* visible surface rather than none. D9
+requires the shim be "declared, never silent," and a runtime introspection point
+— what was restored, and what was declined — is how a game, an IDE or a test
+*sees* that declaration rather than reading a document. **Recommended: internal
+by default, applying before game code, with a deliberate and minimal
+introspection surface, settled under D18 (#94) rather than by accident.**
+
+### The record as ruled
 
 **The problem this records.** "The shim" has been doing work no design gave it.
 Across D9, #64, #79, #93 and D18, the phrase has been used as a place to send a
@@ -1395,6 +1424,47 @@ rather than against a shim that does not yet exist.
 **What it gates:** #64's scope; whether D9 reopens; where GLSL → `love.shader`
 translation lives; and whether any given "defer it to the shim" is a plan or a
 wish.
+
+### What the shim must reach: LÖVE 11.5, not only 12
+
+Ruled alongside the above: the compatibility floor is **LÖVE 12 with Lua 5.1
+game code**, and **LÖVE 11.5 is preferred where reachable** — on the reasoning
+that love.wasm may ship before LÖVE 12 releases, which would make the real
+back-catalog an 11.5 one and love.wasm many players' first LÖVE 12.
+
+**Most of that gap is already closed by upstream, which is why this is
+tractable.** Read from source at `bb06db8`: LÖVE 12 carries **34
+`luax_markdeprecated` call sites across 14 wrapper files** — `love.physics`
+(five files), `love.graphics` (two), `filesystem`, `window`, `math`, `data`,
+`event` and `love` itself. `love.physics.newFixture` still exists
+(`wrap_Physics.cpp:282`), and `Physics.h:104` records a structure kept
+specifically "to support the deprecated newFixture API." `love.graphics.newText`
+still exists and forwards to `newTextBatch`; `newCanvas` sits beside
+`newTexture`.
+
+**And none of them is a silent behaviour change.** The classifications present
+are `DEPRECATED_REPLACED` (18), `DEPRECATED_RENAMED` (8) and `DEPRECATED_NO`
+(7) — name-level every one. The three `DEPRECATED_BEHAVIOR` hits in the tree are
+OpenGL debug constants, not LÖVE deprecations. So an 11.5 call in LÖVE 12 either
+works, or is gone; it does not quietly do something else. That is precisely the
+category a shim can serve, and precisely not the category D9 forbids it to touch.
+
+**The corroborating observation:** Legend of Lua is an 11.5 game, and the port
+touched **no `love.*` call at all** — all 59 lines were Lua-dialect changes
+(`readme.md`). One game is one observation, not a rate; #65 is what turns it
+into one.
+
+**What is therefore actually owed**, and is not yet known: the APIs 11.5 had
+that LÖVE 12 does **not** register at all — neither live nor deprecated. Nobody
+has enumerated them. That diff, against upstream's own registered function
+tables, is the real scope of an 11.5 compatibility layer and is mechanical work
+rather than research.
+
+**A consequence of D13 worth naming, because it is a benefit for once:**
+upstream may delete these deprecation shims before 12.0 final. Base bumps here
+are deliberate cherry-picks, so love.wasm can simply decline to inherit a
+removal. The deprecation layer is ours to keep for as long as the back-catalog
+needs it.
 
 ---
 

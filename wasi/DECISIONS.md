@@ -62,6 +62,9 @@ Agent's mistake from becoming the Human's decision by default.
 | D12 | What love.wasm ships | **Closed** — the artifact and its interface specification. Ruled 2026-08-16 |
 | D13 | Relationship to upstream LÖVE | **Closed** — mirror is reference-only. Ruled 2026-08-16 |
 | D14 | Deployment packaging | **Closed** — fetched for development, one `.html` for export. Ruled 2026-08-16 |
+| D15 | `love.video` in a browser-first engine | **Open** — re-put; #27's premise has since inverted |
+| D16 | A web-native network transport | **Open** — never decided; deferred out of scope in #27 |
+| D17 | Keyboard key identification | **Open** — never framed; today's behaviour is a seam default |
 | Q1 | AOT compilation of game Lua | **Open** — closed by data, on a trigger |
 | Q2 | WGSL reflection | **Open** — gates the WebGPU backend; the earlier size estimate was wrong |
 | Q3 | `file://` viability for the one-file export | **Open** — verifiable, not arguable |
@@ -80,6 +83,26 @@ re-affirmed them with the record in view — and each carries what the earlier
 record said, so a later reader sees both.
 
 D12, D13 and D14 are genuinely new.
+
+**On D15, D16 and D17 — three dispositions the D0 audit did not reach.** The
+2026-08-16 audit re-put D1 through D9 against D0's companion clause. It did not
+reach issue #27, opened 2026-07-09 and closed 2026-08-11 — a *preview-limitation
+policy* issue about warning messages, which under a heading reading "the warned
+stub set, **this session's decisions**" also settled the disposition of
+`love.video`, of networking, and of `love.sensor`. Its grade line records
+strength as "**Decided** (this session)". No artifact distinguishes whether the
+Human ruled any of them, which is the exact condition D0 exists to end.
+
+Two of the three are re-put below, and a third question — keyboard key
+identification — is framed here for the first time, having never been a
+recorded choice at all. `love.sensor` is **not** re-put: desktop LÖVE reports no
+sensors either, so its disposition matches desktop and nothing turns on it.
+
+The re-put matters most for `love.video`, because #27's opening sentence is
+"love-wasi is the browser **preview** engine — it has zero involvement in
+export." `readme.md` now states the reverse: the primary target is a game that
+runs natively in the browser, and the preview is the second use. A disposition
+whose premise has been inverted is not a settled decision.
 
 ---
 
@@ -921,6 +944,184 @@ backend lands.
 **Assets are why this is needed regardless of Q1:** a game is not only
 `main.lua`. AOT would compile game Lua and do nothing for images, sounds, fonts
 or maps, so any self-contained artifact needs the data-embedding path anyway.
+
+---
+
+## D15 — `love.video` in a browser-first engine
+
+**Open. Re-put, because the premise the standing disposition rested on has been
+inverted.** A recommendation is offered below and is labelled as one; only the
+Human closes this.
+
+**The standing disposition (#27, 2026-07-09).** libtheora was dropped, verbatim:
+
+> CPU-decoding Theora single-threaded in wasm would stutter, and stuttering
+> video is *lower* fidelity than a clean "not in preview" notice. Warned stub.
+> If web video is ever wanted, the right path is a browser `<video>` seam
+> (hardware-accelerated), not the legacy codec.
+
+**That reasoning is still correct, and it is not what is being re-put.** Theora
+in wasm remains a bad idea for exactly the stated reason, and the identified
+right path — a `<video>` seam — is the same one recommended here. What changed
+is the cost of *not* doing it. #27 opens "love-wasi is the browser **preview**
+engine — it has zero involvement in export," and under that premise a cutscene
+that does not play costs a developer checking their game nothing. `readme.md`
+now says the primary target is a LÖVE game that runs natively in the browser,
+with the preview second. Under the current premise the same absence is a product
+gap in the runtime with the best video stack available anywhere.
+
+- **Option A — stay dropped.** `love.video` stays `nil`, reported on use.
+  - **For:** no work; no imports owed under D12; no new host surface.
+  - **Against:** a browser game cannot play video at all. It also carries a **✗**
+    rather than a blank, by requirement 1's own test — the browser has this and
+    we do not — so A is a choice to hold a known gap, which is permitted but must
+    be recorded as a gap and not as a divergence.
+- **Option B — a `<video>` seam.** The host owns an `HTMLVideoElement`; frames
+  reach the engine as a texture through new `love_video` imports.
+  - **For:** hardware-accelerated, zero decode in wasm, codec support is the
+    browser's problem rather than ours, and it is what #27 itself named.
+  - **Against:** permanent imports under D12; `VideoStream`'s synchronous pull
+    against the element's async readiness is the same sync-engine/async-browser
+    shape as D3 and D7; audio-track synchronisation is real design work.
+- **Option C — Option B, sequenced after the WebGPU backend lands.** Same design,
+  built once.
+  - **For:** WebGPU's `importExternalTexture` exists for precisely this and is
+    markedly cleaner than a WebGL2 upload path, so C avoids building the texture
+    path twice against a backend that is being replaced.
+  - **Against:** puts video behind #67, which is already the critical path.
+- **Option D — declare `love.video` permanently out of scope.**
+  - **For:** honest, and closes the question rather than leaving it open.
+  - **Against:** forecloses a capability the platform has, against requirement 1.
+
+**Recommendation: C.** B is the right design and C is the right sequencing —
+the same argument that deferred D7's work to after #67 applies here, and for the
+same reason. Whichever option is ruled, `wasi/COMPATIBILITY.md`'s video row
+should stop reading as a declared divergence: the browser plays video, so the
+row is a gap, and A would be a decision to carry it.
+
+**What it gates:** whether `love.video` stays `nil`; whether a `love_video`
+import family enters the D12 surface; the classification of the video rows in
+`COMPATIBILITY.md` and `wasi/corpus/expected.txt` (2 graphics rows today).
+
+---
+
+## D16 — A web-native network transport
+
+**Open. Never decided.** #27 deferred it out of scope and nothing has picked it
+up since; there is no record anywhere ruling that love.wasm does or does not
+reach a network.
+
+**The standing state.** `enet`, `luasocket` and `luahttps` are excluded from the
+wasi build. #27 said, parenthetically:
+
+> (A *separate*, web-native transport — WebSocket/WebRTC — is a deferred
+> exploration for the "web platform" goal, not a substitute; **out of scope
+> here**.)
+
+`wasi/COMPATIBILITY.md:190` then records the whole category as a blank — "no
+faithful browser primitive for raw sockets." **Two different facts are being
+merged there**, and only one of them is true:
+
+- **Raw TCP/UDP** is genuinely unavailable to a page. `enet` and `luasocket`
+  cannot be ported, and a blank is the correct, permanent record for them.
+- **HTTP(S), WebSocket and WebRTC data channels** are native to every target
+  browser. `luahttps` exists on desktop to do what `fetch` does natively here.
+  A blank claims the browser cannot; the browser can.
+
+So the current record overstates the loss, and a browser game — in a runtime
+that is natively a network client — presently has no Lua-facing path to a
+network of any kind.
+
+- **Option A — nothing.** Leave it unbuilt and correct only the record, so the
+  blank splits into a permanent blank (raw sockets) and a **✗** (everything
+  else).
+  - **For:** free; makes the documentation honest immediately.
+  - **Against:** the ✗ stays open with no owner.
+- **Option B — implement LÖVE's existing `luahttps` surface over a host import
+  backed by `fetch`.**
+  - **For:** the API already exists upstream, so this adds **no game-visible
+    API** and needs no ruling on additions; a game using it runs on desktop and
+    here. One import. Covers leaderboards, analytics, and non-portal cloud saves
+    — most of what a portal-shipped game actually needs.
+  - **Against:** desktop's `https.request` is synchronous and `fetch` is not —
+    the D3/D7/#72 shape once more; one permanent import under D12.
+- **Option C — a WebSocket / WebRTC seam as new game-visible API.**
+  - **For:** the thing real-time multiplayer needs.
+  - **Against:** new API desktop lacks, so it cannot start before the
+    game-visible-additions record is ruled; permanent imports; a protocol
+    surface of our own design to own forever.
+- **Option D — leave it entirely to the host, over the generic message channel.**
+  - **For:** zero engine surface; a consumer already writing JavaScript can
+    expose whatever transport it likes.
+  - **Against:** every consumer reinvents it, nothing is portable between
+    embedders, and a game that just wants a leaderboard cannot have one without
+    its host's cooperation.
+
+**Recommendation: A immediately, then B.** A costs nothing and stops the record
+from claiming a browser limitation that does not exist. B is the smallest step
+that closes the ✗, and it is the only option that creates no new game-visible
+API and therefore needs no additions ruling. C and D are separable follow-ons;
+C should not begin until game-visible additions are ruled. The synchronous-call/
+asynchronous-API problem is the real design work in B, and it is the same one
+#67 and #72 face — it should be solved once, for all three.
+
+**What it gates:** whether a browser LÖVE game can reach a network at all;
+leaderboards, analytics, non-portal cloud saves, and multiplayer.
+
+---
+
+## D17 — Keyboard key identification: physical code, or layout key
+
+**Open. Never framed as a choice.** Today's behaviour is a seam default recorded
+only in a source comment, and it is reported in `COMPATIBILITY.md` as a
+divergence rather than as the decision it actually is.
+
+**The standing state.** `wasi/host/input-host-browser.mjs:30` states it plainly:
+
+> Keys are identified by the PHYSICAL DOM `code` ("KeyA")
+
+with line 35 recording that IME input (CJK, dead keys) does not reach the game.
+`wasi/COMPATIBILITY.md:150` reports "live keyboard layout" as a blank, "a
+declared divergence from SDL's live-layout mapping."
+
+**Why this is a decision and not a detail.** LÖVE's callback is
+`love.keypressed(key, scancode)`, and the two arguments are deliberately
+different things: `key` is layout-dependent, `scancode` is physical. The browser
+supplies both — `KeyboardEvent.key` is layout-mapped and `KeyboardEvent.code` is
+physical, a near-exact match for LÖVE's own pair. The seam derives *both* from
+`code` through a fixed US table, so `key` is wrong on every non-US layout: an
+AZERTY player pressing the key labelled A reports `q`. The input record format
+already reserves `char code[40]` at offset 48 **and** `char key[40]` at offset
+88, so the seam was designed with a slot for the layout key and the browser host
+has never filled it.
+
+- **Option A — status quo**, both fields from `code`.
+  - **For:** nothing to build; deterministic across machines, which is
+    convenient for witnesses that synthesize US-layout events.
+  - **Against:** `key` is simply wrong for most of the world, and LÖVE's
+    key/scancode distinction — which exists so a game can bind to either — is
+    collapsed to one of them. This is closer to a defect than a divergence.
+- **Option B — fill both fields honestly:** `key` from `event.key`, `scancode`
+  from `event.code`.
+  - **For:** matches LÖVE's model exactly; costs **no new import**, because the
+    record already carries the field; fixes every non-US layout.
+  - **Against:** `event.key` values need mapping onto LÖVE's `KeyConstant`
+    names, named keys included; witnesses asserting on synthesized events need
+    review; a mid-session layout change becomes observable, as it is on desktop.
+- **Option C — Option B plus `navigator.keyboard.getLayoutMap()`.**
+  - **For:** exposes a real layout map rather than inferring one.
+  - **Against:** Chromium-only and permission-adjacent, and it adds nothing over
+    B for the problem at hand.
+
+**Recommendation: B.** It is the option that makes the seam tell the truth, it
+uses a field the record already carries, and it converts a **✗** into a ✓ rather
+than declaring a divergence that was never real. C buys nothing B does not.
+
+**Not in scope here:** IME composition, which is a genuinely separate capability
+and wants its own record if it is ever wanted.
+
+**What it gates:** whether players on non-US layouts can play at all; whether
+`COMPATIBILITY.md:150` is a divergence or a gap.
 
 ---
 

@@ -1,9 +1,13 @@
-// Assemble the pump's boot source for the shim witness: register love.shim as a
-// real module through package.preload, then run the witness that requires it.
+// The pump boot source for the shim witness.
 //
-// package.preload is the same door LÖVE's own submodules arrive through (see
-// wasi/platform/witness-frame.lua), so the witness exercises the shim exactly as
-// the boot wrapper will load it — as a module, not as text pasted into the test.
+// It is JUST the witness now. love.shim is preloaded by the ARTIFACT
+// (wasi/boot/pump-ext.cpp embeds the Lua and registers it beside `love`), so
+// require("love.shim") resolves against the real module rather than a copy this
+// harness injected. That distinction is the whole point of the change: an
+// earlier version of this file synthesised
+//   package.preload["love.shim"] = function(...) <the .lua text> end
+// which meant every green run was testing the harness's copy, and the artifact
+// itself shipped nothing.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +15,5 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 
 export function shimBootSrc() {
-  const shim = readFileSync(join(here, 'love-shim.lua'), 'utf8');
-  const witness = readFileSync(join(here, 'witness-shim.lua'), 'utf8');
-  return `package.preload["love.shim"] = function(...)\n${shim}\nend\n${witness}`;
+  return readFileSync(join(here, 'witness-shim.lua'), 'utf8');
 }

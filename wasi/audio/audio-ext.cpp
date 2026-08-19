@@ -9,12 +9,14 @@
 // decoders); luaopen_sounddata registers just the type (it embeds its own
 // wrapper Lua and depends only on love.data), which is all the mic path needs.
 #include "common/runtime.h"
+#include "../shim/shim-preload.h"
 
 extern "C" int luaopen_love(lua_State *L);
 extern "C" int luaopen_sounddata(lua_State *L);
 
 extern "C" void pump_open_extensions(lua_State *L)
 {
+	love_wasm_shim::preload(L);
 	love::luax_preload(L, luaopen_love, "love");
 
 	// Register the SoundData type, then drop whatever it left on the stack.

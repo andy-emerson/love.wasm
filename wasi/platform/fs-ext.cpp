@@ -26,6 +26,7 @@
 // seam carries an explicit length end to end and the bridge uses lua_pushlstring
 // (via luaL_Buffer), so the recovered Lua string is byte-exact.
 #include "lua.hpp"
+#include "../shim/shim-preload.h"
 
 #include <cstdint>
 
@@ -76,6 +77,7 @@ static int w_fs_read(lua_State *L)
 // globals on the fresh lua_State. No love preload here — 6.1 is the raw seam.
 extern "C" void pump_open_extensions(lua_State *L)
 {
+	love_wasm_shim::preload(L);
 	lua_register(L, "__wasi_fs_size", w_fs_size);
 	lua_register(L, "__wasi_fs_read", w_fs_read);
 }

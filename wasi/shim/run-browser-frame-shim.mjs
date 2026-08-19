@@ -22,15 +22,13 @@ import { makeSystemHost } from '../host/system-host.mjs';
 import { runInChromium } from '../host/witness-harness.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const shimLua = readFileSync(join(here, 'love-shim.lua'), 'utf8');
 const gameLua = readFileSync(join(here, 'frame-game.lua'), 'utf8');
-// The boot wrapper is the frame witness's, unchanged: it seeds `arg`, requires
-// love, satisfies require for unlinked modules, and runs LÖVE's real boot. The
-// only addition is love.shim in package.preload, which is the same door LÖVE's
-// own submodules arrive through — so the game requires it exactly as it would
-// once the boot wrapper registers it for real.
-const frameBoot = readFileSync(join(here, '..', 'platform', 'witness-frame.lua'), 'utf8');
-const boot = `package.preload["love.shim"] = function(...)\n${shimLua}\nend\n${frameBoot}`;
+// The boot wrapper is the frame witness's, VERBATIM and unmodified: it seeds
+// `arg`, requires love, satisfies require for unlinked modules, and runs LÖVE's
+// real boot. Nothing is injected — love.shim is preloaded by the artifact
+// itself (wasi/boot/pump-ext.cpp), so the game's require("love.shim") resolves
+// against what love.wasm actually ships.
+const boot = readFileSync(join(here, '..', 'platform', 'witness-frame.lua'), 'utf8');
 const b64 = readFileSync(process.argv[2] ?? 'love-frame.wasm').toString('base64');
 
 async function pageFn({ b64, boot, gameSrc, shimSrc, winHostSrc, fsHostSrc, systemHostSrc }) {

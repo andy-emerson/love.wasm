@@ -1,3 +1,5 @@
+R"luastring"--(
+-- DO NOT REMOVE THE ABOVE LINE. It is used to load this file as a C++ string.
 -- love.shim — the inbound compatibility tier (D21).
 --
 -- ONE DIRECTION ONLY: it takes a game written for an older world (Lua 5.1,
@@ -373,3 +375,5 @@ function shim.apply(env, loveTable)
 end
 
 return shim
+-- DO NOT REMOVE THE NEXT LINE. It is used to load this file as a C++ string.
+--)luastring"--"

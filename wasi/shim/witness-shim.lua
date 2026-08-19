@@ -9,6 +9,8 @@
 --   physics artifact  (LOVE DATA PHYSICS)            the Lua tier + 13 physics names
 --   fs artifact       (LOVE DATA MATH FILESYSTEM)    love.math.compress + 4 predicates
 --   sound artifact    (LOVE DATA SOUND)              SoundData:getChannels
+--   audio artifact    (… AUDIO)                     love.audio.getSourceCount
+--   frame artifact    (… GRAPHICS WINDOW)           ParticleSystem area spread
 --
 -- The physics artifact carries the only group whose adaptation is not a rename —
 -- the spring parameters, which changed units between 11.5 and 12.
@@ -40,6 +42,22 @@ for _, m in ipairs({ "data", "math", "physics", "filesystem", "audio", "sound", 
 end
 
 local shim = require("love.shim")
+
+-- LEG 0 — the module must come from the ARTIFACT, not from the harness.
+--
+-- This exists because it once did not. An earlier version of the runner
+-- synthesised package.preload["love.shim"] from the .lua text, so every green
+-- run was testing the harness's own copy while love.wasm shipped nothing —
+-- "love.shim" was a name in a conversation, not a module. From inside Lua the
+-- two are indistinguishable by behaviour, but not by PROVENANCE: pump-ext.cpp
+-- loads the embedded chunk with the name below, and anything injected through
+-- the boot source would carry the boot chunk's name instead.
+do
+	local info = debug.getinfo(shim.apply, "S")
+	check("love.shim is the artifact's embedded module, not a harness copy",
+		info ~= nil and info.source == '=[love.wasm "shim.lua"]',
+		info and info.source or "no debug info")
+end
 
 -- LEG 1 — before applying, the 5.1 names really are absent. Without this the
 -- rest of the witness could pass on a runtime that never needed a shim.

@@ -65,9 +65,13 @@ Agent's mistake from becoming the Human's decision by default.
 | D15 | `love.video` in a browser-first engine | **Open** — re-put; #27's premise has since inverted |
 | D16 | A web-native network transport | **Open** — never decided; deferred out of scope in #27 |
 | D17 | Keyboard key identification | **Open** — never framed; today's behaviour is a seam default |
+| D18 | Game-visible API additions | **Open** — the Human's position is recorded; the wording awaits confirmation |
+| D19 | Portal / host message seam | **Open** — recommendation recorded |
+| D20 | The target audience, and what it implies for the ranking | **Open** — the audience is ruled; the ranking consequence is not |
 | Q1 | AOT compilation of game Lua | **Open** — closed by data, on a trigger |
 | Q2 | WGSL reflection | **Open** — gates the WebGPU backend; the earlier size estimate was wrong |
 | Q3 | `file://` viability for the one-file export | **Open** — verifiable, not arguable |
+| Q4 | Box2D 3.x | **Open** — parked; closed by data, on a trigger |
 
 **On the numbering, and a correction.** D9, D10 and D11 were recorded in full —
 197 lines, with surveys, evidence and reopen conditions — on the branch
@@ -1125,6 +1129,156 @@ and wants its own record if it is ever wanted.
 
 ---
 
+## D18 — Game-visible API additions
+
+**Open.** The Human's position was stated in a planning conversation on
+2026-08-17 and is recorded below; per D0 it stays OPEN until the Human confirms
+this wording, however settled the answer looks.
+
+**The question.** May love.wasm expose game-visible API that desktop LÖVE does
+not have? Everything the engine adds today is host-side and invisible to Lua
+(live edit, the console, reload) — deliberately, per "the game stays pure LÖVE"
+in `wasi/platform/DESIGN.md`. A `love.math` vector/matrix family would be the
+first thing to cross that line.
+
+**The Human's stated position:** *adding is better than subtracting; games that
+work without it will still work without it.*
+
+- **Option A — never.** Only what desktop has.
+  - **For:** a `.love` written here always runs there; nothing to declare.
+  - **Against:** forbids improvements the browser target could use, and the
+    line is already crossed in the other direction — a game using a compute
+    shader runs on desktop and throws here (D9).
+- **Option B — additive only, polyfillable, declared.**
+  - **For:** captures the position above while keeping every addition
+    accountable.
+  - **Against:** each addition is permanent under D12 and widens what the
+    project owns.
+- **Option C — unrestricted additions.**
+  - **Against:** makes the `.love` pillar meaningless.
+
+**Recommended: B, with the four constraints stated as part of the ruling** —
+they are what separate B from C:
+
+1. **Additive only.** An addition never changes the behaviour of an API desktop
+   also has. It may only add surface that desktop leaves absent.
+2. **Polyfillable where possible, and the polyfill is a deliverable.** A game
+   using the addition runs on desktop LÖVE once it requires the shipped Lua
+   polyfill. Where no polyfill is possible, that is stated at the point of
+   addition rather than discovered later.
+3. **Declared** in `wasi/COMPATIBILITY.md`, like every other divergence.
+4. **Permanent.** D12 makes a published surface impossible to withdraw quietly,
+   so an addition is priced as forever.
+
+**What B licenses, and what it does not.** It licenses the `love.math` vec2/3/4
+and mat4 family, which passes all four tests. It does **not** license
+engine-side architecture — an entity/component system, fixed component pools, a
+scene graph. Those fail test 2 outright (nothing polyfills cache locality) and
+work against P1: an engine whose performance profile differs structurally from
+desktop's makes the preview predict desktop *less* well, and P1 is the
+highest-ranked preference. The distinction is worth stating in the ruling
+because the arguments for the two look similar and their costs do not.
+
+**Out of scope, and recorded so it is not re-proposed:** Rust. MatLua and
+blas.wasm stand as *existence proofs* that a good math library is achievable on
+wasm and for Lua 5.4 — they are not components to import, and no Rust enters
+this toolchain. Both are MIT-licensed if a future measurement ever argues for
+reuse.
+
+**What it gates:** the `love.math` vec/mat and `love.data` typed-buffer
+milestone; D16's Option C; anything else that would add game-visible surface.
+
+---
+
+## D19 — Portal / host message seam
+
+**Open, with a recommendation.**
+
+Browser gaming portals need two things a game must be able to reach: **gameplay
+signals** (gameplay start/stop, loading progress) and **asynchronous
+monetization** (request a rewarded ad, the portal's SDK runs, a reward lands
+later). Both are guest-to-host calls with host-to-guest completions, and neither
+has any desktop counterpart.
+
+- **Option A — a generic message channel.** One guest→host import carrying a
+  named message plus a payload; host→guest completions are pushed into
+  `love.event` the way input already is.
+  - **For:** D12 makes every import permanent, so the surface owed forever is
+    `web_message` rather than `poki_rewarded_ad`. Completions arriving through
+    `love.event` fit the pump, which never blocks. It serves itch.io,
+    self-hosting and LoveIDE with the same seam.
+  - **Against:** the message vocabulary becomes a soft interface — unversioned
+    and unchecked unless something declares it.
+- **Option B — per-portal imports.** `poki_gameplay_start`,
+  `crazygames_rewarded_ad`, and so on.
+  - **For:** explicit and typed.
+  - **Against:** every portal ever supported is owed permanently under D12, and
+    a portal changing its SDK becomes an engine change.
+
+**Recommended: A.** The D12 permanence argument decides it. **Portal adapters
+are host-page JavaScript** — the consumer's side of the boundary, shippable as
+reference examples alongside `wasi/host/*`, and never engine code.
+
+**Two riders this record carries, because they are how a portal build actually
+fails:**
+
+- `love.focus` and `love.visible` must be wired *and witnessed* — a game must
+  pause and mute on an ad break and on a tab hide. `EV_FOCUS`, `EV_MOUSEFOCUS`
+  and `EV_VISIBLE` all exist at the input seam
+  (`wasi/platform/input-backend.cpp:98-100`), so this is verification work
+  rather than construction, and no witness asserts it today.
+- Audio-context unlock on first user gesture is host-side, and portals test for
+  it.
+
+**What it gates:** whether a love.wasm game can ship to a portal at all.
+
+---
+
+## D20 — The target audience, and what it implies for the ranking
+
+**Open.** The audience was ruled in the 2026-08-17 planning conversation. What
+it implies for the preference ranking was not, and that is the open half.
+
+**The ruling.** Browser gaming portals — Poki, CrazyGames — are a named target
+audience. Desktop compatibility remains a preference serving the back-catalog
+(D9's auto-shim), while **new browser-first games are the growth audience**.
+
+**Why this needs a record rather than a line in a design document.**
+`wasi/platform/DESIGN.md` §1.3 ranks **P1 — the preview predicts desktop** above
+every other preference, and that ranking is what decides seam questions when
+they conflict. If browser-first games are the growth audience, P1's position is
+a live question rather than a settled one. Writing the audience into the
+objectives without re-examining the ranking would leave the two in silent
+tension, which is the failure mode D0 exists to prevent.
+
+**This is not a proposal to demote P1.** P1 has a strong independent
+justification — it is why the engine is compiled real LÖVE rather than an
+imitation, and that argument does not depend on who the audience is. The point
+is only that the ranking should be re-affirmed with the audience in view, and
+recorded either way.
+
+**Supporting analysis, and the reason this is cheap.** love.wasm's existing
+pillars already read as a portal compliance specification: no COOP/COEP (the
+classic love.js portal blocker), D14's one-file self-contained export,
+iframe-ready with `allow=` documented, 3.3 MB measured, touch already done —
+and **cloud saves come free**, because D1 made saves "bytes from the host", so a
+portal host backs the save namespace with portal cloud storage at zero engine
+cost.
+
+**What it gates:** `DESIGN.md` §1 objectives wording; whether the P-ranking
+stands as written; and the severity of D15 (video), D16 (network transport) and
+D17 (keyboard layout), each of which ranks differently for a portal audience
+than for a desktop back-catalog one.
+
+**A discrepancy found while writing this, recorded so it is fixed rather than
+inherited:** `readme.md` lists **five** ranked preferences — preview predicts
+desktop, consumers carry as little as possible, existing games play, artifact
+small, engine fast — while `DESIGN.md` §1.3 lists **four**, omitting "consumers
+carry as little as possible". Their P-numbers therefore disagree, and both
+documents are cited by number elsewhere.
+
+---
+
 ## Q1 — AOT compilation of game Lua
 
 **Open. Closed by data, on a trigger.**
@@ -1209,3 +1363,38 @@ rather than assumed:
   a declared limitation of the standalone-file mode, not a defect.
 
 Answering both is a witness, not a discussion.
+
+---
+
+## Q4 — Box2D 3.x
+
+**Open. Parked; closed by data, on a trigger** — Q1's shape.
+
+Whether `love.physics` should migrate from the in-tree Box2D 2.4 to the 3.x
+line.
+
+**Facts, verified 2026-08-17.** The latest release is **3.1.1** (2025-06-04);
+there is no "3.11"; 3.2 is in development. Upstream claims roughly **3× over
+2.4.2** single-threaded on its own barrel scene.
+
+**The contradicting measurement.** Defold measured 3.1 at roughly **3× slower**
+than their (customized) 2.2 single-threaded at 10,000 bodies
+(`erincatto/box2d` discussion #963), and the maintainer stated that low-body-count
+scenes are "not a case I have optimized for in 3.1". **LÖVE games live in that
+regime.** Box2D 3's multithreaded gains are permanently unreachable here in any
+case, since no-COOP/COEP rules out the threading they need.
+
+**What migration would cost.** It damages **P1**: the preview would stop
+predicting desktop, because desktop LÖVE 12 is on 2.4 with a different solver,
+and `postSolve` impulses have no 3.x equivalent. That is a P1 loss for a
+speed gain — the wrong side of the ranking. It is also a full `wrap_Physics`
+rewrite, since 3.x replaces pointers with opaque IDs.
+
+**Trigger to revisit:** upstream LÖVE adopts 3.x, **or** a real game measures
+physics-bound. Absent either, staying on 2.4 is also what keeps
+`love.physics` a no-deviation row against desktop.
+
+**If it is ever spiked:** the harness is `wasi/platform/run-physics.sh`. One
+wasm detail worth keeping — upstream's `core.h` maps `B2_CPU_WASM` to
+`B2_SIMD_SSE2` (SSE2 over simd128), so a spike needs no fork; see also #87,
+which would have to land first for that path to mean anything.

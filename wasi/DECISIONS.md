@@ -63,7 +63,7 @@ Agent's mistake from becoming the Human's decision by default.
 | D13 | Relationship to upstream LÖVE | **Closed** — mirror is reference-only. Ruled 2026-08-16 |
 | D14 | Deployment packaging | **Closed** — fetched for development, one `.html` for export. Ruled 2026-08-16 |
 | D15 | `love.video` in a browser-first engine | **Open** — re-put; #27's premise has since inverted |
-| D16 | A web-native network transport | **Open** — never decided; deferred out of scope in #27 |
+| D16 | A web-native network transport | **Closed — B**, `luahttps` over `fetch`. Ruled 2026-08-19 |
 | D17 | Keyboard key identification | **Open** — never framed; today's behaviour is a seam default |
 | D18 | Game-visible API additions | **Open** — the Human's position is recorded; the wording awaits confirmation |
 | D19 | Portal / host message seam | **Open** — recommendation recorded |
@@ -1011,9 +1011,28 @@ import family enters the D12 surface; the classification of the video rows in
 
 ## D16 — A web-native network transport
 
-**Open. Never decided.** #27 deferred it out of scope and nothing has picked it
-up since; there is no record anywhere ruling that love.wasm does or does not
-reach a network.
+**Closed — Option B: implement LÖVE's existing `luahttps` surface over a host
+import backed by `fetch`. Ruled 2026-08-19.** Until that ruling there was no
+decision here at all — #27 deferred the question out of scope and nothing had
+picked it up since.
+
+**What the ruling settles.** A browser LÖVE game gets a network. It gets it
+through the API desktop LÖVE already has, so this adds **no game-visible
+surface** and needs nothing from D18. Option A's record correction is not an
+alternative that lost — it is the documentation half of B, and lands with it:
+`COMPATIBILITY.md:190` splits into a permanent blank for raw TCP/UDP and a real
+entry for HTTP(S).
+
+**What it does not settle.** WebSocket and WebRTC data channels (Option C) stay
+unruled. B covers request/response — leaderboards, analytics, non-portal cloud
+saves — and not real-time multiplayer. C remains available and still may not
+begin before D18 is ruled, since it would add game-visible API.
+
+**The design work B carries:** desktop's `https.request` is synchronous and
+`fetch` is not. That is the same sync-engine/async-browser shape as D3 (device
+acquisition), D7/#72 (`DecompressionStream`) and #67 (`mapAsync`) — four
+instances now, three of them open. It is worth solving once, deliberately,
+rather than four times ad hoc.
 
 **The standing state.** `enet`, `luasocket` and `luahttps` are excluded from the
 wasi build. #27 said, parenthetically:
@@ -1061,13 +1080,12 @@ network of any kind.
     embedders, and a game that just wants a leaderboard cannot have one without
     its host's cooperation.
 
-**Recommendation: A immediately, then B.** A costs nothing and stops the record
-from claiming a browser limitation that does not exist. B is the smallest step
-that closes the ✗, and it is the only option that creates no new game-visible
-API and therefore needs no additions ruling. C and D are separable follow-ons;
-C should not begin until game-visible additions are ruled. The synchronous-call/
-asynchronous-API problem is the real design work in B, and it is the same one
-#67 and #72 face — it should be solved once, for all three.
+**Recommendation: A immediately, then B** — and **B is what the Human ruled.**
+A costs nothing and stops the record from claiming a browser limitation that
+does not exist. B is the smallest step that closes the ✗, and it is the only
+option that creates no new game-visible API and therefore needs no additions
+ruling. C and D are separable follow-ons; C should not begin until game-visible
+additions are ruled.
 
 **What it gates:** whether a browser LÖVE game can reach a network at all;
 leaderboards, analytics, non-portal cloud saves, and multiplayer.

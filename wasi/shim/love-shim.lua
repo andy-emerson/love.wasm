@@ -312,21 +312,27 @@ function shim.applyLove(love)
 
 	if love.graphics then
 		-- ParticleSystem:get/setAreaSpread became get/setEmissionArea in 11.0.
+		-- 12's getEmissionArea returns FIVE values; 11.5's getAreaSpread returned
+		-- THREE (wrap_ParticleSystem.cpp:743 in 11.5). Truncating is the faithful
+		-- answer: a game written for 11.5 that forwards the results somewhere
+		-- would otherwise receive two it never expected.
 		patchOnFirst(love.graphics, "newParticleSystem", {
-			getAreaSpread = function(ps) return ps:getEmissionArea() end,
-			setAreaSpread = function(ps, ...) return ps:setEmissionArea(...) end,
+			getAreaSpread = function(ps)
+				local dist, dx, dy = ps:getEmissionArea()
+				return dist, dx, dy
+			end,
+			setAreaSpread = function(ps, dist, dx, dy) return ps:setEmissionArea(dist, dx, dy) end,
 		}, "ParticleSystem:get/setAreaSpread")
 
-		-- 11.5's love.graphics.stencil(func, ...) is CONTROL FLOW, not a name:
-		-- it runs a callback with stencil writes enabled. 12 is state-based, so
-		-- this reproduces the shape — set, call, restore — rather than aliasing.
-		install(love.graphics, "stencil", function(func, action, value, keepvalues)
-			if not keepvalues then love.graphics.clear(false, true, false) end
-			love.graphics.setStencilMode(action or "replace", value or 1)
-			local ok, err = pcall(func)
-			love.graphics.setStencilMode()
-			if not ok then error(err, 0) end
-		end, "love.graphics.stencil")
+		-- NOT SHIMMED: love.graphics.stencil, getStencilTest, setStencilTest.
+		-- An earlier revision implemented stencil() here, on a diff that said 12 had
+		-- removed it. That diff was wrong: it scanned only the C++ registration
+		-- tables, and LÖVE 12 ships src/modules/graphics/wrap_Graphics.lua — a
+		-- Lua-level compatibility layer that defines all three with markDeprecated.
+		-- Upstream's version is also better than the one here was: it saves and
+		-- restores the previous stencil state AND the colour mask, which a stencil
+		-- mask needs and which this file did not do. Re-adding it would shadow a
+		-- working implementation with a worse one.
 	end
 
 	return shim

@@ -12,11 +12,11 @@
 #   sound    LOVE DATA SOUND                  SoundData:getChannels
 #   audio    LOVE DATA MATH FS AUDIO          love.audio.getSourceCount
 #
-# NOT covered: love.graphics.stencil and ParticleSystem:get/setAreaSpread. Both
-# are installed and appear in the shim's report, but exercising them needs a
-# live GL context owned by a running game (config-frame / config-game), and the
-# graphics artifact drives its draws from C++ helpers that leave none open to
-# Lua. See LEG 8e.
+#   frame    LOVE ... GRAPHICS WINDOW ...     ParticleSystem:get/setAreaSpread
+#
+# The frame leg is different in kind: it runs a REAL GAME through LOVE's own
+# boot, because ParticleSystem needs a live GL context and that is the only
+# place Lua can reach one. It is Chromium-only for the same reason.
 #
 #   PREFIX=/path/to/wasi-eh wasi/shim/run.sh
 set -euo pipefail
@@ -49,4 +49,9 @@ PREFIX="$PREFIX" OUT="$TMP/love-audio.wasm" "$ROOT/audio/build.sh" >/dev/null
 node --no-warnings "$HERE/run-node-audio.mjs" "$TMP/love-audio.wasm"
 echo "   node OK"
 
-echo "shim witness: 25 of 27 restorations exercised; graphics pair installed but unwitnessed (LEG 8e)"
+echo "== frame artifact: ParticleSystem area spread, in a real game with a live context =="
+PREFIX="$PREFIX" OUT="$TMP/love-frame.wasm" "$ROOT/platform/build-frame.sh" >/dev/null
+node "$HERE/run-browser-frame-shim.mjs" "$TMP/love-frame.wasm" | tail -3
+echo "   chromium OK"
+
+echo "shim witness: all 24 restorations exercised across five artifacts"

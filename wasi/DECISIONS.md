@@ -68,6 +68,7 @@ Agent's mistake from becoming the Human's decision by default.
 | D18 | Game-visible API additions | **Open** — the Human's position is recorded; the wording awaits confirmation |
 | D19 | Portal / host message seam | **Open** — recommendation recorded |
 | D20 | The target audience, and what it implies for the ranking | **Open** — the audience is ruled; the ranking consequence is not |
+| D21 | What the shim is, what it will never be, and when it is built | **Open** — recommendation recorded |
 | Q1 | AOT compilation of game Lua | **Open** — closed by data, on a trigger |
 | Q2 | WGSL reflection | **Open** — gates the WebGPU backend; the earlier size estimate was wrong |
 | Q3 | `file://` viability for the one-file export | **Open** — verifiable, not arguable |
@@ -1297,6 +1298,103 @@ carries it as P2, with the old P2/P3/P4 shifted to P3/P4/P5 and the prior
 numbering recorded there so earlier citations resolve. D9's citation was
 corrected in the same pass. This record's own P-references use the corrected
 scheme.
+
+---
+
+## D21 — What the shim is, what it will never be, and when it is built
+
+**Open, with a recommendation.**
+
+**The problem this records.** "The shim" has been doing work no design gave it.
+Across D9, #64, #79, #93 and D18, the phrase has been used as a place to send a
+compatibility question when the answer was inconvenient — *we are diverging
+again, the shim will catch it* — without anyone checking that a shim could.
+Every such deferral is an **unearned claim**: it asserts the deviation is
+reachable by a shim, and none of them has been tested, because the shim does not
+exist.
+
+That is the failure mode the evidence ladder exists to prevent, and it has been
+accumulating in a durable document rather than in living status.
+
+### First: three different things are being called the shim
+
+They have different homes, different failure modes and different owners, and
+conflating them is what let the deferrals pile up.
+
+| | Direction | Where it runs | Shape | Governed by |
+|---|---|---|---|---|
+| **Inbound compatibility** | a desktop/5.1 game → love.wasm | inside love.wasm | a small fixed prelude | D9, built as #64 |
+| **Outbound portability** | a love.wasm game → desktop LÖVE | on desktop, as a Lua library the game requires | a reimplementation of an addition | D18 |
+| **Translation** | one source language → another | wherever it is cheapest | a compiler | its own record (#79, #100) |
+
+Only the first is D9's auto-shim. The second is D18's polyfill obligation and
+runs on the other machine entirely. The third is a compiler and is not
+prelude-shaped at all.
+
+### Second: D9's reopen condition may already have fired
+
+D9 says, verbatim:
+
+> **Reopen if** the shim stops being a small fixed prelude — if it starts
+> needing per-game logic, or starts papering over value-semantics differences
+> like the font-size case.
+
+A GLSL → `love.shader` translator is not a small fixed prelude. So either that
+translator is **not** part of the shim — a separate tier with its own record —
+or D9 reopens. The recommendation below takes the first branch, because it is
+the one that keeps D9's condition meaningful rather than quietly widening what
+"prelude" means.
+
+### Recommended: three named tiers, and an explicit list of what the shim will never do
+
+**`love.shim` — inbound only.** Restores 5.1 standard-library names into a 5.4
+world, declared in `COMPATIBILITY.md`, never silent. Fixed content, no per-game
+logic. This is what #64 builds and what D9 governs, and it stays small enough
+that D9's reopen condition keeps its force.
+
+**A separate outbound polyfill tier**, shipped for desktop and required by the
+game, satisfying D18's constraint 2. It is not part of `love.shim` and does not
+run here at all.
+
+**Translators are their own artifacts** (#79, #100), governed by their own
+records. Partial acceptance is acceptable *there* because the tier declares its
+coverage — but that is a property of a declared translator, not of the shim.
+
+**And the part that stops recurrence — a stated non-goal list.** The shim will
+never:
+
+- **Paper over value semantics.** Font sizes and the `luaL_checkinteger` class
+  (#93) are not shimmable: restoring a name fixes something missing, while
+  changing a value masks something wrong. D9 already refuses this; recording it
+  as a non-goal makes the refusal reachable without reading D9.
+- **Supply a missing capability.** Video, a network transport, threads. A shim
+  cannot conjure what the engine does not have.
+- **Carry per-game logic.** The moment it needs to know which game is running,
+  it has become a patch set, and D9 reopens.
+
+A tier with an explicit "will never" list cannot become a container for
+deferrals, because every deferral has to name which tier catches it.
+
+### When it is built: recommended **now**, not late
+
+`readme.md` currently defers the shim "to among the last development steps so it
+is not rebuilt against a moving engine." That reasoning is not wrong, but it
+prices the wrong risk.
+
+- Rebuilding a small prelude against a moving engine is **cheap** — the observed
+  content is three names and thirteen lines.
+- Discovering at the end that several deferred deviations were never shimmable
+  is **not cheap**, and it is the failure this record exists to name.
+
+Building it early converts a growing pile of unearned claims into executable
+evidence, which is what the working agreement prefers precisely because prose
+claims rot silently and executable ones rot loudly. It also lets each new
+deviation be witnessed against the shim **in the merge that introduces it**,
+rather than against a shim that does not yet exist.
+
+**What it gates:** #64's scope; whether D9 reopens; where GLSL → `love.shader`
+translation lives; and whether any given "defer it to the shim" is a plan or a
+wish.
 
 ---
 

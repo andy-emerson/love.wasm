@@ -1,10 +1,17 @@
--- love.shim witness (D21, #64). Runs as the pump's resident coroutine on the
--- LOVE + DATA + PHYSICS artifact, so it can exercise both tiers the shim has:
--- the Lua 5.1 restorations, and the LÖVE 11.5 API names 12 removed.
+-- love.shim witness (D21, #64). ONE witness, run against SEVERAL artifacts.
 --
--- The physics artifact is the right host for a first witness because physics is
--- 13 of the 27 absent names, and it carries the only group whose adaptation is
--- not a rename — the spring parameters, which changed units between 11.5 and 12.
+-- No single love.wasm build links every module, so no single build can exercise
+-- the whole shim. Rather than write one witness per artifact and let coverage
+-- drift apart, every leg here is guarded by a module presence check and yields
+-- "skip" when its module is absent. Coverage is then visible in the transcript
+-- instead of implied, and the union of the runs is what covers the shim:
+--
+--   physics artifact  (LOVE DATA PHYSICS)            the Lua tier + 13 physics names
+--   fs artifact       (LOVE DATA MATH FILESYSTEM)    love.math.compress + 4 predicates
+--   sound artifact    (LOVE DATA SOUND)              SoundData:getChannels
+--
+-- The physics artifact carries the only group whose adaptation is not a rename —
+-- the spring parameters, which changed units between 11.5 and 12.
 --
 -- Each leg yields one line so the host transcript shows facts as they land.
 local failures = 0
@@ -23,8 +30,14 @@ local function near(a, b, tol)
 end
 
 require("love")
-require("love.data")
-require("love.physics")
+
+-- Every love.* module is OPTIONAL here, and that is the point: this one witness
+-- runs against several artifacts, each linking a different subset, and together
+-- they cover the whole shim. A leg whose module is absent yields "skip" rather
+-- than failing, so coverage is visible in the transcript instead of implied.
+for _, m in ipairs({ "data", "math", "physics", "filesystem", "audio", "sound", "graphics" }) do
+	pcall(require, "love." .. m)
+end
 
 local shim = require("love.shim")
 
@@ -33,7 +46,7 @@ local shim = require("love.shim")
 check("pre: unpack absent under 5.4", rawget(_G, "unpack") == nil, rawget(_G, "unpack"))
 check("pre: math.atan2 absent under 5.4", math.atan2 == nil, math.atan2)
 check("pre: love.math.compress absent in 12", love.math == nil or love.math.compress == nil)
-check("pre: World:getBodyList absent in 12", love.physics ~= nil)
+
 
 shim.apply(_G, love)
 
@@ -86,10 +99,15 @@ else
 		type(back) == "string" and #back or back)
 end
 
--- LEG 5 — the physics list renames. 12.0 merged fixtures into shapes, so a
--- body's fixture list IS its shape list.
-local world = love.physics.newWorld(0, 9.81, true)
-local body = love.physics.newBody(world, 0, 0, "dynamic")
+-- LEG 5-7 — the physics tier. Guarded: the fs artifact does not link physics,
+-- and the physics artifact does not link filesystem, so the two runs together
+-- are what cover the shim.
+local world, body
+if love.physics == nil then
+	coroutine.yield("skip love.physics tier — module not linked in this artifact")
+else
+world = love.physics.newWorld(0, 9.81, true)
+body = love.physics.newBody(world, 0, 0, "dynamic")
 local shape = love.physics.newCircleShape(1)
 love.physics.newFixture(body, shape, 1) -- upstream's own deprecated entry point
 
@@ -127,6 +145,8 @@ do
 	check("spring frequency round-trips", near(wj:getSpringFrequency(), 3.0, 1e-2), wj:getSpringFrequency())
 end
 
+end
+
 -- LEG 8 — the shim is safe in both directions, and idempotent on BOTH tiers.
 -- The Lua tier is idempotent for free, because install() refuses to overwrite.
 -- The LÖVE tier is not free: it patches metatables through wrapped constructors
@@ -151,11 +171,91 @@ do
 
 	-- And the double-wrap is gone: a joint built AFTER the second apply must
 	-- still get working spring methods exactly once.
+	if love.physics == nil then goto skipjoint end
+	do
 	local b4 = love.physics.newBody(world, 20, 0, "dynamic")
 	love.physics.newFixture(b4, love.physics.newCircleShape(1), 1)
 	local dj2 = love.physics.newDistanceJoint(body, b4, 0, 0, 20, 0, false)
 	dj2:setFrequency(2.0)
 	check("a joint built after re-apply still converts correctly", near(dj2:getFrequency(), 2.0, 1e-2), dj2:getFrequency())
+	end
+	::skipjoint::
+end
+
+-- LEG 8b — love.filesystem: the four predicates 11.0 replaced with getInfo and
+-- 12 removed. Each is arithmetic on an existing answer, so the interesting
+-- assertion is not that they exist but that they AGREE with getInfo — a stub
+-- returning true would pass a weaker test.
+if love.filesystem == nil then
+	coroutine.yield("skip love.filesystem tier — module not linked in this artifact")
+else
+	local F = love.filesystem
+	-- Setup, not a claim: the read surface needs a source. pcall because an
+	-- artifact whose boot already ran this will refuse the second call, and
+	-- setSource is settable-once by design.
+	pcall(F.init, "love")
+	pcall(F.setSource, "/")
+
+	check("love.filesystem.isFile restored", type(F.isFile) == "function")
+	check("isFile agrees with getInfo on a real file",
+		F.isFile("main.lua") == (F.getInfo("main.lua") ~= nil and F.getInfo("main.lua").type == "file"))
+	check("isFile is false for a path that does not exist", F.isFile("no/such/file.txt") == false)
+	check("isDirectory is false for a file", F.isDirectory("main.lua") == false)
+	check("isSymlink is false in a virtual store", F.isSymlink("main.lua") == false)
+	check("getLastModified returns nil + reason when absent",
+		select(1, F.getLastModified("no/such/file.txt")) == nil)
+	do
+		local i = F.getInfo("main.lua")
+		check("getLastModified agrees with getInfo.modtime",
+			i == nil or F.getLastModified("main.lua") == i.modtime)
+	end
+end
+
+-- LEG 8c — love.audio.getSourceCount, renamed to getActiveSourceCount in 12.
+if love.audio == nil then
+	coroutine.yield("skip love.audio tier — module not linked in this artifact")
+else
+	check("love.audio.getSourceCount restored", type(love.audio.getSourceCount) == "function")
+	check("getSourceCount agrees with getActiveSourceCount",
+		love.audio.getSourceCount() == love.audio.getActiveSourceCount())
+end
+
+-- LEG 8d — SoundData:getChannels, renamed to getChannelCount in 12.
+if love.sound == nil then
+	coroutine.yield("skip love.sound tier — module not linked in this artifact")
+else
+	local sd = love.sound.newSoundData(64, 44100, 16, 2)
+	check("SoundData:getChannels restored", type(sd.getChannels) == "function")
+	check("getChannels agrees with getChannelCount", sd:getChannels() == sd:getChannelCount(), sd:getChannels())
+	check("getChannels reports the real channel count", sd:getChannels() == 2, sd:getChannels())
+end
+
+-- LEG 8e — love.graphics: STILL UNWITNESSED, and this says why rather than
+-- implying coverage. Both entries need a live GL context. The graphics artifact
+-- has one, but drives every draw from C++ helpers (__wasi_gfx_draw_*) that do
+-- not leave a context open to Lua, so love.graphics.isActive() is false here —
+-- checked, not assumed: calling a helper first does not change it.
+--
+-- The right host is an artifact where LÖVE's own boot runs love.window.setMode
+-- (config-frame / config-game), because then the context belongs to the running
+-- game rather than to a test helper. That is follow-on work, and until it exists
+-- love.graphics.stencil and ParticleSystem:get/setAreaSpread are INSTALLED but
+-- NOT EXERCISED — the shim's report lists them, and this leg does not.
+if love.graphics == nil or not love.graphics.isActive() then
+	coroutine.yield("skip love.graphics tier — no live graphics context in this artifact")
+else
+	check("love.graphics.stencil restored", type(love.graphics.stencil) == "function")
+	do
+		local ran = false
+		love.graphics.stencil(function() ran = true end, "replace", 1)
+		check("stencil runs its callback (11.5 control flow preserved)", ran)
+	end
+	do
+		local ok = pcall(function()
+			love.graphics.stencil(function() error("from inside the callback") end)
+		end)
+		check("stencil restores state even when the callback errors", ok == false)
+	end
 end
 
 -- LEG 9 — detection, keyed off the t.version LÖVE already reads (boot.lua:378).

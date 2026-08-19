@@ -302,6 +302,14 @@ function shim.applyLove(love)
 		end, "love.audio.getSourceCount")
 	end
 
+	-- SoundData:getChannels became getChannelCount in 12. Same count, clearer
+	-- name; the 11.5 spelling is the one every existing game wrote.
+	if love.sound then
+		patchOnFirst(love.sound, "newSoundData", {
+			getChannels = function(sd) return sd:getChannelCount() end,
+		}, "SoundData:getChannels")
+	end
+
 	if love.graphics then
 		-- ParticleSystem:get/setAreaSpread became get/setEmissionArea in 11.0.
 		patchOnFirst(love.graphics, "newParticleSystem", {

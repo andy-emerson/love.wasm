@@ -536,7 +536,7 @@ that 5.4 cannot express.
 **Closed — Option B, the goal. Ruled on `claude/project-roadmap-handoff-evlsl7`
 and re-affirmed 2026-08-16.** Today's re-put reached the same answer by the same
 argument, so the record below stands as written; what today added is the
-vocabulary (`DESIGN.md` §1: compatibility is a *preference*, ranked P2, not a
+vocabulary (`DESIGN.md` §1: compatibility is a *preference*, ranked P3, not a
 requirement) and the scheduling — the shim is deferred to among the last
 development steps so it is not rebuilt against a moving engine. Implementation
 and its three tiers are issue #64.
@@ -1270,12 +1270,15 @@ stands as written; and the severity of D15 (video), D16 (network transport) and
 D17 (keyboard layout), each of which ranks differently for a portal audience
 than for a desktop back-catalog one.
 
-**A discrepancy found while writing this, recorded so it is fixed rather than
-inherited:** `readme.md` lists **five** ranked preferences — preview predicts
-desktop, consumers carry as little as possible, existing games play, artifact
-small, engine fast — while `DESIGN.md` §1.3 lists **four**, omitting "consumers
-carry as little as possible". Their P-numbers therefore disagree, and both
-documents are cited by number elsewhere.
+**A discrepancy found while writing this, since fixed (2026-08-19):**
+`readme.md` listed **five** ranked preferences while `DESIGN.md` §1.3 listed
+**four**, omitting "consumers carry as little as possible", so their P-numbers
+denoted different objectives while both were cited by number elsewhere. The
+readme's list is the later of the two and was adopted: `DESIGN.md` §1.3 now
+carries it as P2, with the old P2/P3/P4 shifted to P3/P4/P5 and the prior
+numbering recorded there so earlier citations resolve. D9's citation was
+corrected in the same pass. This record's own P-references use the corrected
+scheme.
 
 ---
 

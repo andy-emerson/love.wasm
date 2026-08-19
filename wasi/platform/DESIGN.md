@@ -70,9 +70,10 @@ divergence, not a gap.
 | | Objective | Type |
 |---|---|---|
 | **P1** | **The preview predicts desktop.** A game built in the browser for desktop should look, feel and behave in the preview as it will on desktop | Optimization |
-| **P2** | **Existing LÖVE games play** — most games written for 11.5 / Lua 5.1, directly or after an automatic shim | Optimization, with a floor at *most* |
-| **P3** | **The artifact is small** | Optimization |
-| **P4** | **The engine is fast** | Optimization |
+| **P2** | **Consumers carry as little as possible** — what an embedder must write, understand and maintain to use the artifact | Optimization |
+| **P3** | **Existing LÖVE games play** — most games written for 11.5 / Lua 5.1, directly or after an automatic shim | Optimization, with a floor at *most* |
+| **P4** | **The artifact is small** | Optimization |
+| **P5** | **The engine is fast** | Optimization |
 
 P1 is why the engine is compiled real LÖVE rather than an imitation, and why
 WebGPU is not optional: LÖVE 12 has compute shaders and WebGL2 has none, so a
@@ -80,14 +81,32 @@ game using one cannot be previewed at all (D10).
 
 **Conflicts already resolved, and the rulings they produced:**
 
-- **R2 over P4** — live edit beats speed. Closes ahead-of-time compilation out
+- **R2 over P5** — live edit beats speed. Closes ahead-of-time compilation out
   of the preview path (Q1).
 - **R1 over P1** — browser-native correctness beats desktop parity. A browser
   cannot match desktop on storage durability, HRTF, microphone rates or
   threading, and is not expected to.
-- **P1 over P2** — the preview's fidelity beats shader-source portability. A
+- **P1 over P3** — the preview's fidelity beats shader-source portability. A
   game's shaders no longer run unmodified on desktop LÖVE (D11); its logic
   still does.
+
+**On P2, and on the numbering.** P2 was missing from this table until
+2026-08-19: `readme.md` has listed five ranked preferences since `730ab2c`, and
+this table listed four, so the two documents disagreed and their P-numbers
+denoted different objectives. The readme's list is the later of the two and is
+the one adopted here.
+
+**P2 is about the consumer's burden, not the import count.** D12 says the size
+of the import surface "is a fact about publishing an interface, not a target to
+minimise" — a consumer embedding this engine is writing a web page and is
+already writing JavaScript. P2 is the broader preference D5 invokes when it
+calls the consumer's burden "the thing we are minimizing": how much a consumer
+must write, understand and maintain. Fewer imports are not a goal; less work for
+the embedder is.
+
+**Numbering before 2026-08-19**, so earlier citations resolve: P2 meant
+"existing LÖVE games play" (now P3), P3 meant "the artifact is small" (now P4),
+and P4 meant "the engine is fast" (now P5). P1 is unchanged.
 
 
 ## The other principle: the game stays pure LÖVE; the host holds the powers

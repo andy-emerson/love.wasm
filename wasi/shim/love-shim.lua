@@ -12,7 +12,7 @@ R"luastring"--(
 -- MECHANISM: environment preparation, never source rewriting. Everything below
 -- INSTALLS a missing name; nothing edits the game's Lua. That is deliberate:
 --   - the whole gap is missing names, not wrong source (the 11.5->12 diff found
---     27 absent APIs, every one with a target in 12 — see #64);
+--     24 absent APIs, every one with a target in 12 — see #64);
 --   - rewriting source would break hotswap, which re-runs the edited chunk from
 --     disk (D4/D5): the running code would stop matching the file on disk;
 --   - "declared, never silent" (D9) is cheap for a list of installed names and
@@ -138,11 +138,17 @@ end
 --------------------------------------------------------------------------------
 -- Tier 2 — LÖVE 11.5 names that LÖVE 12 removed outright.
 --
--- Scope comes from a measured diff, not a guess: 11.5 registers 965 Lua-facing
--- names, 12 registers 1090, and 938 of 11.5's survive — 97.2%. Only 27 are
--- absent, and each has a verified target in 12 (#64). Everything 12 merely
--- RENAMED or REPLACED is already carried by upstream's own 30 deprecation
--- entries and needs nothing from us.
+-- Scope comes from a measured diff, not a guess: wasi/shim/api-diff.py compares
+-- 11.5's Lua-facing surface against 12's and finds **24** names absent, each
+-- with a verified target in 12 (#64). Everything 12 merely RENAMED or REPLACED
+-- is already carried by upstream's own 30 deprecation entries and needs nothing
+-- from us.
+--
+-- The count was 27 in an earlier revision. That diff scanned only the C++
+-- registration tables; LÖVE 12 also ships Lua-level API files, and
+-- src/modules/graphics/wrap_Graphics.lua defines stencil, getStencilTest and
+-- setStencilTest. Three names that were never absent. The extractor now reads
+-- both, which is why it lives in the repo rather than in a session.
 --------------------------------------------------------------------------------
 
 -- LÖVE objects use `m.__index = m` (common/runtime.cpp:520) and set no

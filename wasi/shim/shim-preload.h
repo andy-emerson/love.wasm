@@ -28,7 +28,17 @@
 // match (see src/modules/love/boot.lua), so ONE file is both the Lua source and
 // an includable C string. No generator, and no second copy to drift.
 
-#include "common/runtime.h"
+// DEPENDS ON LUA ONLY, deliberately. An earlier revision included
+// "common/runtime.h" for love::luax_preload and broke wasi/platform/build.sh —
+// the step-6.1 love_fs seam artifact, which compiles fs-ext.cpp with only
+// -I$LUA because that TU is Lua-and-imports and nothing more. CI caught it;
+// reading would not have, since the other three ext files do carry -I$SRC.
+//
+// So this header includes lua.hpp, as fs-ext.cpp itself does, and inlines what
+// luax_preload does (common/runtime.cpp:479) rather than linking to it. Four
+// lines of stack manipulation is a cheaper dependency than a header that only
+// three of the four call sites can see.
+#include "lua.hpp"
 
 namespace love_wasm_shim
 {
@@ -47,9 +57,14 @@ inline int open(lua_State *L)
 	return 1;
 }
 
+// love::luax_preload, inlined — see the note above on why this does not call it.
 inline void preload(lua_State *L)
 {
-	love::luax_preload(L, open, "love.shim");
+	lua_getglobal(L, "package");
+	lua_getfield(L, -1, "preload");
+	lua_pushcfunction(L, open);
+	lua_setfield(L, -2, "love.shim");
+	lua_pop(L, 2);
 }
 
 } // namespace love_wasm_shim

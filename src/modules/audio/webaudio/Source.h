@@ -132,6 +132,14 @@ private:
 
 	float pitch = 1.0f;
 	float volume = 1.0f;
+	// Per-source spatialization. Stored and reported, not applied — the same
+	// convention the cone values below already followed. Storage is required,
+	// not cosmetic: w_Source_getPosition reads an uninitialized array and pushes
+	// it to Lua, so an empty getter body returns stack noise (#88).
+	float position[3] = { 0.0f, 0.0f, 0.0f };
+	float velocity[3] = { 0.0f, 0.0f, 0.0f };
+	float direction[3] = { 0.0f, 0.0f, 0.0f };
+
 	float coneInnerAngle = LOVE_TORAD(360.0f);
 	float coneOuterAngle = LOVE_TORAD(360.0f);
 	float coneOuterVolume = 0.0f;

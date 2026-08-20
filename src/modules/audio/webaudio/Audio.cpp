@@ -227,28 +227,48 @@ float Audio::getVolume() const
 	return volume;
 }
 
-void Audio::getPosition(float *) const
+// Store and report. Desktop round-trips these through OpenAL's own listener
+// state (openal/Audio.cpp:469 — alGetListenerfv / alListenerfv), so a game that
+// sets and reads back sees the same values here that it sees there. What a
+// browser does not do is APPLY them, which is the declared part.
+//
+// The empty bodies these replace were not a no-op: the wrapper reads an
+// uninitialized array and pushes it to Lua, so the game received stack noise
+// rather than the value it had set (#88).
+void Audio::getPosition(float *v) const
 {
+	for (int i = 0; i < 3; i++)
+		v[i] = position[i];
 }
 
-void Audio::setPosition(float *)
+void Audio::setPosition(float *v)
 {
+	for (int i = 0; i < 3; i++)
+		position[i] = v[i];
 }
 
-void Audio::getOrientation(float *) const
+void Audio::getOrientation(float *v) const
 {
+	for (int i = 0; i < 6; i++)
+		v[i] = orientation[i];
 }
 
-void Audio::setOrientation(float *)
+void Audio::setOrientation(float *v)
 {
+	for (int i = 0; i < 6; i++)
+		orientation[i] = v[i];
 }
 
-void Audio::getVelocity(float *) const
+void Audio::getVelocity(float *v) const
 {
+	for (int i = 0; i < 3; i++)
+		v[i] = velocity[i];
 }
 
-void Audio::setVelocity(float *)
+void Audio::setVelocity(float *v)
 {
+	for (int i = 0; i < 3; i++)
+		velocity[i] = v[i];
 }
 
 void Audio::setDopplerScale(float scale)

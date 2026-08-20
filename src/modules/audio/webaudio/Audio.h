@@ -112,6 +112,21 @@ private:
 	DistanceModel distanceModel = DISTANCE_INVERSE_CLAMPED;
 	float dopplerScale = 1.0f;
 
+	// Listener spatialization. Stored and reported, not applied — the same
+	// convention distanceModel and dopplerScale above already follow, and what
+	// this file's own comments claimed before the storage existed.
+	//
+	// It has to be stored SOMEWHERE, because the wrappers do not defend against
+	// a backend that writes nothing: w_getPosition declares `float v[3]` and
+	// pushes it straight to Lua (wrap_Audio.cpp:245), so a getter with an empty
+	// body hands the game whatever was on the stack. That was the bug (#88).
+	//
+	// Defaults are OpenAL's, so a game reading before writing sees what desktop
+	// shows: origin, forward -Z, up +Y, at rest.
+	float position[3] = { 0.0f, 0.0f, 0.0f };
+	float orientation[6] = { 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f };
+	float velocity[3] = { 0.0f, 0.0f, 0.0f };
+
 	// Sources that are currently playing. love.audio.stop() / pause() /
 	// getActiveSourceCount() are ABOUT this set, so without it they had nothing
 	// to answer from: stop() was an empty function and getActiveSourceCount()

@@ -242,28 +242,45 @@ double Source::getDuration(Unit unit)
 	return unit == UNIT_SAMPLES ? samples : samples / (double) sampleRate;
 }
 
-void Source::setPosition(float *)
+// Store and report, as the cone values already did. Desktop round-trips these
+// through OpenAL's own source state; a browser does not apply them, which is the
+// declared part. The empty bodies these replace returned uninitialized stack
+// memory to the game, because the wrapper does not defend against a backend that
+// writes nothing (#88).
+void Source::setPosition(float *v)
 {
+	for (int i = 0; i < 3; i++)
+		position[i] = v[i];
 }
 
-void Source::getPosition(float *) const
+void Source::getPosition(float *v) const
 {
+	for (int i = 0; i < 3; i++)
+		v[i] = position[i];
 }
 
-void Source::setVelocity(float *)
+void Source::setVelocity(float *v)
 {
+	for (int i = 0; i < 3; i++)
+		velocity[i] = v[i];
 }
 
-void Source::getVelocity(float *) const
+void Source::getVelocity(float *v) const
 {
+	for (int i = 0; i < 3; i++)
+		v[i] = velocity[i];
 }
 
-void Source::setDirection(float *)
+void Source::setDirection(float *v)
 {
+	for (int i = 0; i < 3; i++)
+		direction[i] = v[i];
 }
 
-void Source::getDirection(float *) const
+void Source::getDirection(float *v) const
 {
+	for (int i = 0; i < 3; i++)
+		v[i] = direction[i];
 }
 
 void Source::setCone(float innerAngle, float outerAngle, float outerVolume, float outerHighGain)

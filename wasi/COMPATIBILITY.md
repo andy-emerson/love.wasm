@@ -118,7 +118,8 @@ peculiarity — a phone cannot reposition its window either.
 | volume, pitch, looping, seek, tell | ✓ | ✓ | |
 | static, streaming and queueable sources | ✓ | ✓ | |
 | `Source:getDuration` | ✓ | ✓ | arithmetic for a static source; `-1` stays the honest answer for stream and queue |
-| listener position / orientation / velocity | ✓ | ✓ | stored and reported |
+| listener position / orientation / velocity | ✓ | ✓ | stored and reported, **not applied** — this backend's stated convention. Defaults are OpenAL's (origin, forward -Z, up +Y), so a game reading before writing sees what desktop shows. Round-trip witnessed by `wasi/audio/run.sh`; velocity has no browser equivalent at all, since Web Audio removed doppler |
+| `Source:set/getPosition`, `Direction`, `Velocity` | ✓ | ✓ | as above, per source |
 | distance model, doppler scale | ✓ | ✓ | default is `inverse clamped`, as desktop's is. Unappliable spatialization state is stored and reported — this backend's stated convention |
 | microphone capture | ✓ | ✓ | `getUserMedia` → AudioWorklet; the host's real rate is reported rather than resampled in wasm |
 | choosing the microphone's sample rate | ✓ | | a browser gives you the rate it gives you |

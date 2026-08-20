@@ -137,5 +137,80 @@ else
   end
 end
 
+-- Spatialization round-trip (#88). The bug these legs exist for was NOT that
+-- spatialization is inert — that is declared, and a browser has no OpenAL
+-- listener to drive. It was that the getters had empty bodies while the wrapper
+-- reads an uninitialized array and pushes it to Lua (wrap_Audio.cpp:245), so a
+-- game got stack noise instead of the value it had just set.
+--
+-- These legs assert the ROUND-TRIP, which is what desktop gives through
+-- alGetListenerfv (openal/Audio.cpp:469), and deliberately assert nothing about
+-- audibility. They also read BEFORE writing, because the defaults are part of
+-- the contract: a game that reads first must see OpenAL's origin/forward/up,
+-- not whatever the stack held.
+do
+  local x, y, z = love.audio.getPosition()
+  check("listener position defaults to the origin, not stack noise",
+    x == 0 and y == 0 and z == 0, ("(%s,%s,%s)"):format(x, y, z))
+
+  local fx, fy, fz, ux, uy, uz = love.audio.getOrientation()
+  check("listener orientation defaults to OpenAL's forward -Z / up +Y",
+    fx == 0 and fy == 0 and fz == -1 and ux == 0 and uy == 1 and uz == 0,
+    ("(%s,%s,%s,%s,%s,%s)"):format(fx, fy, fz, ux, uy, uz))
+
+  love.audio.setPosition(1, 2, 3)
+  x, y, z = love.audio.getPosition()
+  check("listener position round-trips", x == 1 and y == 2 and z == 3,
+    ("(%s,%s,%s)"):format(x, y, z))
+
+  love.audio.setOrientation(1, 2, 3, 4, 5, 6)
+  fx, fy, fz, ux, uy, uz = love.audio.getOrientation()
+  check("listener orientation round-trips",
+    fx == 1 and fy == 2 and fz == 3 and ux == 4 and uy == 5 and uz == 6,
+    ("(%s,%s,%s,%s,%s,%s)"):format(fx, fy, fz, ux, uy, uz))
+
+  love.audio.setVelocity(7, 8, 9)
+  x, y, z = love.audio.getVelocity()
+  check("listener velocity round-trips", x == 7 and y == 8 and z == 9,
+    ("(%s,%s,%s)"):format(x, y, z))
+
+  -- A second read must agree with the first. Stack noise can coincidentally
+  -- match once; it does not stay stable across an intervening call.
+  love.audio.getOrientation()
+  x, y, z = love.audio.getPosition()
+  check("position is stable across an intervening call", x == 1 and y == 2 and z == 3,
+    ("(%s,%s,%s)"):format(x, y, z))
+end
+
+if sok and src ~= nil then
+  local x, y, z = src:getPosition()
+  check("Source position defaults to the origin", x == 0 and y == 0 and z == 0,
+    ("(%s,%s,%s)"):format(x, y, z))
+
+  src:setPosition(4, 5, 6)
+  x, y, z = src:getPosition()
+  check("Source position round-trips", x == 4 and y == 5 and z == 6,
+    ("(%s,%s,%s)"):format(x, y, z))
+
+  src:setDirection(-1, 0, 1)
+  x, y, z = src:getDirection()
+  check("Source direction round-trips", x == -1 and y == 0 and z == 1,
+    ("(%s,%s,%s)"):format(x, y, z))
+
+  src:setVelocity(2, 0, -2)
+  x, y, z = src:getVelocity()
+  check("Source velocity round-trips", x == 2 and y == 0 and z == -2,
+    ("(%s,%s,%s)"):format(x, y, z))
+
+  -- Two Sources must not share state — a single static would round-trip and
+  -- still be wrong.
+  local other = love.audio.newQueueableSource(44100, 16, 1)
+  if other ~= nil then
+    local ox, oy, oz = other:getPosition()
+    check("a second Source has its own position, not the first's",
+      ox == 0 and oy == 0 and oz == 0, ("(%s,%s,%s)"):format(ox, oy, oz))
+  end
+end
+
 coroutine.yield(("checks done, %d failures"):format(failures))
 return failures == 0 and "STEP5-AUDIO-WITNESS: PASS" or "STEP5-AUDIO-WITNESS: FAIL"

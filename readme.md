@@ -235,6 +235,7 @@ Each runs every engine it can reach, and every leg must pass. A Chromium-only wi
 | `wasi/platform/run-fs-list.sh` | `love.filesystem` enumeration over `fs_list`, project and save merged and de-duped | node, Chromium |
 | `wasi/platform/run-game.sh` | the union: a real game, with sound, physics and drawing together | Chromium |
 | `wasi/shell/run.sh` | the interactive shell: a project loaded from disk, real DOM key events moving the game and stopping on release, and a module edit reaching the running instance | Chromium |
+| `wasi/shim/run.sh` | `love.shim`: the Lua 5.1 restorations and the 24 LÖVE 11.5 names 12 removed, across five artifacts | node, Chromium |
 | `wasi/shell/run-hotswap.sh` | function-body hotswap (#56, D4=B): a `main.lua` edit saved on disk runs at the next frames with file-scope state intact and shared; a broken save errors on the user's line with the session running on; `love.load` runs once per session | Chromium |
 
 `wasi/sweep/run.sh` is not a witness but a probe: `-fsyntax-only` over every engine-module translation unit under the build's exact contract flags, so no module's status is left unknown (#9).

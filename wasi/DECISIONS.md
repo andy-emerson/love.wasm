@@ -1425,6 +1425,37 @@ rather than against a shim that does not yet exist.
 translation lives; and whether any given "defer it to the shim" is a plan or a
 wish.
 
+### Appended 2026-08-19 — two things building it disproved
+
+A closed record freezes, so this appends rather than rewrites. Both findings
+contradict details above, and both were found by running the thing rather than
+by reading it.
+
+**`wantsShim(t.version)` cannot be a gate.** The record and the module both
+treat `t.version` as the signal for whether to shim, on the reasoning that LÖVE
+already reads it (`modules/love/boot.lua:378`). It does — but `t.version` lives
+in `conf.lua`, and **`conf.lua` is itself game code**. An 11.5 game whose
+`conf.lua` calls `unpack()` fails before the version authorising the shim has
+been read. So the shim applies **unconditionally**, which is safe because every
+install is `x = x or …`: on a game that needs nothing it installs names that
+game never calls. `wantsShim` survives as advisory — a consumer wanting strict
+12-only semantics may ask before applying — not as the gate it was drafted to
+be.
+
+**The two tiers cannot apply at the same moment.** The Lua tier must run before
+any game code, so before `love.boot`. The LÖVE tier can only run after the
+`love.*` modules exist, and `love.boot` is what loads them. Calling `apply()`
+before boot installs the Lua names correctly and **silently skips every
+LÖVE-tier patch**, because `love.graphics` and friends are still `nil` —
+nothing errors, and the restorations simply are not there. `shim.arm()` resolves
+it by putting the Lua tier on immediately and attaching the LÖVE tier to the
+module loaders in `package.preload`, so each module is patched the moment it is
+required, still well before `main.lua`.
+
+Both are witnessed, and the second is mutation-tested: a boot wrapper calling
+`apply()` instead of `arm()` turns the ParticleSystem legs red and leaves the
+rest green.
+
 ### What the shim must reach: LÖVE 11.5, not only 12
 
 Ruled alongside the above: the compatibility floor is **LÖVE 12 with Lua 5.1

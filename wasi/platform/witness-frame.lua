@@ -102,5 +102,28 @@ setmetatable(love, {
 	end,
 })
 
+-- love.shim: switch on the inbound compatibility tier (D21) BEFORE love.boot.
+--
+-- It has to be here rather than after boot, and it has to be UNCONDITIONAL, for
+-- a reason D21's record did not anticipate. The shim's own wantsShim() keys off
+-- t.version, which is what LÖVE itself reads to decide compatibility
+-- (modules/love/boot.lua:378) — but t.version lives in conf.lua, and conf.lua is
+-- ITSELF game code. An 11.5 game whose conf.lua calls unpack() would fail
+-- before the version that authorises the shim had been read. Gating on
+-- t.version is therefore impossible for the Lua tier, whatever the design
+-- document says.
+--
+-- Applying unconditionally is safe because every install is `x = x or ...`: on a
+-- game that needs nothing, the shim installs names that game never calls and
+-- changes no behaviour. wantsShim() survives as advisory — a consumer that wants
+-- strict 12-only semantics can ask before applying — rather than as the gate it
+-- was drafted to be.
+--
+-- arm() rather than apply(): the Lua tier goes on now, and the LÖVE tier rides
+-- the module loaders, because love.graphics and friends do not exist until
+-- love.boot loads them. apply() here would install the Lua names and silently
+-- skip every LÖVE-tier patch.
+require("love.shim").arm(_G)
+
 local main = require("love.boot")
 return main()

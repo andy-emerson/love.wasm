@@ -47,6 +47,7 @@
 // wrap over these calls lands then too; the fidelity claim here is the backend,
 // not the wrap.
 #include "common/runtime.h"
+#include "../shim/shim-preload.h"
 #include "common/Color.h"
 #include "common/Optional.h"
 #include "common/Vector.h"
@@ -1262,6 +1263,7 @@ static int w_draw_instanced(lua_State *L)
 
 extern "C" void pump_open_extensions(lua_State *L)
 {
+	love_wasm_shim::preload(L);
 	love::luax_preload(L, luaopen_love, "love");
 	lua_register(L, "__wasi_gfx_draw_instanced", w_draw_instanced);
 	lua_register(L, "__wasi_gfx_draw_depth", w_draw_depth);

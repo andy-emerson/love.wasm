@@ -62,9 +62,17 @@ Agent's mistake from becoming the Human's decision by default.
 | D12 | What love.wasm ships | **Closed** — the artifact and its interface specification. Ruled 2026-08-16 |
 | D13 | Relationship to upstream LÖVE | **Closed** — mirror is reference-only. Ruled 2026-08-16 |
 | D14 | Deployment packaging | **Closed** — fetched for development, one `.html` for export. Ruled 2026-08-16 |
+| D15 | `love.video` in a browser-first engine | **Open** — re-put; #27's premise has since inverted |
+| D16 | A web-native network transport | **Closed — B**, `luahttps` over `fetch`. Ruled 2026-08-19 |
+| D17 | Keyboard key identification | **Open** — never framed; today's behaviour is a seam default |
+| D18 | Game-visible API additions | **Open** — the Human's position is recorded; the wording awaits confirmation |
+| D19 | Portal / host message seam | **Open** — recommendation recorded |
+| D20 | The target audience, and what it implies for the ranking | **Open** — the audience is ruled; the ranking consequence is not |
+| D21 | What the shim is, what it will never be, and when it is built | **Closed** — three tiers, a non-goal list, built now. Ruled 2026-08-19 |
 | Q1 | AOT compilation of game Lua | **Open** — closed by data, on a trigger |
 | Q2 | WGSL reflection | **Open** — gates the WebGPU backend; the earlier size estimate was wrong |
 | Q3 | `file://` viability for the one-file export | **Open** — verifiable, not arguable |
+| Q4 | Box2D 3.x | **Open** — parked; closed by data, on a trigger |
 
 **On the numbering, and a correction.** D9, D10 and D11 were recorded in full —
 197 lines, with surveys, evidence and reopen conditions — on the branch
@@ -80,6 +88,26 @@ re-affirmed them with the record in view — and each carries what the earlier
 record said, so a later reader sees both.
 
 D12, D13 and D14 are genuinely new.
+
+**On D15, D16 and D17 — three dispositions the D0 audit did not reach.** The
+2026-08-16 audit re-put D1 through D9 against D0's companion clause. It did not
+reach issue #27, opened 2026-07-09 and closed 2026-08-11 — a *preview-limitation
+policy* issue about warning messages, which under a heading reading "the warned
+stub set, **this session's decisions**" also settled the disposition of
+`love.video`, of networking, and of `love.sensor`. Its grade line records
+strength as "**Decided** (this session)". No artifact distinguishes whether the
+Human ruled any of them, which is the exact condition D0 exists to end.
+
+Two of the three are re-put below, and a third question — keyboard key
+identification — is framed here for the first time, having never been a
+recorded choice at all. `love.sensor` is **not** re-put: desktop LÖVE reports no
+sensors either, so its disposition matches desktop and nothing turns on it.
+
+The re-put matters most for `love.video`, because #27's opening sentence is
+"love-wasi is the browser **preview** engine — it has zero involvement in
+export." `readme.md` now states the reverse: the primary target is a game that
+runs natively in the browser, and the preview is the second use. A disposition
+whose premise has been inverted is not a settled decision.
 
 ---
 
@@ -509,7 +537,7 @@ that 5.4 cannot express.
 **Closed — Option B, the goal. Ruled on `claude/project-roadmap-handoff-evlsl7`
 and re-affirmed 2026-08-16.** Today's re-put reached the same answer by the same
 argument, so the record below stands as written; what today added is the
-vocabulary (`DESIGN.md` §1: compatibility is a *preference*, ranked P2, not a
+vocabulary (`DESIGN.md` §1: compatibility is a *preference*, ranked P3, not a
 requirement) and the scheduling — the shim is deferred to among the last
 development steps so it is not rebuilt against a moving engine. Implementation
 and its three tiers are issue #64.
@@ -924,6 +952,553 @@ or maps, so any self-contained artifact needs the data-embedding path anyway.
 
 ---
 
+## D15 — `love.video` in a browser-first engine
+
+**Open. Re-put, because the premise the standing disposition rested on has been
+inverted.** A recommendation is offered below and is labelled as one; only the
+Human closes this.
+
+**The standing disposition (#27, 2026-07-09).** libtheora was dropped, verbatim:
+
+> CPU-decoding Theora single-threaded in wasm would stutter, and stuttering
+> video is *lower* fidelity than a clean "not in preview" notice. Warned stub.
+> If web video is ever wanted, the right path is a browser `<video>` seam
+> (hardware-accelerated), not the legacy codec.
+
+**That reasoning is still correct, and it is not what is being re-put.** Theora
+in wasm remains a bad idea for exactly the stated reason, and the identified
+right path — a `<video>` seam — is the same one recommended here. What changed
+is the cost of *not* doing it. #27 opens "love-wasi is the browser **preview**
+engine — it has zero involvement in export," and under that premise a cutscene
+that does not play costs a developer checking their game nothing. `readme.md`
+now says the primary target is a LÖVE game that runs natively in the browser,
+with the preview second. Under the current premise the same absence is a product
+gap in the runtime with the best video stack available anywhere.
+
+- **Option A — stay dropped.** `love.video` stays `nil`, reported on use.
+  - **For:** no work; no imports owed under D12; no new host surface.
+  - **Against:** a browser game cannot play video at all. It also carries a **✗**
+    rather than a blank, by requirement 1's own test — the browser has this and
+    we do not — so A is a choice to hold a known gap, which is permitted but must
+    be recorded as a gap and not as a divergence.
+- **Option B — a `<video>` seam.** The host owns an `HTMLVideoElement`; frames
+  reach the engine as a texture through new `love_video` imports.
+  - **For:** hardware-accelerated, zero decode in wasm, codec support is the
+    browser's problem rather than ours, and it is what #27 itself named.
+  - **Against:** permanent imports under D12; `VideoStream`'s synchronous pull
+    against the element's async readiness is the same sync-engine/async-browser
+    shape as D3 and D7; audio-track synchronisation is real design work.
+- **Option C — Option B, sequenced after the WebGPU backend lands.** Same design,
+  built once.
+  - **For:** WebGPU's `importExternalTexture` exists for precisely this and is
+    markedly cleaner than a WebGL2 upload path, so C avoids building the texture
+    path twice against a backend that is being replaced.
+  - **Against:** puts video behind #67, which is already the critical path.
+- **Option D — declare `love.video` permanently out of scope.**
+  - **For:** honest, and closes the question rather than leaving it open.
+  - **Against:** forecloses a capability the platform has, against requirement 1.
+
+**Recommendation: C.** B is the right design and C is the right sequencing —
+the same argument that deferred D7's work to after #67 applies here, and for the
+same reason. Whichever option is ruled, `wasi/COMPATIBILITY.md`'s video row
+should stop reading as a declared divergence: the browser plays video, so the
+row is a gap, and A would be a decision to carry it.
+
+**What it gates:** whether `love.video` stays `nil`; whether a `love_video`
+import family enters the D12 surface; the classification of the video rows in
+`COMPATIBILITY.md` and `wasi/corpus/expected.txt` (2 graphics rows today).
+
+---
+
+## D16 — A web-native network transport
+
+**Closed — Option B: implement LÖVE's existing `luahttps` surface over a host
+import backed by `fetch`. Ruled 2026-08-19.** Until that ruling there was no
+decision here at all — #27 deferred the question out of scope and nothing had
+picked it up since.
+
+**What the ruling settles.** A browser LÖVE game gets a network. It gets it
+through the API desktop LÖVE already has, so this adds **no game-visible
+surface** and needs nothing from D18. Option A's record correction is not an
+alternative that lost — it is the documentation half of B, and lands with it:
+`COMPATIBILITY.md:190` splits into a permanent blank for raw TCP/UDP and a real
+entry for HTTP(S).
+
+**What it does not settle.** WebSocket and WebRTC data channels (Option C) stay
+unruled. B covers request/response — leaderboards, analytics, non-portal cloud
+saves — and not real-time multiplayer. C remains available and still may not
+begin before D18 is ruled, since it would add game-visible API.
+
+**The design work B carries:** desktop's `https.request` is synchronous and
+`fetch` is not. That is the same sync-engine/async-browser shape as D3 (device
+acquisition), D7/#72 (`DecompressionStream`) and #67 (`mapAsync`) — four
+instances now, three of them open. It is worth solving once, deliberately,
+rather than four times ad hoc.
+
+**The standing state.** `enet`, `luasocket` and `luahttps` are excluded from the
+wasi build. #27 said, parenthetically:
+
+> (A *separate*, web-native transport — WebSocket/WebRTC — is a deferred
+> exploration for the "web platform" goal, not a substitute; **out of scope
+> here**.)
+
+`wasi/COMPATIBILITY.md:190` then records the whole category as a blank — "no
+faithful browser primitive for raw sockets." **Two different facts are being
+merged there**, and only one of them is true:
+
+- **Raw TCP/UDP** is genuinely unavailable to a page. `enet` and `luasocket`
+  cannot be ported, and a blank is the correct, permanent record for them.
+- **HTTP(S), WebSocket and WebRTC data channels** are native to every target
+  browser. `luahttps` exists on desktop to do what `fetch` does natively here.
+  A blank claims the browser cannot; the browser can.
+
+So the current record overstates the loss, and a browser game — in a runtime
+that is natively a network client — presently has no Lua-facing path to a
+network of any kind.
+
+- **Option A — nothing.** Leave it unbuilt and correct only the record, so the
+  blank splits into a permanent blank (raw sockets) and a **✗** (everything
+  else).
+  - **For:** free; makes the documentation honest immediately.
+  - **Against:** the ✗ stays open with no owner.
+- **Option B — implement LÖVE's existing `luahttps` surface over a host import
+  backed by `fetch`.**
+  - **For:** the API already exists upstream, so this adds **no game-visible
+    API** and needs no ruling on additions; a game using it runs on desktop and
+    here. One import. Covers leaderboards, analytics, and non-portal cloud saves
+    — most of what a portal-shipped game actually needs.
+  - **Against:** desktop's `https.request` is synchronous and `fetch` is not —
+    the D3/D7/#72 shape once more; one permanent import under D12.
+- **Option C — a WebSocket / WebRTC seam as new game-visible API.**
+  - **For:** the thing real-time multiplayer needs.
+  - **Against:** new API desktop lacks, so it cannot start before the
+    game-visible-additions record is ruled; permanent imports; a protocol
+    surface of our own design to own forever.
+- **Option D — leave it entirely to the host, over the generic message channel.**
+  - **For:** zero engine surface; a consumer already writing JavaScript can
+    expose whatever transport it likes.
+  - **Against:** every consumer reinvents it, nothing is portable between
+    embedders, and a game that just wants a leaderboard cannot have one without
+    its host's cooperation.
+
+**Recommendation: A immediately, then B** — and **B is what the Human ruled.**
+A costs nothing and stops the record from claiming a browser limitation that
+does not exist. B is the smallest step that closes the ✗, and it is the only
+option that creates no new game-visible API and therefore needs no additions
+ruling. C and D are separable follow-ons; C should not begin until game-visible
+additions are ruled.
+
+**What it gates:** whether a browser LÖVE game can reach a network at all;
+leaderboards, analytics, non-portal cloud saves, and multiplayer.
+
+---
+
+## D17 — Keyboard key identification: physical code, or layout key
+
+**Open. Never framed as a choice.** Today's behaviour is a seam default recorded
+only in a source comment, and it is reported in `COMPATIBILITY.md` as a
+divergence rather than as the decision it actually is.
+
+**The standing state.** `wasi/host/input-host-browser.mjs:30` states it plainly:
+
+> Keys are identified by the PHYSICAL DOM `code` ("KeyA")
+
+with line 35 recording that IME input (CJK, dead keys) does not reach the game.
+`wasi/COMPATIBILITY.md:150` reports "live keyboard layout" as a blank, "a
+declared divergence from SDL's live-layout mapping."
+
+**Why this is a decision and not a detail.** LÖVE's callback is
+`love.keypressed(key, scancode)`, and the two arguments are deliberately
+different things: `key` is layout-dependent, `scancode` is physical. The browser
+supplies both — `KeyboardEvent.key` is layout-mapped and `KeyboardEvent.code` is
+physical, a near-exact match for LÖVE's own pair. The seam derives *both* from
+`code` through a fixed US table, so `key` is wrong on every non-US layout: an
+AZERTY player pressing the key labelled A reports `q`. The input record format
+already reserves `char code[40]` at offset 48 **and** `char key[40]` at offset
+88, so the seam was designed with a slot for the layout key and the browser host
+has never filled it.
+
+- **Option A — status quo**, both fields from `code`.
+  - **For:** nothing to build; deterministic across machines, which is
+    convenient for witnesses that synthesize US-layout events.
+  - **Against:** `key` is simply wrong for most of the world, and LÖVE's
+    key/scancode distinction — which exists so a game can bind to either — is
+    collapsed to one of them. This is closer to a defect than a divergence.
+- **Option B — fill both fields honestly:** `key` from `event.key`, `scancode`
+  from `event.code`.
+  - **For:** matches LÖVE's model exactly; costs **no new import**, because the
+    record already carries the field; fixes every non-US layout.
+  - **Against:** `event.key` values need mapping onto LÖVE's `KeyConstant`
+    names, named keys included; witnesses asserting on synthesized events need
+    review; a mid-session layout change becomes observable, as it is on desktop.
+- **Option C — Option B plus `navigator.keyboard.getLayoutMap()`.**
+  - **For:** exposes a real layout map rather than inferring one.
+  - **Against:** Chromium-only and permission-adjacent, and it adds nothing over
+    B for the problem at hand.
+
+**Recommendation: B.** It is the option that makes the seam tell the truth, it
+uses a field the record already carries, and it converts a **✗** into a ✓ rather
+than declaring a divergence that was never real. C buys nothing B does not.
+
+**Not in scope here:** IME composition, which is a genuinely separate capability
+and wants its own record if it is ever wanted.
+
+**What it gates:** whether players on non-US layouts can play at all; whether
+`COMPATIBILITY.md:150` is a divergence or a gap.
+
+---
+
+## D18 — Game-visible API additions
+
+**Open.** The Human's position was stated in a planning conversation on
+2026-08-17 and is recorded below; per D0 it stays OPEN until the Human confirms
+this wording, however settled the answer looks.
+
+**The question.** May love.wasm expose game-visible API that desktop LÖVE does
+not have? Everything the engine adds today is host-side and invisible to Lua
+(live edit, the console, reload) — deliberately, per "the game stays pure LÖVE"
+in `wasi/platform/DESIGN.md`. A `love.math` vector/matrix family would be the
+first thing to cross that line.
+
+**The Human's stated position:** *adding is better than subtracting; games that
+work without it will still work without it.*
+
+- **Option A — never.** Only what desktop has.
+  - **For:** a `.love` written here always runs there; nothing to declare.
+  - **Against:** forbids improvements the browser target could use, and the
+    line is already crossed in the other direction — a game using a compute
+    shader runs on desktop and throws here (D9).
+- **Option B — additive only, polyfillable, declared.**
+  - **For:** captures the position above while keeping every addition
+    accountable.
+  - **Against:** each addition is permanent under D12 and widens what the
+    project owns.
+- **Option C — unrestricted additions.**
+  - **Against:** makes the `.love` pillar meaningless.
+
+**Recommended: B, with the four constraints stated as part of the ruling** —
+they are what separate B from C:
+
+1. **Additive only.** An addition never changes the behaviour of an API desktop
+   also has. It may only add surface that desktop leaves absent.
+2. **Polyfillable where possible, and the polyfill is a deliverable.** A game
+   using the addition runs on desktop LÖVE once it requires the shipped Lua
+   polyfill. Where no polyfill is possible, that is stated at the point of
+   addition rather than discovered later.
+3. **Declared** in `wasi/COMPATIBILITY.md`, like every other divergence.
+4. **Permanent.** D12 makes a published surface impossible to withdraw quietly,
+   so an addition is priced as forever.
+
+**What B licenses, and what it does not.** It licenses the `love.math` vec2/3/4
+and mat4 family, which passes all four tests. It does **not** license
+engine-side architecture — an entity/component system, fixed component pools, a
+scene graph. Those fail test 2 outright (nothing polyfills cache locality) and
+work against P1: an engine whose performance profile differs structurally from
+desktop's makes the preview predict desktop *less* well, and P1 is the
+highest-ranked preference. The distinction is worth stating in the ruling
+because the arguments for the two look similar and their costs do not.
+
+**Out of scope, and recorded so it is not re-proposed:** Rust. MatLua and
+blas.wasm stand as *existence proofs* that a good math library is achievable on
+wasm and for Lua 5.4 — they are not components to import, and no Rust enters
+this toolchain. Both are MIT-licensed if a future measurement ever argues for
+reuse.
+
+**What it gates:** the `love.math` vec/mat and `love.data` typed-buffer
+milestone; D16's Option C; anything else that would add game-visible surface.
+
+---
+
+## D19 — Portal / host message seam
+
+**Open, with a recommendation.**
+
+Browser gaming portals need two things a game must be able to reach: **gameplay
+signals** (gameplay start/stop, loading progress) and **asynchronous
+monetization** (request a rewarded ad, the portal's SDK runs, a reward lands
+later). Both are guest-to-host calls with host-to-guest completions, and neither
+has any desktop counterpart.
+
+- **Option A — a generic message channel.** One guest→host import carrying a
+  named message plus a payload; host→guest completions are pushed into
+  `love.event` the way input already is.
+  - **For:** D12 makes every import permanent, so the surface owed forever is
+    `web_message` rather than `poki_rewarded_ad`. Completions arriving through
+    `love.event` fit the pump, which never blocks. It serves itch.io,
+    self-hosting and LoveIDE with the same seam.
+  - **Against:** the message vocabulary becomes a soft interface — unversioned
+    and unchecked unless something declares it.
+- **Option B — per-portal imports.** `poki_gameplay_start`,
+  `crazygames_rewarded_ad`, and so on.
+  - **For:** explicit and typed.
+  - **Against:** every portal ever supported is owed permanently under D12, and
+    a portal changing its SDK becomes an engine change.
+
+**Recommended: A.** The D12 permanence argument decides it. **Portal adapters
+are host-page JavaScript** — the consumer's side of the boundary, shippable as
+reference examples alongside `wasi/host/*`, and never engine code.
+
+**Two riders this record carries, because they are how a portal build actually
+fails:**
+
+- `love.focus` and `love.visible` must be wired *and witnessed* — a game must
+  pause and mute on an ad break and on a tab hide. `EV_FOCUS`, `EV_MOUSEFOCUS`
+  and `EV_VISIBLE` all exist at the input seam
+  (`wasi/platform/input-backend.cpp:98-100`), so this is verification work
+  rather than construction, and no witness asserts it today.
+- Audio-context unlock on first user gesture is host-side, and portals test for
+  it.
+
+**What it gates:** whether a love.wasm game can ship to a portal at all.
+
+---
+
+## D20 — The target audience, and what it implies for the ranking
+
+**Open.** The audience was ruled in the 2026-08-17 planning conversation. What
+it implies for the preference ranking was not, and that is the open half.
+
+**The ruling.** Browser gaming portals — Poki, CrazyGames — are a named target
+audience. Desktop compatibility remains a preference serving the back-catalog
+(D9's auto-shim), while **new browser-first games are the growth audience**.
+
+**Why this needs a record rather than a line in a design document.**
+`wasi/platform/DESIGN.md` §1.3 ranks **P1 — the preview predicts desktop** above
+every other preference, and that ranking is what decides seam questions when
+they conflict. If browser-first games are the growth audience, P1's position is
+a live question rather than a settled one. Writing the audience into the
+objectives without re-examining the ranking would leave the two in silent
+tension, which is the failure mode D0 exists to prevent.
+
+**This is not a proposal to demote P1.** P1 has a strong independent
+justification — it is why the engine is compiled real LÖVE rather than an
+imitation, and that argument does not depend on who the audience is. The point
+is only that the ranking should be re-affirmed with the audience in view, and
+recorded either way.
+
+**Supporting analysis, and the reason this is cheap.** love.wasm's existing
+pillars already read as a portal compliance specification: no COOP/COEP (the
+classic love.js portal blocker), D14's one-file self-contained export,
+iframe-ready with `allow=` documented, 3.3 MB measured, touch already done —
+and **cloud saves come free**, because D1 made saves "bytes from the host", so a
+portal host backs the save namespace with portal cloud storage at zero engine
+cost.
+
+**What it gates:** `DESIGN.md` §1 objectives wording; whether the P-ranking
+stands as written; and the severity of D15 (video), D16 (network transport) and
+D17 (keyboard layout), each of which ranks differently for a portal audience
+than for a desktop back-catalog one.
+
+**A discrepancy found while writing this, since fixed (2026-08-19):**
+`readme.md` listed **five** ranked preferences while `DESIGN.md` §1.3 listed
+**four**, omitting "consumers carry as little as possible", so their P-numbers
+denoted different objectives while both were cited by number elsewhere. The
+readme's list is the later of the two and was adopted: `DESIGN.md` §1.3 now
+carries it as P2, with the old P2/P3/P4 shifted to P3/P4/P5 and the prior
+numbering recorded there so earlier citations resolve. D9's citation was
+corrected in the same pass. This record's own P-references use the corrected
+scheme.
+
+---
+
+## D21 — What the shim is, what it will never be, and when it is built
+
+**Closed. Ruled 2026-08-19: the three tiers below, the non-goal list, and
+`love.shim` is built now rather than late.** Two amendments the Human made in
+ruling it are recorded first, because they change the shape the record
+recommended.
+
+**Amendment 1 — it is a module, and its size is not a constraint.** `love.shim`
+sits peer to the other `love.*` modules rather than being a prelude smuggled in
+ahead of game code. Size is explicitly not something to manage: as pure Lua it
+costs almost nothing against P4, and the guards that matter were never about
+line count.
+
+That is consistent with D9 read closely. D9's reopen condition — "if the shim
+stops being a small fixed prelude" — defines that phrase with the two clauses
+that follow it: *needing per-game logic*, and *papering over value-semantics
+differences*. Those two are the guards. Growing past thirteen lines is not one
+of them, so this amendment does not trip D9.
+
+**Amendment 2, and the open question it leaves.** Making it a module raises a
+D18 question the prelude form did not: **is `love.shim` game-visible API?** If a
+game can call `love.shim.*`, that is surface desktop LÖVE lacks, and D18 governs
+it.
+
+There is a good reason to want a *small* visible surface rather than none. D9
+requires the shim be "declared, never silent," and a runtime introspection point
+— what was restored, and what was declined — is how a game, an IDE or a test
+*sees* that declaration rather than reading a document. **Recommended: internal
+by default, applying before game code, with a deliberate and minimal
+introspection surface, settled under D18 (#94) rather than by accident.**
+
+### The record as ruled
+
+**The problem this records.** "The shim" has been doing work no design gave it.
+Across D9, #64, #79, #93 and D18, the phrase has been used as a place to send a
+compatibility question when the answer was inconvenient — *we are diverging
+again, the shim will catch it* — without anyone checking that a shim could.
+Every such deferral is an **unearned claim**: it asserts the deviation is
+reachable by a shim, and none of them has been tested, because the shim does not
+exist.
+
+That is the failure mode the evidence ladder exists to prevent, and it has been
+accumulating in a durable document rather than in living status.
+
+### First: three different things are being called the shim
+
+They have different homes, different failure modes and different owners, and
+conflating them is what let the deferrals pile up.
+
+| | Direction | Where it runs | Shape | Governed by |
+|---|---|---|---|---|
+| **Inbound compatibility** | a desktop/5.1 game → love.wasm | inside love.wasm | a small fixed prelude | D9, built as #64 |
+| **Outbound portability** | a love.wasm game → desktop LÖVE | on desktop, as a Lua library the game requires | a reimplementation of an addition | D18 |
+| **Translation** | one source language → another | wherever it is cheapest | a compiler | its own record (#79, #100) |
+
+Only the first is D9's auto-shim. The second is D18's polyfill obligation and
+runs on the other machine entirely. The third is a compiler and is not
+prelude-shaped at all.
+
+### Second: D9's reopen condition may already have fired
+
+D9 says, verbatim:
+
+> **Reopen if** the shim stops being a small fixed prelude — if it starts
+> needing per-game logic, or starts papering over value-semantics differences
+> like the font-size case.
+
+A GLSL → `love.shader` translator is not a small fixed prelude. So either that
+translator is **not** part of the shim — a separate tier with its own record —
+or D9 reopens. The recommendation below takes the first branch, because it is
+the one that keeps D9's condition meaningful rather than quietly widening what
+"prelude" means.
+
+### Recommended: three named tiers, and an explicit list of what the shim will never do
+
+**`love.shim` — inbound only.** Restores 5.1 standard-library names into a 5.4
+world, declared in `COMPATIBILITY.md`, never silent. Fixed content, no per-game
+logic. This is what #64 builds and what D9 governs, and it stays small enough
+that D9's reopen condition keeps its force.
+
+**A separate outbound polyfill tier**, shipped for desktop and required by the
+game, satisfying D18's constraint 2. It is not part of `love.shim` and does not
+run here at all.
+
+**Translators are their own artifacts** (#79, #100), governed by their own
+records. Partial acceptance is acceptable *there* because the tier declares its
+coverage — but that is a property of a declared translator, not of the shim.
+
+**And the part that stops recurrence — a stated non-goal list.** The shim will
+never:
+
+- **Paper over value semantics.** Font sizes and the `luaL_checkinteger` class
+  (#93) are not shimmable: restoring a name fixes something missing, while
+  changing a value masks something wrong. D9 already refuses this; recording it
+  as a non-goal makes the refusal reachable without reading D9.
+- **Supply a missing capability.** Video, a network transport, threads. A shim
+  cannot conjure what the engine does not have.
+- **Carry per-game logic.** The moment it needs to know which game is running,
+  it has become a patch set, and D9 reopens.
+
+A tier with an explicit "will never" list cannot become a container for
+deferrals, because every deferral has to name which tier catches it.
+
+### When it is built: recommended **now**, not late
+
+`readme.md` currently defers the shim "to among the last development steps so it
+is not rebuilt against a moving engine." That reasoning is not wrong, but it
+prices the wrong risk.
+
+- Rebuilding a small prelude against a moving engine is **cheap** — the observed
+  content is three names and thirteen lines.
+- Discovering at the end that several deferred deviations were never shimmable
+  is **not cheap**, and it is the failure this record exists to name.
+
+Building it early converts a growing pile of unearned claims into executable
+evidence, which is what the working agreement prefers precisely because prose
+claims rot silently and executable ones rot loudly. It also lets each new
+deviation be witnessed against the shim **in the merge that introduces it**,
+rather than against a shim that does not yet exist.
+
+**What it gates:** #64's scope; whether D9 reopens; where GLSL → `love.shader`
+translation lives; and whether any given "defer it to the shim" is a plan or a
+wish.
+
+### Appended 2026-08-19 — two things building it disproved
+
+A closed record freezes, so this appends rather than rewrites. Both findings
+contradict details above, and both were found by running the thing rather than
+by reading it.
+
+**`wantsShim(t.version)` cannot be a gate.** The record and the module both
+treat `t.version` as the signal for whether to shim, on the reasoning that LÖVE
+already reads it (`modules/love/boot.lua:378`). It does — but `t.version` lives
+in `conf.lua`, and **`conf.lua` is itself game code**. An 11.5 game whose
+`conf.lua` calls `unpack()` fails before the version authorising the shim has
+been read. So the shim applies **unconditionally**, which is safe because every
+install is `x = x or …`: on a game that needs nothing it installs names that
+game never calls. `wantsShim` survives as advisory — a consumer wanting strict
+12-only semantics may ask before applying — not as the gate it was drafted to
+be.
+
+**The two tiers cannot apply at the same moment.** The Lua tier must run before
+any game code, so before `love.boot`. The LÖVE tier can only run after the
+`love.*` modules exist, and `love.boot` is what loads them. Calling `apply()`
+before boot installs the Lua names correctly and **silently skips every
+LÖVE-tier patch**, because `love.graphics` and friends are still `nil` —
+nothing errors, and the restorations simply are not there. `shim.arm()` resolves
+it by putting the Lua tier on immediately and attaching the LÖVE tier to the
+module loaders in `package.preload`, so each module is patched the moment it is
+required, still well before `main.lua`.
+
+Both are witnessed, and the second is mutation-tested: a boot wrapper calling
+`apply()` instead of `arm()` turns the ParticleSystem legs red and leaves the
+rest green.
+
+### What the shim must reach: LÖVE 11.5, not only 12
+
+Ruled alongside the above: the compatibility floor is **LÖVE 12 with Lua 5.1
+game code**, and **LÖVE 11.5 is preferred where reachable** — on the reasoning
+that love.wasm may ship before LÖVE 12 releases, which would make the real
+back-catalog an 11.5 one and love.wasm many players' first LÖVE 12.
+
+**Most of that gap is already closed by upstream, which is why this is
+tractable.** Read from source at `bb06db8`: LÖVE 12 carries **34
+`luax_markdeprecated` call sites across 14 wrapper files** — `love.physics`
+(five files), `love.graphics` (two), `filesystem`, `window`, `math`, `data`,
+`event` and `love` itself. `love.physics.newFixture` still exists
+(`wrap_Physics.cpp:282`), and `Physics.h:104` records a structure kept
+specifically "to support the deprecated newFixture API." `love.graphics.newText`
+still exists and forwards to `newTextBatch`; `newCanvas` sits beside
+`newTexture`.
+
+**And none of them is a silent behaviour change.** The classifications present
+are `DEPRECATED_REPLACED` (18), `DEPRECATED_RENAMED` (8) and `DEPRECATED_NO`
+(7) — name-level every one. The three `DEPRECATED_BEHAVIOR` hits in the tree are
+OpenGL debug constants, not LÖVE deprecations. So an 11.5 call in LÖVE 12 either
+works, or is gone; it does not quietly do something else. That is precisely the
+category a shim can serve, and precisely not the category D9 forbids it to touch.
+
+**The corroborating observation:** Legend of Lua is an 11.5 game, and the port
+touched **no `love.*` call at all** — all 59 lines were Lua-dialect changes
+(`readme.md`). One game is one observation, not a rate; #65 is what turns it
+into one.
+
+**What is therefore actually owed**, and is not yet known: the APIs 11.5 had
+that LÖVE 12 does **not** register at all — neither live nor deprecated. Nobody
+has enumerated them. That diff, against upstream's own registered function
+tables, is the real scope of an 11.5 compatibility layer and is mechanical work
+rather than research.
+
+**A consequence of D13 worth naming, because it is a benefit for once:**
+upstream may delete these deprecation shims before 12.0 final. Base bumps here
+are deliberate cherry-picks, so love.wasm can simply decline to inherit a
+removal. The deprecation layer is ours to keep for as long as the back-catalog
+needs it.
+
+---
+
 ## Q1 — AOT compilation of game Lua
 
 **Open. Closed by data, on a trigger.**
@@ -1008,3 +1583,38 @@ rather than assumed:
   a declared limitation of the standalone-file mode, not a defect.
 
 Answering both is a witness, not a discussion.
+
+---
+
+## Q4 — Box2D 3.x
+
+**Open. Parked; closed by data, on a trigger** — Q1's shape.
+
+Whether `love.physics` should migrate from the in-tree Box2D 2.4 to the 3.x
+line.
+
+**Facts, verified 2026-08-17.** The latest release is **3.1.1** (2025-06-04);
+there is no "3.11"; 3.2 is in development. Upstream claims roughly **3× over
+2.4.2** single-threaded on its own barrel scene.
+
+**The contradicting measurement.** Defold measured 3.1 at roughly **3× slower**
+than their (customized) 2.2 single-threaded at 10,000 bodies
+(`erincatto/box2d` discussion #963), and the maintainer stated that low-body-count
+scenes are "not a case I have optimized for in 3.1". **LÖVE games live in that
+regime.** Box2D 3's multithreaded gains are permanently unreachable here in any
+case, since no-COOP/COEP rules out the threading they need.
+
+**What migration would cost.** It damages **P1**: the preview would stop
+predicting desktop, because desktop LÖVE 12 is on 2.4 with a different solver,
+and `postSolve` impulses have no 3.x equivalent. That is a P1 loss for a
+speed gain — the wrong side of the ranking. It is also a full `wrap_Physics`
+rewrite, since 3.x replaces pointers with opaque IDs.
+
+**Trigger to revisit:** upstream LÖVE adopts 3.x, **or** a real game measures
+physics-bound. Absent either, staying on 2.4 is also what keeps
+`love.physics` a no-deviation row against desktop.
+
+**If it is ever spiked:** the harness is `wasi/platform/run-physics.sh`. One
+wasm detail worth keeping — upstream's `core.h` maps `B2_CPU_WASM` to
+`B2_SIMD_SSE2` (SSE2 over simd128), so a spike needs no fork; see also #87,
+which would have to land first for that path to mean anything.

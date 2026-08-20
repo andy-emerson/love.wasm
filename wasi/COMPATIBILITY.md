@@ -207,6 +207,61 @@ Not a feature row, but it lands in the same table for game authors.
 | the `love.*` API surface | ✓ | ✓ | the engine carries the `LUA_VERSION_NUM >= 504` branches it needs; the modules behave identically |
 | 5.1-era game *Lua* running untouched | ✓ | | `unpack`, `math.atan2`, and non-integer numbers where an integer is required. Each has a portable form that runs on **both**, so porting a game forward costs it nothing on desktop |
 
+## love.shim — the restorations, declared
+
+D9's rule is that a restored name is a divergence like any other and is written
+down here, never silent. `love.shim` is that list. It is embedded in the
+artifact and preloaded beside `love` itself (`wasi/shim/shim-preload.h`), and
+every entry below is exercised by `wasi/shim/run.sh` across five artifacts.
+
+**Scope is measured, not guessed.** `wasi/shim/api-diff.py` compares 11.5's
+Lua-facing surface against 12's: **24** names are absent, and each has a
+verified target in 12. Everything 12 merely renamed or replaced is already
+carried by upstream's own 30 `luax_markdeprecated` entries and needs nothing
+from us — including `love.graphics.stencil`, `getStencilTest` and
+`setStencilTest`, which LÖVE 12 defines in its own Lua layer
+(`src/modules/graphics/wrap_Graphics.lua`).
+
+### Lua 5.1 names that 5.2 / 5.3 / 5.4 moved
+
+| restored | how |
+|---|---|
+| `unpack` | `table.unpack` |
+| `table.getn`, `table.maxn`, `table.foreach`, `table.foreachi` | reimplemented |
+| `math.atan2` | two-argument `math.atan` |
+| `math.pow`, `math.log10`, `math.ldexp`, `math.frexp` | arithmetic |
+| `loadstring` | `load`, string-only |
+| `string.gfind` | `string.gmatch` |
+
+**Declined, and reported rather than faked:** `setfenv`/`getfenv` and
+`module()`. Under 5.4's `_ENV` no emulation preserves what the game's code
+means, so the failure would be a wrong result rather than a missing name — the
+class D21 forbids this tier to touch. A game using them fails at its own call
+site.
+
+### LÖVE 11.5 names LÖVE 12 removed — 24
+
+| feature | Desktop 11.5 | Web | |
+|---|:--:|:--:|---|
+| `World:getBodyList` / `getJointList` / `getContactList` | ✓ | ✓ | → `getBodies` / `getJoints` / `getContacts` |
+| `Body:getFixtureList` | ✓ | ✓ | → `getShapes`; 12.0 merged fixtures into shapes |
+| `hasLimitsEnabled` | ✓ | ✓ | → `areLimitsEnabled` |
+| joint `get/setFrequency`, `get/setDampingRatio` (Distance, Mouse, Weld) | ✓ | ✓ | a **units** change, not a rename: 11.5 tuned springs in frequency + damping ratio, 12 in stiffness + damping. Converted through the engine's own exact `love.physics.computeLinearStiffness` / `computeLinearFrequency`, with the joint's own bodies |
+| `WheelJoint:get/setSpringFrequency`, `get/setSpringDampingRatio` | ✓ | ✓ | as above, with 12's `Spring` infix |
+| `love.filesystem.isFile` / `isDirectory` / `isSymlink` / `getLastModified` | ✓ | ✓ | derived from `getInfo` |
+| `love.math.compress` / `decompress` | ✓ | ✓ | adapted onto `love.data`; argument order differs |
+| `love.audio.getSourceCount` | ✓ | ✓ | → `getActiveSourceCount` |
+| `SoundData:getChannels` | ✓ | ✓ | → `getChannelCount` |
+| `ParticleSystem:get/setAreaSpread` | ✓ | ✓ | → `get/setEmissionArea`, truncated to 11.5's three return values |
+
+**One divergence the spring conversion cannot close, and no shim could.**
+Frequency is mass-relative; stiffness is absolute. A game that changes a body's
+mass *after* setting a spring keeps its frequency on 11.5 and keeps its
+stiffness here. Setting the spring again after the mass change restores
+agreement.
+
+---
+
 The compatibility question this project measures is whether a LÖVE **feature**
 works, not how a game's Lua was wired up. A ported game is still a LÖVE game.
 See **The Lua dialect** in `readme.md`, and D8 in `wasi/platform/DESIGN.md`.

@@ -10,8 +10,11 @@
 -- the same channel the frame witness already uses for its love.load marker, and
 -- it works because print() flushes per call (lauxlib.h:265, D6).
 
-local shim = require("love.shim")
-shim.apply(_G, love)
+-- This game does NOT require or apply the shim. That is the assertion: the boot
+-- wrapper switched it on before any game code ran, which is what "the engine
+-- applies it for you" has to mean. A game that shimmed itself would prove
+-- nothing about a real 11.5 game, which of course does no such thing.
+local shim = require("love.shim") -- read the REPORT only; never apply
 
 local failures, checks = 0, 0
 local function check(name, cond, got)
@@ -26,6 +29,12 @@ end
 
 function love.load()
 	print("SHIMFRAME-BEGIN")
+
+	-- Switched on by the boot wrapper, before this file was loaded.
+	check("the boot wrapper applied the Lua tier before game code", unpack ~= nil, unpack)
+	check("unpack works without this game asking for it",
+		unpack ~= nil and select("#", unpack({ 1, 2, 3 })) == 3)
+	check("math.atan2 restored before game code", math.atan2 ~= nil)
 
 	-- ParticleSystem needs a texture, so this also proves the shim's lazily
 	-- patched constructor survives a real boot rather than only a bare require.

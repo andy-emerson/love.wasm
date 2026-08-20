@@ -380,6 +380,43 @@ function shim.apply(env, loveTable)
 	return shim
 end
 
+-- THE TWO TIERS APPLY AT DIFFERENT TIMES, which is the thing a boot wrapper has
+-- to get right and which is easy to get wrong in a way that fails silently.
+--
+--   The Lua tier must run BEFORE any game code — and conf.lua is game code, so
+--   before love.boot.
+--   The LÖVE tier can only run AFTER the love.* modules exist — and love.boot
+--   is what loads them, during love.init.
+--
+-- There is no single moment that satisfies both. Calling apply() before boot
+-- installs the Lua names correctly and silently skips every LÖVE-tier patch,
+-- because love.graphics and friends are still nil; nothing errors, and the
+-- restorations simply are not there. A frame witness caught exactly that.
+--
+-- arm() resolves it: the Lua tier goes on immediately, and the LÖVE tier is
+-- attached to the module loaders, so each love.* module gets its restorations
+-- the moment it is required — still well before main.lua runs. applyLove is
+-- idempotent, so re-running it per module converges rather than duplicating.
+function shim.arm(env)
+	env = env or _G
+	shim.applyLua(env)
+
+	local preload = package.preload
+	for _, name in ipairs({ "data", "math", "physics", "filesystem", "audio", "sound", "graphics" }) do
+		local key = "love." .. name
+		local orig = preload[key]
+		if type(orig) == "function" then
+			preload[key] = function(...)
+				local m = orig(...)
+				shim.applyLove(env.love)
+				return m
+			end
+		end
+	end
+
+	return shim
+end
+
 return shim
 -- DO NOT REMOVE THE NEXT LINE. It is used to load this file as a C++ string.
 --)luastring"--"
